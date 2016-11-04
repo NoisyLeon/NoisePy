@@ -1556,7 +1556,7 @@ class requestInfo(object):
 class quakeASDF(pyasdf.ASDFDataSet):
     """ An object to for earthquake data analysis based on ASDF database
     """    
-    def get_events(self, startdate, enddate, Mmin=5.5, Mmax=None, minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None,
+    def get_events(self, startdate, enddate, add2dbase=True, gcmt=False, Mmin=5.5, Mmax=None, minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None,
             latitude=None, longitude=None, minradius=None, maxradius=None, mindepth=None, maxdepth=None, magnitudetype=None):
         """Get earthquake catalog from IRIS server
         =======================================================================================================
@@ -1580,29 +1580,175 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """
         starttime=obspy.core.utcdatetime.UTCDateTime(startdate)
         endtime=obspy.core.utcdatetime.UTCDateTime(enddate)
-        client=Client('IRIS')
-        catISC = client.get_events(starttime=starttime, endtime=endtime, minmagnitude=Mmin, maxmagnitude=Mmax, catalog='ISC',
-            minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
-            latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, mindepth=mindepth,
-            maxdepth=maxdepth, magnitudetype=magnitudetype)
-        endtimeISC=catISC[0].origins[0].time
-        if endtime.julday-endtimeISC.julday >1:
+        if not gcmt:
+            client=Client('IRIS')
             try:
-                catPDE = client.get_events(starttime=endtimeISC, endtime=endtime, minmagnitude=Mmin, maxmagnitude=Mmax, catalog='NEIC PDE',
+                catISC = client.get_events(starttime=starttime, endtime=endtime, minmagnitude=Mmin, maxmagnitude=Mmax, catalog='ISC',
                     minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
                     latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, mindepth=mindepth,
                     maxdepth=maxdepth, magnitudetype=magnitudetype)
-                catalog=catISC+catPDE
+                endtimeISC=catISC[0].origins[0].time
             except:
-                catalog=catISC
-        else: catalog=catISC
-        outcatalog=obspy.core.event.Catalog()
-        # check magnitude
-        for event in catalog:
-            if event.magnitudes[0].mag < Mmin: continue
-            outcatalog.append(event)
-        self.add_quakeml(outcatalog)
+                catISC=obspy.core.event.Catalog()
+                endtimeISC=starttime
+            if endtime.julday-endtimeISC.julday >1:
+                try:
+                    catPDE = client.get_events(starttime=endtimeISC, endtime=endtime, minmagnitude=Mmin, maxmagnitude=Mmax, catalog='NEIC PDE',
+                        minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
+                        latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, mindepth=mindepth,
+                        maxdepth=maxdepth, magnitudetype=magnitudetype)
+                    catalog=catISC+catPDE
+                except:
+                    catalog=catISC
+            else: catalog=catISC
+            outcatalog=obspy.core.event.Catalog()
+            # check magnitude
+            for event in catalog:
+                if event.magnitudes[0].mag < Mmin: continue
+                outcatalog.append(event)
+        else:
+            gcmt_url_old='http://www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/jan76_dec13.ndk'
+            gcmt_new='http://www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/NEW_MONTHLY'
+            if starttime.year < 2005:
+                cat_old=obspy.read_events(gcmt_url_old)
+                outcatalog=cat_old.filter("magnitude >= %g" %Mmin, "time >= %s" %str(starttime), "time <= %s" %str(endtime) )
+                if Mmax!=None: cat_old=cat_old.filter("magnitude <= %g" %Mmax)
+                if maxlongitude!=None: cat_old=cat_old.filter("longitude <= %g" %maxlongitude)
+                if minlongitude!=None: cat_old=cat_old.filter("longitude >= %g" %minlongitude)
+                if maxlatitude!=None: cat_old=cat_old.filter("latitude <= %g" %maxlatitude)
+                if minlatitude!=None: cat_old=cat_old.filter("latitude >= %g" %minlatitude)
+                if maxdepth!=None: cat_old=cat_old.filter("depth <= %g" %(maxdepth*1000.))
+                if mindepth!=None: cat_old=cat_old.filter("depth >= %g" %(mindepth*1000.))
+                temp_stime=obspy.core.utcdatetime.UTCDateTime('2014-01-01')
+                outcatalog=cat_old
+            else:
+                outcatalog=obspy.core.event.Catalog()
+                temp_stime=copy.deepcopy(starttime); temp_stime.day=1
+            while (temp_stime < endtime):
+                year=temp_stime.year; month=temp_stime.month
+                yearstr=str(int(year))[2:]; monstr=monthdict[month]; monstr=monstr.lower()
+                if year==2005 and month==6: monstr='june'
+                if year==2005 and month==7: monstr='july'
+                if year==2005 and month==9: monstr='sept'
+                gcmt_url_new=gcmt_new+'/'+str(int(year))+'/'+monstr+yearstr+'.ndk'
+                print gcmt_url_new
+                try: cat_new=obspy.read_events(gcmt_url_new)
+                except: break
+                cat_new=cat_new.filter("magnitude >= %g" %Mmin, "time >= %s" %str(starttime), "time <= %s" %str(endtime) )
+                if Mmax!=None: cat_new=cat_new.filter("magnitude <= %g" %Mmax)
+                if maxlongitude!=None: cat_new=cat_new.filter("longitude <= %g" %maxlongitude)
+                if minlongitude!=None: cat_new=cat_new.filter("longitude >= %g" %minlongitude)
+                if maxlatitude!=None: cat_new=cat_new.filter("latitude <= %g" %maxlatitude)
+                if minlatitude!=None: cat_new=cat_new.filter("latitude >= %g" %minlatitude)
+                if maxdepth!=None: cat_new=cat_new.filter("depth <= %g" %(maxdepth*1000.))
+                if mindepth!=None: cat_new=cat_new.filter("depth >= %g" %(mindepth*1000.))
+                outcatalog+=cat_new
+                try: temp_stime.month+=1
+                except: temp_stime.year+=1; temp_stime.month=1
+        if add2dbase: self.add_quakeml(outcatalog)
+        else: return outcatalog
         return
+    
+    def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN']):
+        """Read txt station list 
+        """
+        sta_info=sta_info_default.copy()
+        with open(stafile, 'r') as f:
+            Sta=[]
+            site=obspy.core.inventory.util.Site(name='01')
+            creation_date=obspy.core.utcdatetime.UTCDateTime(0)
+            inv=obspy.core.inventory.inventory.Inventory(networks=[], source=source)
+            total_number_of_channels=len(chans)
+            for lines in f.readlines():
+                lines=lines.split()
+                netsta=lines[0]
+                netcode=netsta[:2]
+                stacode=netsta[2:]
+                lon=float(lines[1])
+                lat=float(lines[2])
+                if lat>90.:
+                    lon=float(lines[2])
+                    lat=float(lines[1])
+                netsta=netcode+'.'+stacode
+                if Sta.__contains__(netsta):
+                    index=Sta.index(netsta)
+                    if abs(self[index].lon-lon) >0.01 and abs(self[index].lat-lat) >0.01:
+                        raise ValueError('Incompatible Station Location:' + netsta+' in Station List!')
+                    else:
+                        print 'Warning: Repeated Station:' +netsta+' in Station List!'
+                        continue
+                channels=[]
+                if lon>180.:
+                    lon-=360.
+                for chan in chans:
+                    channel=obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
+                            elevation=0.0, depth=0.0)
+                    channels.append(channel)
+                station=obspy.core.inventory.station.Station(code=stacode, latitude=lat, longitude=lon, elevation=0.0,
+                        site=site, channels=channels, total_number_of_channels = total_number_of_channels, creation_date = creation_date)
+                network=obspy.core.inventory.network.Network(code=netcode, stations=[station])
+                networks=[network]
+                inv+=obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
+        print 'Writing obspy inventory to ASDF dataset'
+        self.add_stationxml(inv)
+        print 'End writing obspy inventory to ASDF dataset'
+        return
+    
+    def read_sac(self, datadir):
+        L=len(self.events)
+        evnumb=0
+        for event in self.events:
+            event_id=event.resource_id.id.split('=')[-1]
+            magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
+            event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb+=1
+            print '================================= Getting surface wave data ==================================='
+            print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude) 
+            st=obspy.Stream()
+            otime=event.origins[0].time
+            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
+            
+            # if lon0!=None and lat0!=None:
+            #     dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
+            #     dist=dist/1000.
+            #     starttime=otime+dist/vmax; endtime=otime+dist/vmin
+            #     commontime=True
+            # else:
+            #     commontime=False
+            odate=str(otime.year)+'%02d' %otime.month +'%02d' %otime.day
+            for staid in self.waveforms.list():
+                netcode, stacode=staid.split('.')
+                stla, elev, stlo=self.waveforms[staid].coordinates.values()
+                sta_datadir=datadir+'/'+netcode+'/'+stacode
+                sacfname=sta_datadir+'/*'+odate+'*'
+                st=obspy.Stream()
+                # for
+                # tr=
+                
+            #     
+            #     
+            #     sacfname=
+            #     # if not commontime:
+            #     #     dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo) # distance is in m
+            #     #     dist=dist/1000.; Delta=obspy.geodetics.kilometer2degrees(dist)
+            #     #     if Delta<minDelta: continue
+            #     #     if Delta>maxDelta: continue
+            #     #     starttime=otime+dist/vmax; endtime=otime+dist/vmin
+            #     location=self.waveforms[staid].StationXML[0].stations[0].channels[0].location_code
+            #     try:
+            #         st += client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
+            #                 starttime=starttime, endtime=endtime, attach_response=True)
+            #     except:
+            #         if verbose: print 'No data for:', staid
+            #         continue
+            #     if verbose: print 'Getting data for:', staid
+            # print '===================================== Removing response ======================================='
+            # pre_filt = (0.001, 0.005, 1, 100.0)
+            # st.detrend()
+            # st.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
+            # tag='surf_ev_%05d' %evnumb
+            # self.add_waveforms(st, event_id=event_id, tag=tag)
+     
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Plot data with contour
@@ -1640,39 +1786,63 @@ class quakeASDF(pyasdf.ASDFDataSet):
         m.drawcountries(linewidth=1.)
         m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         m.drawmapboundary(fill_color="white")
+        m.drawstates()
         try:
             geopolygons.PlotPolygon(inbasemap=m)
         except:
             pass
         return m
     
-    def plot_events(self, projection='lambert', valuetype='depth', geopolygons=None, showfig=True, vmin=None, vmax=None):
+    def plot_events(self, gcmt=False, projection='lambert', valuetype='depth', geopolygons=None, showfig=True, vmin=None, vmax=None):
+        if gcmt:
+            from obspy.imaging.beachball import beach; ax = plt.gca()
         evlons=np.array([])
         evlats=np.array([])
         values=np.array([])
+        focmecs=[]
         for event in self.events:
             event_id=event.resource_id.id.split('=')[-1]
             magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
             otime=event.origins[0].time
             evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth/1000.
+            if evlo > -80.: continue
             evlons=np.append(evlons, evlo); evlats = np.append(evlats, evla);
             if valuetype=='depth': values=np.append(values, evdp)
             elif valuetype=='mag': values=np.append(values, magnitude)
-        # self.minlat=evlats.min()-1.; self.maxlat=evlats.max()+1.
-        # self.minlon=evlons.min()-1.; self.maxlon=evlons.max()+1.
-        self.minlat=15; self.maxlat=50
-        self.minlon=80; self.maxlon=135
+            if gcmt:
+                mtensor=event.focal_mechanisms[0].moment_tensor.tensor
+                mt=[mtensor.m_rr, mtensor.m_tt, mtensor.m_pp, mtensor.m_rt, mtensor.m_rp, mtensor.m_tp]
+                # nodalP=event.focal_mechanisms[0].nodal_planes.values()[1]
+                # mt=[nodalP.strike, nodalP.dip, nodalP.rake]
+                focmecs.append(mt)
+        self.minlat=evlats.min()-1.; self.maxlat=evlats.max()+1.
+        self.minlon=evlons.min()-1.; self.maxlon=evlons.max()+1.
+        # self.minlat=15; self.maxlat=50
+        # self.minlon=95; self.maxlon=128
         m=self._get_basemap(projection=projection, geopolygons=geopolygons)
         import pycpt
         cmap=pycpt.load.gmtColormap('./GMT_panoply.cpt')
         # cmap =discrete_cmap(int((vmax-vmin)/0.1)+1, cmap)
         x, y=m(evlons, evlats)
-        if values.size!=0:
-            im=m.scatter(x, y, marker='o', s=300, c=values, cmap=cmap, vmin=vmin, vmax=vmax)
+        if vmax==None and vmin==None: vmax=values.max(); vmin=values.min()
+        if gcmt:
+            for i in xrange(len(focmecs)):
+                value=values[i]
+                rgbcolor=cmap( (value-vmin)/(vmax-vmin) )
+                b = beach(focmecs[i], xy=(x[i], y[i]), width=100000, linewidth=1, facecolor=rgbcolor)
+                b.set_zorder(10)
+                ax.add_collection(b)
+                # ax.annotate(str(i), (x[i]+50000, y[i]+50000))
+            im=m.scatter(x, y, marker='o', s=1, c=values, cmap=cmap, vmin=vmin, vmax=vmax)
             cb = m.colorbar(im, "bottom", size="3%", pad='2%')
-        else: m.plot(x,y,'o')
-        etime=self.events[0].origins[0].time
-        stime=self.events[-1].origins[0].time
+            cb.set_label(valuetype, fontsize=20)
+        else:
+            if values.size!=0:
+                im=m.scatter(x, y, marker='o', s=300, c=values, cmap=cmap, vmin=vmin, vmax=vmax)
+                cb = m.colorbar(im, "bottom", size="3%", pad='2%')
+            else: m.plot(x,y,'o')
+        if gcmt: stime=self.events[0].origins[0].time; etime=self.events[-1].origins[0].time
+        else: etime=self.events[0].origins[0].time; stime=self.events[-1].origins[0].time
         plt.suptitle('Number of event: '+str(len(self.events))+' time range: '+str(stime)+' - '+str(etime), fontsize=20 )
         if showfig: plt.show()
         
