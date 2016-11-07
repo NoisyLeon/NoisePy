@@ -1664,6 +1664,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 netsta=lines[0]
                 netcode=netsta[:2]
                 stacode=netsta[2:]
+                if stacode[-1]=='/':
+                    stacode=stacode[:-1]
+                    print netcode, stacode
                 lon=float(lines[1])
                 lat=float(lines[2])
                 if lat>90.:
@@ -1697,6 +1700,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
     def read_sac(self, datadir):
         L=len(self.events)
         evnumb=0
+        import glob
         for event in self.events:
             event_id=event.resource_id.id.split('=')[-1]
             magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
@@ -1707,7 +1711,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             st=obspy.Stream()
             otime=event.origins[0].time
             evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-            
+            tag='surf_ev_%05d' %evnumb
             # if lon0!=None and lat0!=None:
             #     dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
             #     dist=dist/1000.
@@ -1718,12 +1722,45 @@ class quakeASDF(pyasdf.ASDFDataSet):
             odate=str(otime.year)+'%02d' %otime.month +'%02d' %otime.day
             for staid in self.waveforms.list():
                 netcode, stacode=staid.split('.')
+                print staid
                 stla, elev, stlo=self.waveforms[staid].coordinates.values()
+                # sta_datadir=datadir+'/'+netcode+'/'+stacode
                 sta_datadir=datadir+'/'+netcode+'/'+stacode
-                sacfname=sta_datadir+'/*'+odate+'*'
+                sacpfx=sta_datadir+'/'+stacode+'.'+odate
+                
+                pzpfx='/home/lili/code/china_data/response_files/SAC_*'+netcode+'_'+stacode
+                respfx='/home/lili/code/china_data/RESP4WeisenCUB/dbRESPCNV20131007/'+netcode+'/'+staid+'/RESP.'+staid
                 st=obspy.Stream()
-                # for
-                # tr=
+                for chan in ['*Z', '*E', '*N']:
+                    sacfname = sacpfx+chan
+                    pzfpattern  = pzpfx+'_'+chan
+                    respfpattern= respfx+'*BH'+chan[-1]+'*'
+                    #################
+                    try: respfname=glob.glob(respfpattern)[0]
+                    except: break
+                    seedresp = {'filename': respfname,  # RESP filename
+                    # when using Trace/Stream.simulate() the "date" parameter can
+                    # also be omitted, and the starttime of the trace is then used.
+                    # Units to return response in ('DIS', 'VEL' or ACC)
+                    'units': 'VEL'
+                    }
+                    try: tr=obspy.read(sacfname)[0]
+                    except: break
+                    tr.detrend()
+                    tr.stats.channel='BH'+chan[-1]
+                    tr.simulate(paz_remove=None, pre_filt=(0.001, 0.005, 1, 100.0), seedresp=seedresp)
+                    ################
+                    # try: pzfname = glob.glob(pzfpattern)[0]
+                    # except: break
+                    # try: tr=obspy.read(sacfname)[0]
+                    # except: break
+                    # obspy.io.sac.sacpz.attach_paz(tr, pzfname)
+                    # tr.decimate(10)
+                    # tr.detrend()
+                    # tr.simulate(paz_remove=tr.stats.paz, pre_filt=(0.001, 0.005, 1, 100.0))
+                    st.append(tr)
+                self.add_waveforms(st, event_id=event_id, tag=tag)    
+                    
                 
             #     
             #     
@@ -1849,8 +1886,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         
     
     def get_stations(self, startdate=None, enddate=None,  network=None, station=None, location=None, channel=None,
-            minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None,
-                latitude=None, longitude=None, minradius=None, maxradius=None):
+            minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None, latitude=None, longitude=None, minradius=None, maxradius=None):
         """Get station inventory from IRIS server
         =======================================================================================================
         Input Parameters:
@@ -1930,9 +1966,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     if Delta<minDelta: continue
                     if Delta>maxDelta: continue
                     starttime=otime+dist/vmax; endtime=otime+dist/vmin
-                location=self.waveforms[staid].StationXML[0].stations[0].channels[0].location_code
+                # location=self.waveforms[staid].StationXML[0].stations[0].channels[0].location_code
                 try:
-                    st += client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
+                    # st += client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
+                    #         starttime=starttime, endtime=endtime, attach_response=True)
+                    st += client.get_waveforms(network=netcode, station=stacode, location='00', channel=channel,
                             starttime=starttime, endtime=endtime, attach_response=True)
                 except:
                     if verbose: print 'No data for:', staid
@@ -3084,10 +3122,28 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     if not os.path.isdir(outdir+'/'+str(per)+'sec'):
                         os.makedirs(outdir+'/'+str(per)+'sec')
                     txtfname=outdir+'/'+str(per)+'sec'+'/'+evid+'_'+str(per)+'.txt'
-                    header = 'evlo='+str(lon1)+' evla='+str(lat1)
+                    header = 'evlo='+str(evlo)+' evla='+str(evla)
                     np.savetxt( txtfname, field_lst[iper], fmt='%g', header=header )
         return
     
+    def get_limits_lonlat(self):
+        """Get the geographical limits of the stations
+        """
+        staLst=self.waveforms.list()
+        minlat=90.
+        maxlat=-90.
+        minlon=360.
+        maxlon=0.
+        for staid in staLst:
+            lat, elv, lon=self.waveforms[staid].coordinates.values()
+            if lon<0: lon+=360.
+            minlat=min(lat, minlat)
+            maxlat=max(lat, maxlat)
+            minlon=min(lon, minlon)
+            maxlon=max(lon, maxlon)
+        print 'latitude range: ', minlat, '-', maxlat, 'longitude range:', minlon, '-', maxlon
+        self.minlat=minlat; self.maxlat=maxlat; self.minlon=minlon; self.maxlon=maxlon
+        return
     
     
     

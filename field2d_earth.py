@@ -126,6 +126,30 @@ class Field2d(object):
         self.ZarrIn=Inarray[:,2]
         return
     
+    def read_ind(self, fname, zindex=2, dindex=None):
+        """read field file
+        """
+        try:
+            Inarray=np.loadtxt(fname)
+            with open(fname) as f:
+                inline = f.readline()
+                if inline.split()[0] =='#':
+                    evlostr = inline.split()[1]
+                    evlastr = inline.split()[2]
+                    if evlostr.split('=')[0] =='evlo':
+                        self.evlo = float(evlostr.split('=')[1])
+                    if evlastr.split('=')[0] =='evla':
+                        self.evla = float(evlastr.split('=')[1])
+        except:
+            Inarray=np.load(fname)
+        self.lonArrIn=Inarray[:,0]
+        self.latArrIn=Inarray[:,1]
+        self.ZarrIn=Inarray[:,zindex]*1000.
+        if dindex!=None:
+            darrIn=Inarray[:,dindex]
+            self.ZarrIn=darrIn/Inarray[:,zindex]
+        return
+    
     def read_array(self, lonArr, latArr, ZarrIn):
         """read field file
         """
@@ -628,22 +652,21 @@ class Field2d(object):
         return m
     
     
-    def plot_field(self, projection='lambert', contour=True, geopolygons=None, showfig=True, vmin=None, vmax=None):
+    def plot_field(self, projection='lambert', contour=True, geopolygons=None, showfig=True, vmin=None, vmax=None, stations=False, event=False):
         """Plot data with contour
         """
         m=self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y=m(self.lonArr, self.latArr)
-        try:
-            evx, evy=m(self.evlo, self.evla)
-            m.plot(evx, evy, 'yo', markersize=10)
-        except:
-            pass
-        
-        try:
-            stx, sty=m(self.lonArrIn, self.latArrIn)
-            m.plot(stx, sty, 'y^', markersize=10)
-        except:
-            pass
+        if event:
+            try:
+                evx, evy=m(self.evlo, self.evla)
+                m.plot(evx, evy, 'yo', markersize=10)
+            except: pass
+        if stations:
+            try:
+                stx, sty=m(self.lonArrIn, self.latArrIn)
+                m.plot(stx, sty, 'y^', markersize=10)
+            except: pass
         im=m.pcolormesh(x, y, self.Zarr, cmap='gist_ncar_r', shading='gouraud', vmin=vmin, vmax=vmax)
         cb = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.ax.tick_params(labelsize=10)

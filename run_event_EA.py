@@ -3,7 +3,7 @@ import numpy as np
 import GeoPolygon
 basins=GeoPolygon.GeoPolygonLst()
 basins.ReadGeoPolygonLst('basin1')
-dset=ASDFDBase.quakeASDF('/work3/leon/china_data/EA_quake.h5')
+dset=ASDFDBase.quakeASDF('./EA_quake_chinaarray1.h5')
 # cat=dset.get_events(startdate='2012-01-01', enddate='2013-12-01', add2dbase=False, Mmin=5.0, Mmax=6.5, minlatitude=25, maxlatitude=35,\
 #                 minlongitude=100, maxlongitude=110, magnitudetype='mw', maxdepth=10., gcmt=True)
 # cat2=dset.get_events(startdate='2011-7-01', enddate='2013-12-01', add2dbase=False, Mmin=5.0, Mmax=6.5, minlatitude=15, maxlatitude=30,\
