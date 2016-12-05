@@ -16,6 +16,7 @@ from pyproj import Geod
 import random
 import copy
 import colormaps
+import pyasdf
 
 lon_diff_weight_2 = np.array([[1., 0., -1.]])/2.
 lat_diff_weight_2 = lon_diff_weight_2.T
@@ -79,8 +80,7 @@ class Field2d(object):
         self.evla=evla
         return
     
-    def copy(self):
-        return copy.deepcopy(self)
+    def copy(self): return copy.deepcopy(self)
     
     def _get_dlon_dlat_km_slow(self):
         """Get longitude and latitude interval in km
@@ -144,7 +144,7 @@ class Field2d(object):
             Inarray=np.load(fname)
         self.lonArrIn=Inarray[:,0]
         self.latArrIn=Inarray[:,1]
-        self.ZarrIn=Inarray[:,zindex]*1000.
+        self.ZarrIn=Inarray[:,zindex]*1e9
         if dindex!=None:
             darrIn=Inarray[:,dindex]
             self.ZarrIn=darrIn/Inarray[:,zindex]
@@ -665,8 +665,12 @@ class Field2d(object):
         if stations:
             try:
                 stx, sty=m(self.lonArrIn, self.latArrIn)
-                m.plot(stx, sty, 'y^', markersize=10)
+                m.plot(stx, sty, 'y^', markersize=6)
             except: pass
+        try:
+            stx, sty = m(self.stalons, self.stalats)
+            m.plot(stx, sty, 'b^', markersize=6)
+        except: pass
         im=m.pcolormesh(x, y, self.Zarr, cmap='gist_ncar_r', shading='gouraud', vmin=vmin, vmax=vmax)
         cb = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.ax.tick_params(labelsize=10)
@@ -680,7 +684,7 @@ class Field2d(object):
             m.contour(x, y, self.Zarr, colors='k', levels=levels, linewidths=0.5)
         if showfig:
             plt.show()
-        return
+        return m
     
     def plot_lplc(self, projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
         """Plot data with contour
@@ -786,16 +790,34 @@ class Field2d(object):
         return
     
     
-    def get_distArr(self, evlo, evla):
+    def get_az_dist_Arr(self):
         """Get epicentral distance array
         """
-        evloArr=np.ones(self.lonArr.shape)*evlo
-        evlaArr=np.ones(self.lonArr.shape)*evla
+        evloArr=np.ones(self.lonArr.shape)*self.evlo
+        evlaArr=np.ones(self.lonArr.shape)*self.evla
         g = Geod(ellps='WGS84')
-        az, baz, distevent = geodist.inv(self.lonArr, self.latArr, evloArr, evlaArr)
+        az, baz, distevent = geodist.inv( evloArr, evlaArr, self.lonArr, self.latArr)
         distevent=distevent/1000.
         self.distArr=distevent
+        self.azArr=az
         return
+    
+    def plot_event(self, infname, evnumb, inbasemap):
+        from obspy.imaging.beachball import beach
+        dset=pyasdf.ASDFDataSet(infname)
+        event=dset.events[evnumb-1]
+        event_id=event.resource_id.id.split('=')[-1]
+        magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
+        otime=event.origins[0].time
+        evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth/1000.
+        mtensor=event.focal_mechanisms[0].moment_tensor.tensor
+        mt=[mtensor.m_rr, mtensor.m_tt, mtensor.m_pp, mtensor.m_rt, mtensor.m_rp, mtensor.m_tp]
+        x, y=inbasemap(evlo, evla)
+        b = beach(mt, xy=(x, y), width=200000, linewidth=1, facecolor='b')
+        b.set_zorder(10)
+        ax = plt.gca()
+        ax.add_collection(b)
+        plt.suptitle('Depth: '+str(evdp)+' km'+ ' Magnitude: ' +str(magnitude) )
             
                 
                     

@@ -5,10 +5,8 @@ A python module for seismic data analysis based on ASDF database
 :Methods:
     aftan analysis (use pyaftan or aftanf77)
     C3(Correlation of coda of Cross-Correlation) computation
-    python wrapper for Barmin's surface wave tomography Code
     Automatic Receiver Function Analysis( Iterative Deconvolution and Harmonic Stripping )
-    Eikonal Tomography
-    Helmholtz Tomography 
+    Preparing data for surface wave tomography (Barmin's method, Eikonal/Helmholtz tomography)
     Stacking/Rotation for Cross-Correlation Results from SEED2CORpp
     Bayesian Monte Carlo Inversion of Surface Wave and Receiver Function datasets (To be added soon)
 
@@ -69,9 +67,6 @@ taupmodel = TauPyModel(model="iasp91")
 class noiseASDF(pyasdf.ASDFDataSet):
     """ An object to for ambient noise cross-correlation analysis based on ASDF database
     """
-    # def init_working_env(self, datadir, workingdir):
-    #     self.datadir    = datadir
-    #     self.workingdir = workingdir
     
     def write_stationxml(self, staxml, source='CIEI'):
         inv=obspy.core.inventory.inventory.Inventory(networks=[], source=source)
@@ -1698,6 +1693,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return
     
     def read_sac(self, datadir):
+        """This function is a scratch for reading a specific datasets, DO NOT use this function!
+        """
         L=len(self.events)
         evnumb=0
         import glob
@@ -1760,31 +1757,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     # tr.simulate(paz_remove=tr.stats.paz, pre_filt=(0.001, 0.005, 1, 100.0))
                     st.append(tr)
                 self.add_waveforms(st, event_id=event_id, tag=tag)    
-                    
-                
-            #     
-            #     
-            #     sacfname=
-            #     # if not commontime:
-            #     #     dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo) # distance is in m
-            #     #     dist=dist/1000.; Delta=obspy.geodetics.kilometer2degrees(dist)
-            #     #     if Delta<minDelta: continue
-            #     #     if Delta>maxDelta: continue
-            #     #     starttime=otime+dist/vmax; endtime=otime+dist/vmin
-            #     location=self.waveforms[staid].StationXML[0].stations[0].channels[0].location_code
-            #     try:
-            #         st += client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
-            #                 starttime=starttime, endtime=endtime, attach_response=True)
-            #     except:
-            #         if verbose: print 'No data for:', staid
-            #         continue
-            #     if verbose: print 'Getting data for:', staid
-            # print '===================================== Removing response ======================================='
-            # pre_filt = (0.001, 0.005, 1, 100.0)
-            # st.detrend()
-            # st.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
-            # tag='surf_ev_%05d' %evnumb
-            # self.add_waveforms(st, event_id=event_id, tag=tag)
      
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
@@ -1831,8 +1803,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return m
     
     def plot_events(self, gcmt=False, projection='lambert', valuetype='depth', geopolygons=None, showfig=True, vmin=None, vmax=None):
-        if gcmt:
-            from obspy.imaging.beachball import beach; ax = plt.gca()
+        if gcmt: from obspy.imaging.beachball import beach; ax = plt.gca()
         evlons=np.array([])
         evlats=np.array([])
         values=np.array([])
@@ -2599,8 +2570,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
 
     def array_processing(self, evnumb=1, win_len=20., win_frac=0.2, sll_x=-3.0, slm_x=3.0, sll_y=-3.0, slm_y=3.0, sl_s=0.03,
             frqlow=0.0125, frqhigh=0.02, semb_thres=-1e9, vel_thres=-1e9, prewhiten=0, verbose=True, coordsys='lonlat', timestamp='mlabday',
-                method=0, minlat=None, maxlat=None, minlon=None, maxlon=None, lon0=None, lat0=None, radius=None,
-                    Tmin=None, Tmax=None, vmax=5.0, vmin=2.0):
+                method=0, minlat=None, maxlat=None, minlon=None, maxlon=None, lon0=None, lat0=None, radius=None, Tmin=None, Tmax=None, vmax=5.0, vmin=2.0):
         """Array processing ( beamforming/fk analysis )
         ==============================================================================================================================================
         Input Parameters:
