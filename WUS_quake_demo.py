@@ -58,7 +58,7 @@ dset.get_surf_waveforms_mp(outdir='/work3/leon/downloaded_waveforms', subsize=10
 # # t2=timeit.default_timer()
 # # print t2-t1
 # # dset.eikonal_stack()
-# # dset._get_lon_lat_arr('Eikonal_run_0')
+# # dset._get_lon_lat_arr()
 # dset.get_data4plot(period=28.)
 # dset.np2ma()
 # dset.plot_vel_iso(vmin=3.4, vmax=4.0)

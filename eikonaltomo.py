@@ -4,9 +4,7 @@ A python module to run surface wave Eikonal/Helmholtz tomography
 The code creates a datadbase based on hdf5 data format
 
 :Dependencies:
-    numpy >=1.9.1
-    matplotlib >=1.4.3
-    h5py 
+
     
 :Copyright:
     Author: Lili Feng
@@ -35,7 +33,20 @@ import numexpr
 import warnings
 from functools import partial
 import multiprocessing
+from numba import jit, float32, int32
 
+# compiled function to get weight for each event and each grid point
+@jit(float32[:,:,:](float32[:,:,:], float32[:,:,:]))
+def _get_azi_weight(aziArr, validArr):
+    Nevent, Nlon, Nlat = aziArr.shape
+    weightArr=np.zeros((Nevent, Nlon, Nlat))
+    for i in xrange(Nevent):
+        for j in xrange(Nevent):
+            for ilon in xrange(Nlon):
+                for ilat in xrange(Nlat):
+                    delAzi = abs(aziArr[i, ilon, ilat] - aziArr[j, ilon, ilat])
+                    if delAzi < 20. or delAzi > 340.:  weightArr[i, ilon, ilat] += validArr[i, ilon, ilat]    
+    return weightArr
 
 class EikonalTomoDataSet(h5py.File):
     
@@ -91,7 +102,7 @@ class EikonalTomoDataSet(h5py.File):
             except:
                 runid+=1
                 continue
-        group.attrs.create(name = fieldtype, data=fieldtype[1:])
+        group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
         inDbase=pyasdf.ASDFDataSet(inasdffname)
         pers = self.attrs['period_array']
         minlon=self.attrs['minlon']
@@ -176,7 +187,7 @@ class EikonalTomoDataSet(h5py.File):
             except:
                 runid+=1
                 continue
-        group.attrs.create(name = fieldtype, data=fieldtype[1:])
+        group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
         inDbase=pyasdf.ASDFDataSet(inasdffname)
         pers = self.attrs['period_array']
         minlon=self.attrs['minlon']
@@ -286,7 +297,7 @@ class EikonalTomoDataSet(h5py.File):
         if merge:
             try:
                 group=self.create_group( name = 'Eikonal_run_'+str(runid) )
-                group.attrs.create(name = fieldtype, data=fieldtype[1:])
+                group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
             except ValueError:
                 print 'Merging Eikonal run id: ',runid
                 pass
@@ -299,7 +310,7 @@ class EikonalTomoDataSet(h5py.File):
                 except:
                     runid+=1
                     continue
-            group.attrs.create(name = fieldtype, data=fieldtype[1:])
+            group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
         inDbase=pyasdf.ASDFDataSet(inasdffname)
         pers = self.attrs['period_array']
         minlon=self.attrs['minlon']
@@ -405,7 +416,7 @@ class EikonalTomoDataSet(h5py.File):
         if merge:
             try:
                 group=self.create_group( name = 'Eikonal_run_'+str(runid) )
-                group.attrs.create(name = fieldtype, data=fieldtype[1:])
+                group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
             except ValueError:
                 print 'Merging Eikonal run id: ',runid
                 pass
@@ -418,7 +429,7 @@ class EikonalTomoDataSet(h5py.File):
                 except:
                     runid+=1
                     continue
-            group.attrs.create(name = fieldtype, data=fieldtype[1:])
+            group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
         inDbase=pyasdf.ASDFDataSet(inasdffname)
         pers = self.attrs['period_array']
         minlon=self.attrs['minlon']
@@ -527,7 +538,7 @@ class EikonalTomoDataSet(h5py.File):
     
     
     
-    def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, anisotropic=False, helmholtz=False):
+    def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, anisotropic=False, helmholtz=False, use_numba=True):
         """
         Stack gradient results to perform Eikonal Tomography
         =================================================================================================================
@@ -535,7 +546,11 @@ class EikonalTomoDataSet(h5py.File):
         runid           - run id
         minazi/maxazi   - min/max azimuth for anisotropic parameters determination
         N_bin           - number of bins for anisotropic parameters determination
-        anisotropic     - perform anisotropic parameters determination or not 
+        anisotropic     - perform anisotropic parameters determination or not
+        use_numba       - use numba for large array manipulation or not, faster and much less memory requirement
+        -----------------------------------------------------------------------------------------------------------------
+        Version History:
+            Dec 6th, 2016   - add function to use numba, faster and much less memory consumption
         =================================================================================================================
         """
         pers = self.attrs['period_array']
@@ -566,9 +581,9 @@ class EikonalTomoDataSet(h5py.File):
             Nmeasure=np.zeros((Nlat-4, Nlon-4))
             weightArr=np.zeros((Nevent, Nlat-4, Nlon-4))
             slownessArr=np.zeros((Nevent, Nlat-4, Nlon-4))
-            aziArr=np.zeros((Nevent, Nlat-4, Nlon-4))
+            aziArr=np.zeros((Nevent, Nlat-4, Nlon-4), dtype='float32')
             reason_nArr=np.zeros((Nevent, Nlat-4, Nlon-4))
-            validArr=np.zeros((Nevent, Nlat-4, Nlon-4))
+            validArr=np.zeros((Nevent, Nlat-4, Nlon-4), dtype='float32')
             for iev in xrange(Nevent):
                 evid=per_group.keys()[iev]
                 event_group=per_group[evid]
@@ -590,17 +605,24 @@ class EikonalTomoDataSet(h5py.File):
             ###########################################
             # Get weight for each grid point per event
             ###########################################
-            azi_event1=np.broadcast_to(aziArr, (Nevent, Nevent, Nlat-4, Nlon-4))
-            azi_event2=np.swapaxes(azi_event1, 0, 1)
-            validArr[reason_nArr==0]=1
-            validArr4=np.broadcast_to(validArr, (Nevent, Nevent, Nlat-4, Nlon-4))
-            # use numexpr for very large array manipulations
-            del_aziArr=numexpr.evaluate('abs(azi_event1-azi_event2)')
-            index_azi=numexpr.evaluate('(1*(del_aziArr<20)+1*(del_aziArr>340))*validArr4')
-            weightArr=numexpr.evaluate('sum(index_azi, 1)')
-            weightArr[reason_nArr!=0]=0
-            weightArr[weightArr!=0]=1./weightArr[weightArr!=0]
-            weightsumArr=np.sum(weightArr, axis=0)
+            if use_numba:
+                validArr[reason_nArr==0]=1
+                weightArr = _get_azi_weight(aziArr, validArr)
+                weightArr[reason_nArr!=0]=0
+                weightArr[weightArr!=0]=1./weightArr[weightArr!=0]
+                weightsumArr=np.sum(weightArr, axis=0)
+            else:
+                azi_event1=np.broadcast_to(aziArr, (Nevent, Nevent, Nlat-4, Nlon-4))
+                azi_event2=np.swapaxes(azi_event1, 0, 1)
+                validArr[reason_nArr==0]=1
+                validArr4=np.broadcast_to(validArr, (Nevent, Nevent, Nlat-4, Nlon-4))
+                # use numexpr for very large array manipulations
+                del_aziArr=numexpr.evaluate('abs(azi_event1-azi_event2)')
+                index_azi=numexpr.evaluate('(1*(del_aziArr<20)+1*(del_aziArr>340))*validArr4')
+                weightArr=numexpr.evaluate('sum(index_azi, 1)')
+                weightArr[reason_nArr!=0]=0
+                weightArr[weightArr!=0]=1./weightArr[weightArr!=0]
+                weightsumArr=np.sum(weightArr, axis=0)
             ###########################################
             # reduce large weight to some value.
             ###########################################
@@ -730,7 +752,7 @@ class EikonalTomoDataSet(h5py.File):
                 s_anistddset = per_group_out.create_dataset(name='slownessAni_std', data=slow_un)
                 histdset     = per_group_out.create_dataset(name='histArr', data=histArr)
                 NmAnidset    = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
-        return 
+        return
            
     def _numpy2ma(self, inarray, reason_n=None):
         """Convert input numpy array to masked array

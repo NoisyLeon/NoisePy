@@ -11,10 +11,9 @@ A python module for seismic data analysis based on ASDF database
     Bayesian Monte Carlo Inversion of Surface Wave and Receiver Function datasets (To be added soon)
 
 :Dependencies:
-    numpy >=1.9.1
-    scipy >=0.18.0
-    matplotlib >=1.4.3
-    ObsPy >=1.0.1
+    pyasdf and its dependencies
+    ObsPy  and its dependencies
+    Basemap
     pyfftw 0.10.3 (optional)
     
 :Copyright:
@@ -45,8 +44,7 @@ from obspy.taup import TauPyModel
 import CURefPy
 import glob
 
-# from obspy.signal.invsim import corn_freq_2_paz
-sta_info_default={'rec_func': 0, 'xcorr': 1, 'isnet': 0}
+sta_info_default={'xcorr': 1, 'isnet': 0}
 
 xcorr_header_default={'netcode1': '', 'stacode1': '', 'netcode2': '', 'stacode2': '', 'chan1': '', 'chan2': '',
         'npts': 12345, 'b': 12345, 'e': 12345, 'delta': 12345, 'dist': 12345, 'az': 12345, 'baz': 12345, 'stackday': 0}
@@ -68,7 +66,52 @@ class noiseASDF(pyasdf.ASDFDataSet):
     """ An object to for ambient noise cross-correlation analysis based on ASDF database
     """
     
+    def print_info(self):
+        """
+        Print information of the dataset.
+        =================================================================================================================
+        Version History:
+            Dec 6th, 2016   - first version
+        =================================================================================================================
+        """
+        outstr  = '================================================= Ambient Noise Cross-correlation Database =================================================\n'
+        outstr+=self.__str__()+'\n'
+        outstr += '--------------------------------------------------------------------------------------------------------------------------------------------\n'
+        if 'NoiseXcorr' in self.auxiliary_data.list():
+            outstr      += 'NoiseXcorr              - Cross-correlation seismogram\n'
+        if 'StaInfo' in self.auxiliary_data.list():
+            outstr      += 'StaInfo                 - Auxiliary station information\n'
+        if 'DISPbasic1' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic1              - Basic dispersion curve, no jump correction\n'
+        if 'DISPbasic2' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic2              - Basic dispersion curve, with jump correction\n'
+        if 'DISPpmf1' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf1                - PMF dispersion curve, no jump correction\n'
+        if 'DISPpmf2' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf2                - PMF dispersion curve, with jump correction\n'
+        if 'DISPbasic1interp' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic1interp        - Interpolated DISPbasic1\n'
+        if 'DISPbasic2interp' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic2interp        - Interpolated DISPbasic2\n'
+        if 'DISPpmf1interp' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf1interp          - Interpolated DISPpmf1\n'
+        if 'DISPpmf2interp' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf2interp          - Interpolated DISPpmf2\n'
+        if 'FieldDISPbasic1interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPbasic1interp   - Field data of DISPbasic1\n'
+        if 'FieldDISPbasic2interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPbasic2interp   - Field data of DISPbasic2\n'
+        if 'FieldDISPpmf1interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPpmf1interp     - Field data of DISPpmf1\n'
+        if 'FieldDISPpmf2interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPpmf2interp     - Field data of DISPpmf2\n'
+        outstr += '============================================================================================================================================\n'
+        print outstr
+        return
+    
     def write_stationxml(self, staxml, source='CIEI'):
+        """Write obspy inventory to StationXML data file
+        """
         inv=obspy.core.inventory.inventory.Inventory(networks=[], source=source)
         for staid in self.waveforms.list():
             inv+=self.waveforms[staid].StationXML
@@ -261,7 +304,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         return m
     
     def plot_stations(self, projection='lambert', geopolygons=None, showfig=True):
-        self.minlon=85; self.maxlon=125; self.minlat=25; self.maxlat=45
+        # self.minlon=85; self.maxlon=125; self.minlat=25; self.maxlat=45
         staLst=self.waveforms.list()
         stalons=np.array([]); stalats=np.array([])
         for staid in staLst:
