@@ -31,7 +31,94 @@ import obspy
 
 class RayTomoDataSet(h5py.File):
     
-    def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_'):
+    def print_info(self):
+        """
+        Print information of the dataset.
+        =================================================================================================================
+        Version History:
+            Dec 9th, 2016   - first version
+        =================================================================================================================
+        """
+        outstr  = '==================================================== Surface wave ray tomography Database ==================================================\n'
+        try:
+            outstr      += 'Input data prefix       - '+self.attrs['data_pfx']+'\n'
+            outstr      += 'Smooth run prefix       - '+self.attrs['smoothpfx']+'\n'
+            outstr      += 'QC run prefix           - '+self.attrs['qcpfx']+'\n'
+            outstr      += 'Period(s):              - '+str(self.attrs['period_array'])+'\n'
+            outstr      += 'Longitude range         - '+str(self.attrs['minlon'])+' ~ '+str(self.attrs['maxlon'])+'\n'
+            outstr      += 'Latitude range          - '+str(self.attrs['minlat'])+' ~ '+str(self.attrs['maxlat'])+'\n'
+            per_arr=self.attrs['period_array']
+        except:
+            print 'Empty Database!'
+            return
+        outstr += '-------------------------------------------------------------- Smooth run data -------------------------------------------------------------\n'
+        nid = 0
+        while True:
+            key =  'smooth_run_%d' %nid
+            if not key in self.keys(): break
+            nid+=1
+            subgroup=self[key]
+            outstr      += 'Run id: '+key+'\n'
+            # check data of different periods
+            for per in per_arr:
+                per_key='%g_sec' %per
+                if not per_key in subgroup.keys():
+                    outstr  += '%g sec NOT in the database !\n' %per
+            outstr      += 'Channel                             - '+str(subgroup.attrs['channel'])+'\n'
+            outstr      += 'datatype(ph: phase; gr: group)      - '+str(subgroup.attrs['datatype'])+'\n'
+            outstr      += 'dlon, dlat                          - '+str(subgroup.attrs['dlon'])+', '+str(self.attrs['dlat'])+'\n'
+            outstr      += 'Step of integration                 - '+str(subgroup.attrs['step_of_integration'])+'\n'
+            outstr      += 'Smoothing coefficient (alpha1)      - '+str(subgroup.attrs['alpha1'])+'\n'
+            outstr      += 'Path density damping (alpha2)       - '+str(subgroup.attrs['alpha2'])+'\n'
+            outstr      += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma1'])+'\n'
+            outstr      += 'Comments                            - '+str(subgroup.attrs['comments'])+'\n'
+        outstr += '-------------------------------------------------------- Quality controlled run data -------------------------------------------------------\n'
+        nid = 0
+        while True:
+            key =  'qc_run_%d' %nid
+            if not key in self.keys(): break
+            nid+=1
+            subgroup=self[key]
+            outstr      += 'Run id: '+key+'\n'
+            # check data of different periods
+            for per in per_arr:
+                per_key='%g_sec' %per
+                if not per_key in subgroup.keys():
+                    outstr  += '%g sec NOT in the database !\n' %per
+            if subgroup.attrs['isotropic']: tempstr='isotropic'
+            else:  tempstr='anisotropic'
+            outstr      += 'isotropic/anisotropic               - '+tempstr+'\n'
+            outstr      += 'datatype(ph: phase; gr: group)      - '+str(subgroup.attrs['datatype'])+'\n'
+            outstr      += 'wavetype(R: Rayleigh; L: Love)      - '+str(subgroup.attrs['wavetype'])+'\n'
+            outstr      += 'Criteria factor/limit               - '+str(subgroup.attrs['crifactor'])+'/'+str(subgroup.attrs['crilimit'])+'\n'
+            outstr      += 'dlon, dlat                          - '+str(subgroup.attrs['dlon'])+', '+str(self.attrs['dlat'])+'\n'
+            outstr      += 'Step of integration                 - '+str(subgroup.attrs['step_of_integration'])+'\n'
+            outstr      += 'Size of main cell (degree)          - '+str(subgroup.attrs['lengthcell'])+'\n'
+            if subgroup.attrs['isotropic']:
+                outstr      += 'Smoothing coefficient (alpha)       - '+str(subgroup.attrs['alpha'])+'\n'
+                outstr      += 'Path density damping (beta)         - '+str(subgroup.attrs['beta'])+'\n'
+                outstr      += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma1'])+'\n'
+            if not subgroup.attrs['isotropic']:
+                outstr      += 'Size of anisotropic cell (degree)   - '+str(subgroup.attrs['lengthcellAni'])+'\n'
+                outstr      += 'Anisotropic paramter                - '+str(subgroup.attrs['anipara'])+'\n'
+                outstr      += '0: isotropic'+'\n'
+                outstr      += '1: 2 psi anisotropic'+'\n'
+                outstr      += '2: 2&4 psi anisotropic '+'\n'
+                outstr      += 'xZone                               - '+str(subgroup.attrs['xZone'])+'\n'
+                outstr      += '0th smoothing coefficient(alphaAni0)- '+str(subgroup.attrs['alphaAni0'])+'\n'
+                outstr      += '0th path density damping (betaAni0) - '+str(subgroup.attrs['betaAni0'])+'\n'
+                outstr      += '0th gaussian damping (sigmaAni0)    - '+str(subgroup.attrs['sigmaAni0'])+'\n'
+                outstr      += '2rd smoothing coefficient(alphaAni2)- '+str(subgroup.attrs['alphaAni2'])+'\n'
+                outstr      += '2rd gaussian damping (sigmaAni2)    - '+str(subgroup.attrs['sigmaAni2'])+'\n'
+                outstr      += '4th smoothing coefficient(alphaAni4)- '+str(subgroup.attrs['alphaAni4'])+'\n'
+                outstr      += '4th gaussian damping (sigmaAni4)    - '+str(subgroup.attrs['sigmaAni4'])+'\n'
+            outstr      += 'Comments                            - '+str(subgroup.attrs['comments'])+'\n'
+        outstr += '============================================================================================================================================\n'
+        print outstr
+        return
+    
+    
+    def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([12.]), data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_'):
         """
         Set input parameters for tomographic inversion.
         =================================================================================================================
@@ -90,21 +177,20 @@ class RayTomoDataSet(h5py.File):
         """
         if not os.path.isfile(IsoMishaexe): raise AttributeError('IsoMishaexe does not exist!')
         if not os.path.isfile(contourfname): raise AttributeError('Contour file does not exist!')
-        pers = self.attrs['period_array']
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        data_pfx=self.attrs['data_pfx']
-        smoothpfx=self.attrs['smoothpfx']
+        pers        = self.attrs['period_array']
+        minlon      = self.attrs['minlon']
+        maxlon      = self.attrs['maxlon']
+        minlat      = self.attrs['minlat']
+        maxlat      = self.attrs['maxlat']
+        data_pfx    = self.attrs['data_pfx']
+        smoothpfx   = self.attrs['smoothpfx']
         if not os.path.isdir(outdir): deleteall=True
         for per in pers:
-            infname=datadir+'/'+data_pfx+'%g'%( per ) +'_'+channel+'_'+datatype+'.lst'
-            outper=outdir+'/'+'%g'%( per ) +'_'+datatype
-            if not os.path.isdir(outper):
-                os.makedirs(outper)
-            outpfx=outper+'/'+smoothpfx+str(alpha1)+'_'+str(sigma)+'_'+str(alpha2)
-            temprunsh='temp_'+'%g_Smooth.sh' %(per)
+            infname     = datadir+'/'+data_pfx+'%g'%( per ) +'_'+channel+'_'+datatype+'.lst'
+            outper      = outdir+'/'+'%g'%( per ) +'_'+datatype
+            if not os.path.isdir(outper): os.makedirs(outper)
+            outpfx      = outper+'/'+smoothpfx+str(alpha1)+'_'+str(sigma)+'_'+str(alpha2)
+            temprunsh   = 'temp_'+'%g_Smooth.sh' %(per)
             with open(temprunsh,'wb') as f:
                 f.writelines('%s %s %s %g << EOF \n' %(IsoMishaexe, infname, outpfx, per ))
                 # if paraFlag==False:
@@ -115,7 +201,7 @@ class RayTomoDataSet(h5py.File):
                 #     f.writelines('v \n' );
                 f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
-            os.remove(temprunsh)
+            # os.remove(temprunsh)
         # save to hdf5 dataset
         create_group=False
         while (not create_group):
@@ -135,24 +221,24 @@ class RayTomoDataSet(h5py.File):
         group.attrs.create(name = 'alpha2', data=alpha2)
         group.attrs.create(name = 'sigma', data=sigma)
         for per in pers:
-            subgroup=group.create_group(name='%g_sec'%( per ))
-            outper=outdir+'/'+'%g'%( per ) +'_'+datatype
-            outpfx=outper+'/'+smoothpfx+str(alpha1)+'_'+str(sigma)+'_'+str(alpha2)
+            subgroup    = group.create_group(name='%g_sec'%( per ))
+            outper      = outdir+'/'+'%g'%( per ) +'_'+datatype
+            outpfx      = outper+'/'+smoothpfx+str(alpha1)+'_'+str(sigma)+'_'+str(alpha2)
             v0fname     = outpfx+'_%g.1' %(per)
             dvfname     = outpfx+'_%g.1' %(per)+'_%_'
             azifname    = outpfx+'_%g.azi' %(per)
             residfname  = outpfx+'_%g.resid' %(per)
             resfname    = outpfx+'_%g.res' %(per)
-            inArr=np.loadtxt(v0fname); v0Arr=inArr[:,2];
-            v0dset=subgroup.create_dataset(name='velocity', data=v0Arr)
-            inArr=np.loadtxt(dvfname); dvArr=inArr[:,2];
-            dvdset=subgroup.create_dataset(name='Dvelocity', data=dvArr)
-            inArr=np.loadtxt(azifname); aziArr=inArr[:,2:4]
-            azidset=subgroup.create_dataset(name='azi_coverage', data=aziArr)
-            inArr=np.loadtxt(residfname)
-            residdset=subgroup.create_dataset(name='residual', data=inArr)
-            inArr=np.loadtxt(resfname); resArr=inArr[:,2:]
-            resdset=subgroup.create_dataset(name='path_density', data=resArr)
+            inArr       = np.loadtxt(v0fname); v0Arr=inArr[:,2];
+            v0dset      = subgroup.create_dataset(name='velocity', data=v0Arr)
+            inArr       = np.loadtxt(dvfname); dvArr=inArr[:,2];
+            dvdset      = subgroup.create_dataset(name='Dvelocity', data=dvArr)
+            inArr       = np.loadtxt(azifname); aziArr=inArr[:,2:4]
+            azidset     = subgroup.create_dataset(name='azi_coverage', data=aziArr)
+            inArr       = np.loadtxt(residfname)
+            residdset   = subgroup.create_dataset(name='residual', data=inArr)
+            inArr       = np.loadtxt(resfname); resArr=inArr[:,2:]
+            resdset     = subgroup.create_dataset(name='path_density', data=resArr)
             if deletetxt: shutil.rmtree(outper)
         if deletetxt and deleteall: shutil.rmtree(outdir)
         return
@@ -209,42 +295,38 @@ class RayTomoDataSet(h5py.File):
         outdir/10_ph/QC_AZI_R_1200_200_1000_100_1_10.1 etc. (see the manual for detailed description of output suffix)
         =================================================================================================================
         """
-        pers = self.attrs['period_array']
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        smoothpfx=self.attrs['smoothpfx']
-        qcpfx=self.attrs['qcpfx']
-        if isotropic:
-            mishaexe=IsoMishaexe
+        pers        = self.attrs['period_array']
+        minlon      = self.attrs['minlon']
+        maxlon      = self.attrs['maxlon']
+        minlat      = self.attrs['minlat']
+        maxlat      = self.attrs['maxlat']
+        smoothpfx   = self.attrs['smoothpfx']
+        qcpfx       = self.attrs['qcpfx']
+        if isotropic: mishaexe=IsoMishaexe
         else:
-            mishaexe=AniMishaexe
-            qcpfx=qcpfx+'AZI_'
-        contourfname='./contour.ctr'
+            mishaexe= AniMishaexe
+            qcpfx   = qcpfx+'AZI_'
+        contourfname= './contour.ctr'
         if not os.path.isfile(mishaexe): raise AttributeError('mishaexe does not exist!')
         if not os.path.isfile(contourfname): raise AttributeError('Contour file does not exist!')
         smoothgroup=self['smooth_run_'+str(smoothid)]
         for per in pers:
             try:
-                residdset = smoothgroup['%g_sec'%( per )+'/residual']
-                inArr=residdset.value
-            except:
-                raise AttributeError('Residual data: '+ str(per)+ ' sec does not exist!')
-            res_tomo=inArr[:,7]
-            cri_res=min(crifactor*per, crilimit)
-            QC_arr= inArr[np.abs(res_tomo)<cri_res, :]
-            outArr=QC_arr[:,:8]
-            outper=outdir+'/'+'%g'%( per ) +'_'+datatype
+                residdset   = smoothgroup['%g_sec'%( per )+'/residual']
+                inArr       = residdset.value
+            except: raise AttributeError('Residual data: '+ str(per)+ ' sec does not exist!')
+            res_tomo        = inArr[:,7]
+            cri_res         = min(crifactor*per, crilimit)
+            QC_arr          = inArr[np.abs(res_tomo)<cri_res, :]
+            outArr          = QC_arr[:,:8]
+            outper          = outdir+'/'+'%g'%( per ) +'_'+datatype
             if not os.path.isdir(outper): os.makedirs(outper)
-            QCfname=outper+'/QC_'+'%g'%( per ) +'_'+wavetype+'_'+datatype+'.lst'
+            QCfname         = outper+'/QC_'+'%g'%( per ) +'_'+wavetype+'_'+datatype+'.lst'
             np.savetxt(QCfname, outArr, fmt='%g')
             # start to run tomography code
-            if isotropic:
-                outpfx=outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
-            else:
-                outpfx=outper+'/'+qcpfx+wavetype+'_'+str(alphaAni0)+'_'+str(sigmaAni0)+'_'+str(alphaAni2)+'_'+str(sigmaAni2)+'_'+str(betaAni0)
-            temprunsh='temp_'+'%g_QC.sh' %(per)
+            if isotropic: outpfx=outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
+            else: outpfx=outper+'/'+qcpfx+wavetype+'_'+str(alphaAni0)+'_'+str(sigmaAni0)+'_'+str(alphaAni2)+'_'+str(sigmaAni2)+'_'+str(betaAni0)
+            temprunsh       = 'temp_'+'%g_QC.sh' %(per)
             with open(temprunsh,'wb') as f:
                 f.writelines('%s %s %s %g << EOF \n' %(mishaexe, QCfname, outpfx, per ))
                 if isotropic:
@@ -252,16 +334,13 @@ class RayTomoDataSet(h5py.File):
                     f.writelines('7 \n%g %g %g \n8 \n%g %g %g \n12 \n%g \n%g \n16 \n' %(minlat, maxlat, dlat, minlon, maxlon, dlon, stepinte, lengthcell) )
                     f.writelines('v \nq \ngo \nEOF \n' )
                 else:
-                    if datatype=='ph':
-                        Dtype='P'
-                    else:
-                        Dtype='G'
+                    if datatype=='ph': Dtype='P'
+                    else: Dtype='G'
                     f.writelines('me \n4 \n5 \n%g %g %g \n6 \n%g %g %g \n' %( minlat, maxlat, dlat, minlon, maxlon, dlon) )
                     f.writelines('10 \n%g \n%g \n%s \n%s \n%g \n%g \n11 \n%d \n' %(stepinte, xZone, wavetype, Dtype, lengthcell, lengthcellAni, anipara) )
                     f.writelines('12 \n%g \n%g \n%g \n%g \n' %(alphaAni0, betaAni0, sigmaAni0, sigmaAni0) )
                     f.writelines('13 \n%g \n%g \n%g \n' %(alphaAni2, sigmaAni2, sigmaAni2) )
-                    if anipara==2:
-                        f.writelines('14 \n%g \n%g \n%g \n' %(alphaAni4, sigmaAni4, sigmaAni4) )
+                    if anipara==2: f.writelines('14 \n%g \n%g \n%g \n' %(alphaAni4, sigmaAni4, sigmaAni4) )
                     f.writelines('19 \n25 \n' )
                     f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
@@ -298,41 +377,35 @@ class RayTomoDataSet(h5py.File):
         group.attrs.create(name = 'alphaAni4', data=alphaAni4)
         group.attrs.create(name = 'sigmaAni4', data=sigmaAni4)
         group.attrs.create(name = 'comments', data=comments)
-        if anipara==0 or isotropic:
-            index0={'vel_iso': 0}
-        elif anipara==1:
-            index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
-        elif anipara==2:
-            index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}
+        if anipara==0 or isotropic: index0={'vel_iso': 0}
+        elif anipara==1: index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
+        elif anipara==2: index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}
         for per in pers:
             subgroup=group.create_group(name='%g_sec'%( per ))
             outper=outdir+'/'+'%g'%( per ) +'_'+datatype
-            if isotropic:
-                outpfx=outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
-            else:
-                outpfx=outper+'/'+qcpfx+wavetype+'_'+str(alphaAni0)+'_'+str(sigmaAni0)+'_'+str(alphaAni2)+'_'+str(sigmaAni2)+'_'+str(betaAni0)
+            if isotropic: outpfx=outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
+            else: outpfx=outper+'/'+qcpfx+wavetype+'_'+str(alphaAni0)+'_'+str(sigmaAni0)+'_'+str(alphaAni2)+'_'+str(sigmaAni2)+'_'+str(betaAni0)
             v0fname     = outpfx+'_%g.1' %(per)
             dvfname     = outpfx+'_%g.1' %(per)+'_%_'
             azifname    = outpfx+'_%g.azi' %(per)
             residfname  = outpfx+'_%g.resid' %(per)
             reafname    = outpfx+'_%g.rea' %(per)
             resfname    = outpfx+'_%g.res' %(per)
-            inArr=np.loadtxt(v0fname); v0Arr=inArr[:,2:]
-            v0dset=subgroup.create_dataset(name='velocity', data=v0Arr)
+            inArr       = np.loadtxt(v0fname); v0Arr=inArr[:,2:]
+            v0dset      = subgroup.create_dataset(name='velocity', data=v0Arr)
+            if not isotropic: lonlatArr=inArr[:,:2]; lonlatdset=subgroup.create_dataset(name='lons_lats', data=lonlatArr)
+            inArr       = np.loadtxt(dvfname); dvArr=inArr[:,2]
+            dvdset      = subgroup.create_dataset(name='Dvelocity', data=dvArr)
+            inArr       = np.loadtxt(azifname); aziArr=inArr[:,2:]
+            azidset     = subgroup.create_dataset(name='azi_coverage', data=aziArr)
+            inArr       = np.loadtxt(residfname)
+            residdset   = subgroup.create_dataset(name='residual', data=inArr)
             if not isotropic:
-                lonlatArr=inArr[:,:2]; lonlatdset=subgroup.create_dataset(name='lons_lats', data=lonlatArr)
-            inArr=np.loadtxt(dvfname); dvArr=inArr[:,2]
-            dvdset=subgroup.create_dataset(name='Dvelocity', data=dvArr)
-            inArr=np.loadtxt(azifname); aziArr=inArr[:,2:]
-            azidset=subgroup.create_dataset(name='azi_coverage', data=aziArr)
-            inArr=np.loadtxt(residfname)
-            residdset=subgroup.create_dataset(name='residual', data=inArr)
-            if not isotropic:
-                inArr=np.loadtxt(reafname); reaArr=inArr[:,2:]
-                readset=subgroup.create_dataset(name='resolution', data=reaArr)
-                lonlatArr=inArr[:,:2]; lonlatdset_rea=subgroup.create_dataset(name='lons_lats_rea', data=lonlatArr)
-            inArr=np.loadtxt(resfname); resArr=inArr[:,2:]
-            resdset=subgroup.create_dataset(name='path_density', data=resArr)
+                inArr       = np.loadtxt(reafname); reaArr=inArr[:,2:]
+                readset     = subgroup.create_dataset(name='resolution', data=reaArr)
+                lonlatArr   = inArr[:,:2]; lonlatdset_rea=subgroup.create_dataset(name='lons_lats_rea', data=lonlatArr)
+            inArr       = np.loadtxt(resfname); resArr=inArr[:,2:]
+            resdset     = subgroup.create_dataset(name='path_density', data=resArr)
             if deletetxt: shutil.rmtree(outper)
         if deletetxt and deleteall: shutil.rmtree(outdir)
         return
@@ -391,15 +464,15 @@ class RayTomoDataSet(h5py.File):
     def _get_lon_lat_arr(self, dataid):
         """Get longitude/latitude array
         """
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        dlon=self[dataid].attrs['dlon']
-        dlat=self[dataid].attrs['dlat']
-        self.lons=np.arange((maxlon-minlon)/dlon+1)*dlon+minlon
-        self.lats=np.arange((maxlat-minlat)/dlat+1)*dlat+minlat
-        self.Nlon=self.lons.size; self.Nlat=self.lats.size
+        minlon      = self.attrs['minlon']
+        maxlon      = self.attrs['maxlon']
+        minlat      = self.attrs['minlat']
+        maxlat      = self.attrs['maxlat']
+        dlon        = self[dataid].attrs['dlon']
+        dlat        = self[dataid].attrs['dlat']
+        self.lons   = np.arange((maxlon-minlon)/dlon+1)*dlon+minlon
+        self.lats   = np.arange((maxlat-minlat)/dlat+1)*dlat+minlat
+        self.Nlon   = self.lons.size; self.Nlat=self.lats.size
         self.lonArr, self.latArr = np.meshgrid(self.lons, self.lats)
         return
     

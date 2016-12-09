@@ -13,6 +13,7 @@ A python module for seismic data analysis based on ASDF database
 :Dependencies:
     pyasdf and its dependencies
     ObsPy  and its dependencies
+    pyproj
     Basemap
     pyfftw 0.10.3 (optional)
     
@@ -30,7 +31,6 @@ import obspy
 import warnings
 import copy
 import os, shutil
-import numba
 from functools import partial
 import multiprocessing
 import pyaftan
@@ -113,8 +113,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         """Write obspy inventory to StationXML data file
         """
         inv=obspy.core.inventory.inventory.Inventory(networks=[], source=source)
-        for staid in self.waveforms.list():
-            inv+=self.waveforms[staid].StationXML
+        for staid in self.waveforms.list(): inv+=self.waveforms[staid].StationXML
         inv.write(staxml, format='stationxml')
         return
     
@@ -124,8 +123,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         try:
             auxiliary_info=self.auxiliary_data.StaInfo
             isStaInfo=True
-        except:
-            isStaInfo=False
+        except: isStaInfo=False
         with open(stafile, 'w') as f:
             for staid in self.waveforms.list():
                 stainv=self.waveforms[staid].StationXML
@@ -179,8 +177,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         print 'Warning: Repeated Station:' +netsta+' in Station List!'
                         continue
                 channels=[]
-                if lon>180.:
-                    lon-=360.
+                if lon>180.: lon-=360.
                 for chan in chans:
                     channel=obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
                             elevation=0.0, depth=0.0)
@@ -191,8 +188,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 networks=[network]
                 inv+=obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
                 staid_aux=netcode+'/'+stacode
-                if ccflag!=None:
-                    sta_info['xcorr']=ccflag
+                if ccflag!=None: sta_info['xcorr']=ccflag
                 self.add_auxiliary_data(data=np.array([]), data_type='StaInfo', path=staid_aux, parameters=sta_info)
         print 'Writing obspy inventory to ASDF dataset'
         self.add_stationxml(inv)
@@ -224,8 +220,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         print 'Warning: Repeated Station:' +netsta+' in Station List!'
                         continue
                 channels=[]
-                if lon>180.:
-                    lon-=360.
+                if lon>180.: lon-=360.
                 for chan in chans:
                     channel=obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
                             elevation=0.0, depth=0.0)
@@ -261,35 +256,35 @@ class noiseASDF(pyasdf.ASDFDataSet):
         self.minlat=minlat; self.maxlat=maxlat; self.minlon=minlon; self.maxlon=maxlon
         return
             
-    def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
+    def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i', blon=0., blat=0.):
         """Get basemap for plotting results
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
         try:
-            minlon=self.minlon; maxlon=self.maxlon; minlat=self.minlat; maxlat=self.maxlat
+            minlon=self.minlon-blon; maxlon=self.maxlon+blon; minlat=self.minlat-blat; maxlat=self.maxlat+blat
         except AttributeError:
             self.get_limits_lonlat()
-            minlon=self.minlon; maxlon=self.maxlon; minlat=self.minlat; maxlat=self.maxlat
+            minlon=self.minlon-blon; maxlon=self.maxlon+blon; minlat=self.minlat-blat; maxlat=self.maxlat+blat
         lat_centre = (maxlat+minlat)/2.0
         lon_centre = (maxlon+minlon)/2.0
-        if projection=='merc':
+        if projection == 'merc':
             m=Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
                       urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
             m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
             m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             m.drawstates(color='g', linewidth=2.)
-        elif projection=='global':
+        elif projection == 'global':
             m=Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
-        elif projection=='regional_ortho':
-            m1 = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
-            m = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
+        elif projection == 'regional_ortho':
+            m1  = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
+            m   = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
                 llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz=obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
-            distNS, az, baz=obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
-            m = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
+            m = Basemap(width = distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
                 lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
@@ -297,20 +292,27 @@ class noiseASDF(pyasdf.ASDFDataSet):
         m.drawcountries(linewidth=1.)
         # m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         m.drawmapboundary(fill_color="white")
-        try:
-            geopolygons.PlotPolygon(inbasemap=m)
-        except:
-            pass
+        try: geopolygons.PlotPolygon(inbasemap=m)
+        except: pass
         return m
     
-    def plot_stations(self, projection='lambert', geopolygons=None, showfig=True):
+    def plot_stations(self, projection='lambert', geopolygons=None, showfig=True, blon=.5, blat=0.5):
+        """Plot station map
+        ==============================================================================
+        Input Parameters:
+        projection      - type of geographical projection
+        geopolygons     - geological polygons for plotting
+        blon, blat      - extending boundaries in longitude/latitude
+        showfig         - show figure or not
+        ==============================================================================
+        """
         # self.minlon=85; self.maxlon=125; self.minlat=25; self.maxlat=45
         staLst=self.waveforms.list()
         stalons=np.array([]); stalats=np.array([])
         for staid in staLst:
             stla, evz, stlo=self.waveforms[staid].coordinates.values()
             stalons=np.append(stalons, stlo); stalats=np.append(stalats, stla)
-        m=self._get_basemap(projection=projection, geopolygons=geopolygons)
+        m=self._get_basemap(projection=projection, geopolygons=geopolygons, blon=blon, blat=blat)
         m.etopo()
         # m.shadedrelief()
         stax, stay=m(stalons, stalats)
@@ -330,31 +332,30 @@ class noiseASDF(pyasdf.ASDFDataSet):
         e.g. outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ==============================================================================
         """
-        subdset=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
-        sta1=self.waveforms[netcode1+'.'+stacode1].StationXML.networks[0].stations[0]
-        sta2=self.waveforms[netcode2+'.'+stacode2].StationXML.networks[0].stations[0]
-        xcorr_sacheader=xcorr_sacheader_default.copy()
-        xcorr_sacheader['kuser0']=netcode1
-        xcorr_sacheader['kevnm']=stacode1
-        xcorr_sacheader['knetwk']=netcode2
-        xcorr_sacheader['kstnm']=stacode2
-        xcorr_sacheader['kcmpnm']=chan1+chan2
-        xcorr_sacheader['evla']=sta1.latitude
-        xcorr_sacheader['evlo']=sta1.longitude
-        xcorr_sacheader['stla']=sta2.latitude
-        xcorr_sacheader['stlo']=sta2.longitude
-        xcorr_sacheader['dist']=subdset.parameters['dist']
-        xcorr_sacheader['az']=subdset.parameters['az']
-        xcorr_sacheader['baz']=subdset.parameters['baz']
-        xcorr_sacheader['b']=subdset.parameters['b']
-        xcorr_sacheader['e']=subdset.parameters['e']
-        xcorr_sacheader['delta']=subdset.parameters['delta']
-        xcorr_sacheader['npts']=subdset.parameters['npts']
-        xcorr_sacheader['user0']=subdset.parameters['stackday']
+        subdset = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
+        sta1    = self.waveforms[netcode1+'.'+stacode1].StationXML.networks[0].stations[0]
+        sta2    = self.waveforms[netcode2+'.'+stacode2].StationXML.networks[0].stations[0]
+        xcorr_sacheader             = xcorr_sacheader_default.copy()
+        xcorr_sacheader['kuser0']   = netcode1
+        xcorr_sacheader['kevnm']    = stacode1
+        xcorr_sacheader['knetwk']   = netcode2
+        xcorr_sacheader['kstnm']    = stacode2
+        xcorr_sacheader['kcmpnm']   = chan1+chan2
+        xcorr_sacheader['evla']     = sta1.latitude
+        xcorr_sacheader['evlo']     = sta1.longitude
+        xcorr_sacheader['stla']     = sta2.latitude
+        xcorr_sacheader['stlo']     = sta2.longitude
+        xcorr_sacheader['dist']     = subdset.parameters['dist']
+        xcorr_sacheader['az']       = subdset.parameters['az']
+        xcorr_sacheader['baz']      = subdset.parameters['baz']
+        xcorr_sacheader['b']        = subdset.parameters['b']
+        xcorr_sacheader['e']        = subdset.parameters['e']
+        xcorr_sacheader['delta']    = subdset.parameters['delta']
+        xcorr_sacheader['npts']     = subdset.parameters['npts']
+        xcorr_sacheader['user0']    = subdset.parameters['stackday']
         sacTr=obspy.io.sac.sactrace.SACTrace(data=subdset.data.value, **xcorr_sacheader)
-        if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
-            os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
-        sacfname=outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+        if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1): os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
+        sacfname = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
                 pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
         sacTr.write(sacfname)
         return
@@ -371,9 +372,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
         e.g. outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ==============================================================================
         """
-        subdset=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2]
-        channels1=subdset.list()
-        channels2=subdset[channels1[0]].list()
+        subdset     = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2]
+        channels1   = subdset.list()
+        channels2   = subdset[channels1[0]].list()
         for chan1 in channels1:
             for chan2 in channels2:
                 self.wsac_xcorr(netcode1=netcode1, stacode1=stacode1, netcode2=netcode2,
@@ -382,29 +383,36 @@ class noiseASDF(pyasdf.ASDFDataSet):
     
     def get_xcorr_trace(self, netcode1, stacode1, netcode2, stacode2, chan1, chan2):
         """Get one single cross-correlation trace
+        ==============================================================================
+        Input Parameters:
+        netcode1, stacode1, chan1   - network/station/channel name for station 1
+        netcode2, stacode2, chan2   - network/station/channel name for station 2
+        Output:
+        obspy trace
+        ==============================================================================
         """
-        subdset=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
-        evla, evz, evlo=self.waveforms[netcode1+'.'+stacode1].coordinates.values()
-        stla, stz, stlo=self.waveforms[netcode2+'.'+stacode2].coordinates.values()
-        tr=obspy.core.Trace()
-        tr.data=subdset.data.value
-        tr.stats.sac={}
-        tr.stats.sac.evla=evla
-        tr.stats.sac.evlo=evlo
-        tr.stats.sac.stla=stla
-        tr.stats.sac.stlo=stlo
-        tr.stats.sac.kuser0=netcode1
-        tr.stats.sac.kevnm=stacode1
-        tr.stats.network=netcode2
-        tr.stats.station=stacode2
-        tr.stats.sac.kcmpnm=chan1+chan2
-        tr.stats.sac.dist=subdset.parameters['dist']
-        tr.stats.sac.az=subdset.parameters['az']
-        tr.stats.sac.baz=subdset.parameters['baz']
-        tr.stats.sac.b=subdset.parameters['b']
-        tr.stats.sac.e=subdset.parameters['e']
-        tr.stats.sac.user0=subdset.parameters['stackday']
-        tr.stats.delta=subdset.parameters['delta']
+        subdset         = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
+        evla, evz, evlo = self.waveforms[netcode1+'.'+stacode1].coordinates.values()
+        stla, stz, stlo = self.waveforms[netcode2+'.'+stacode2].coordinates.values()
+        tr                  = obspy.core.Trace()
+        tr.data             = subdset.data.value
+        tr.stats.sac        = {}
+        tr.stats.sac.evla   = evla
+        tr.stats.sac.evlo   = evlo
+        tr.stats.sac.stla   = stla
+        tr.stats.sac.stlo   = stlo
+        tr.stats.sac.kuser0 = netcode1
+        tr.stats.sac.kevnm  = stacode1
+        tr.stats.network    = netcode2
+        tr.stats.station    = stacode2
+        tr.stats.sac.kcmpnm = chan1+chan2
+        tr.stats.sac.dist   = subdset.parameters['dist']
+        tr.stats.sac.az     = subdset.parameters['az']
+        tr.stats.sac.baz    = subdset.parameters['baz']
+        tr.stats.sac.b      = subdset.parameters['b']
+        tr.stats.sac.e      = subdset.parameters['e']
+        tr.stats.sac.user0  = subdset.parameters['stackday']
+        tr.stats.delta      = subdset.parameters['delta']
         return tr
         
     def read_xcorr(self, datadir, pfx='COR', fnametype=2, inchannels=None, verbose=True):
@@ -417,6 +425,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         fnametype               - input sac file name type
                                     =1: datadir/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
                                     =2: datadir/COR/G12A/COR_G12A_R21A.SAC
+                                    =3: custom sac file name type, change corresponding line
         -----------------------------------------------------------------------------------------------------------
         Output:
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
@@ -437,12 +446,10 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 inchannels=None
         for staid1 in staLst:
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if staid1 >= staid2:
-                    continue
-                if fnametype==2 and not os.path.isfile(datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'):
-                    continue
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2: continue
+                if fnametype==2 and not os.path.isfile(datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'): continue
                 if inchannels==None:
                     channels1=self.waveforms[staid1].StationXML.networks[0].stations[0].channels
                     channels2=self.waveforms[staid2].StationXML.networks[0].stations[0].channels
@@ -451,46 +458,48 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     channels2=channels
                 skipflag=False
                 for chan1 in channels1:
-                    if skipflag:
-                        break
+                    if skipflag: break
                     for chan2 in channels2:
-                        if fnametype==1:
+                        if fnametype    == 1:
                             fname=datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'+staid2+'_'+chan2.code+'.SAC'
-                        elif fnametype==2:
+                        elif fnametype  == 2:
                             fname=datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'
-                        try:
-                            tr=obspy.core.read(fname)[0]
+                        ############
+                        elif fnametype  == 3:
+                            fname='' # modify file name here
+                        ############
+                        try: tr=obspy.core.read(fname)[0]
                         except IOError:
                             skipflag=True
                             break
                         # write cross-correlation header information
-                        xcorr_header=xcorr_header_default.copy()
-                        xcorr_header['b']=tr.stats.sac.b
-                        xcorr_header['e']=tr.stats.sac.e
-                        xcorr_header['netcode1']=netcode1
-                        xcorr_header['netcode2']=netcode2
-                        xcorr_header['stacode1']=stacode1
-                        xcorr_header['stacode2']=stacode2
-                        xcorr_header['npts']=tr.stats.npts
-                        xcorr_header['delta']=tr.stats.delta
-                        xcorr_header['stackday']=tr.stats.sac.user0
+                        xcorr_header            = xcorr_header_default.copy()
+                        xcorr_header['b']       = tr.stats.sac.b
+                        xcorr_header['e']       = tr.stats.sac.e
+                        xcorr_header['netcode1']= netcode1
+                        xcorr_header['netcode2']= netcode2
+                        xcorr_header['stacode1']= stacode1
+                        xcorr_header['stacode2']= stacode2
+                        xcorr_header['npts']    = tr.stats.npts
+                        xcorr_header['delta']   = tr.stats.delta
+                        xcorr_header['stackday']= tr.stats.sac.user0
                         try:
-                            xcorr_header['dist']=tr.stats.sac.dist
-                            xcorr_header['az']=tr.stats.sac.az
-                            xcorr_header['baz']=tr.stats.sac.baz
+                            xcorr_header['dist']= tr.stats.sac.dist
+                            xcorr_header['az']  = tr.stats.sac.az
+                            xcorr_header['baz'] = tr.stats.sac.baz
                         except AttributeError:
                             lon1=self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
                             lat1=self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
                             lon2=self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
                             lat2=self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
-                            dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                            dist=dist/1000.
-                            xcorr_header['dist']=dist
-                            xcorr_header['az']=az
-                            xcorr_header['baz']=baz
-                        staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
-                        xcorr_header['chan1']=chan1.code
-                        xcorr_header['chan2']=chan2.code
+                            dist, az, baz   = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                            dist            = dist/1000.
+                            xcorr_header['dist']    = dist
+                            xcorr_header['az']      = az
+                            xcorr_header['baz']     = baz
+                        staid_aux            = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                        xcorr_header['chan1']= chan1.code
+                        xcorr_header['chan2']= chan2.code
                         self.add_auxiliary_data(data=tr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                 if verbose and not skipflag:
                     print 'reading xcorr data: '+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2
@@ -507,8 +516,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
         outdir                  - output directory (None is not to save sac files)
         inchannels              - input channels, if None, will read channel information from obspy inventory
         fnametype               - input sac file name type
-                                    =1: datadir/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
-                                    =2: datadir/COR/G12A/COR_G12A_R21A.SAC
+                                    =1: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
+                                    =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
+                                    =3: custom sac file name type, change corresponding line
         -----------------------------------------------------------------------------------------------------------
         Output:
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
@@ -570,15 +580,18 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         for chan2 in channels2:
                             month=monthdict[mlst[im]]
                             yrmonth=str(ylst[im])+'.'+month
-                            if fnametype==1:
+                            if fnametype    == 1:
                                 fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
-                            elif fnametype==2:
+                            elif fnametype  == 2:
                                 fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
+                            ############
+                            elif fnametype  == 3:
+                                fname='' # modify file name here
+                            ############
                             if not os.path.isfile(fname):
                                 skipflag=True
                                 break
-                            try:
-                                tr=obspy.core.read(fname)[0]
+                            try: tr=obspy.core.read(fname)[0]
                             except TypeError:
                                 warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
                                 skipflag=True
@@ -606,30 +619,30 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
                             os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
                     # write cross-correlation header information
-                    xcorr_header=xcorr_header_default.copy()
-                    xcorr_header['b']=stackedST[0].stats.sac.b
-                    xcorr_header['e']=stackedST[0].stats.sac.e
-                    xcorr_header['netcode1']=netcode1
-                    xcorr_header['netcode2']=netcode2
-                    xcorr_header['stacode1']=stacode1
-                    xcorr_header['stacode2']=stacode2
-                    xcorr_header['npts']=stackedST[0].stats.npts
-                    xcorr_header['delta']=stackedST[0].stats.delta
-                    xcorr_header['stackday']=stackedST[0].stats.sac.user0
+                    xcorr_header            = xcorr_header_default.copy()
+                    xcorr_header['b']       = stackedST[0].stats.sac.b
+                    xcorr_header['e']       = stackedST[0].stats.sac.e
+                    xcorr_header['netcode1']= netcode1
+                    xcorr_header['netcode2']= netcode2
+                    xcorr_header['stacode1']= stacode1
+                    xcorr_header['stacode2']= stacode2
+                    xcorr_header['npts']    = stackedST[0].stats.npts
+                    xcorr_header['delta']   = stackedST[0].stats.delta
+                    xcorr_header['stackday']= stackedST[0].stats.sac.user0
                     try:
-                        xcorr_header['dist']=stackedST[0].stats.sac.dist
-                        xcorr_header['az']=stackedST[0].stats.sac.az
-                        xcorr_header['baz']=stackedST[0].stats.sac.baz
+                        xcorr_header['dist']= stackedST[0].stats.sac.dist
+                        xcorr_header['az']  = stackedST[0].stats.sac.az
+                        xcorr_header['baz'] = stackedST[0].stats.sac.baz
                     except AttributeError:
                         lon1=self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
                         lat1=self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
                         lon2=self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
                         lat2=self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
-                        dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                        dist=dist/1000.
-                        xcorr_header['dist']=dist
-                        xcorr_header['az']=az
-                        xcorr_header['baz']=baz
+                        dist, az, baz   = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                        dist            = dist/1000.
+                        xcorr_header['dist']= dist
+                        xcorr_header['az']  = az
+                        xcorr_header['baz'] = baz
                     staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
                     i=0
                     for chan1 in channels1:
@@ -642,7 +655,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             xcorr_header['chan1']=chan1.code
                             xcorr_header['chan2']=chan2.code
                             self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
-                            i+=1
+                            i += 1
         return
     
     def xcorr_stack_mp(self, datadir, outdir, startyear, startmonth, endyear, endmonth,
@@ -657,8 +670,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
         pfx                     - prefix
         inchannels              - input channels, if None, will read channel information from obspy inventory
         fnametype               - input sac file name type
-                                    =1: datadir/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
-                                    =2: datadir/COR/G12A/COR_G12A_R21A.SAC
+                                    =1: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
+                                    =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
+                                    =3: custom sac file name type, change corresponding line
         subsize                 - subsize of processing list, use to prevent lock in multiprocessing process
         deletesac               - delete output sac files
         nprocess                - number of processes
@@ -668,15 +682,14 @@ class noiseASDF(pyasdf.ASDFDataSet):
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
         """
-        utcdate=obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
-        ylst=np.array([], dtype=int)
-        mlst=np.array([], dtype=int)
+        utcdate = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
+        ylst    = np.array([], dtype=int)
+        mlst    = np.array([], dtype=int)
         print 'Preparing data for stacking'
         while (utcdate.year<endyear or (utcdate.year<=endyear and utcdate.month<=endmonth) ):
             ylst=np.append(ylst, utcdate.year)
             mlst=np.append(mlst, utcdate.month)
-            try:
-                utcdate.month+=1
+            try: utcdate.month+=1
             except ValueError:
                 utcdate.year+=1
                 utcdate.month=1
@@ -689,24 +702,18 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     for inchan in inchannels:
                         channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='01',
                                         latitude=0, longitude=0, elevation=0, depth=0) )
-                else:
-                    channels=inchannels
-            except:
-                inchannels=None
-        if inchannels==None:
-            fnametype==1
+                else: channels=inchannels
+            except: inchannels=None
+        if inchannels==None: fnametype==1
         else:
-            if len(channels)!=1:
-                fnametype==1
+            if len(channels)!=1: fnametype==1
         stapairInvLst=[]
         for staid1 in staLst:
-            if not os.path.isdir(outdir+'/'+pfx+'/'+staid1):
-                os.makedirs(outdir+'/'+pfx+'/'+staid1)
+            if not os.path.isdir(outdir+'/'+pfx+'/'+staid1): os.makedirs(outdir+'/'+pfx+'/'+staid1)
             for staid2 in staLst:
                 netcode1, stacode1=staid1.split('.')
                 netcode2, stacode2=staid2.split('.')
-                if stacode1 >= stacode2:
-                    continue
+                if stacode1 >= stacode2: continue
                 inv = self.waveforms[staid1].StationXML + self.waveforms[staid2].StationXML
                 if inchannels!=None:
                     inv.networks[0].stations[0].channels=channels
@@ -738,55 +745,53 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print 'End of multiprocessing stacking !'
         print 'Reading data into ASDF database'
         for inv in stapairInvLst:
-            channels1=inv.networks[0].stations[0].channels
-            netcode1=inv.networks[0].code
-            stacode1=inv.networks[0].stations[0].code
-            channels2=inv.networks[1].stations[0].channels
-            netcode2=inv.networks[1].code
-            stacode2=inv.networks[1].stations[0].code
-            skipflag=False
-            xcorr_header=xcorr_header_default.copy()
-            xcorr_header['netcode1']=netcode1
-            xcorr_header['netcode2']=netcode2
-            xcorr_header['stacode1']=stacode1
-            xcorr_header['stacode2']=stacode2
+            channels1       = inv.networks[0].stations[0].channels
+            netcode1        = inv.networks[0].code
+            stacode1        = inv.networks[0].stations[0].code
+            channels2       = inv.networks[1].stations[0].channels
+            netcode2        = inv.networks[1].code
+            stacode2        = inv.networks[1].stations[0].code
+            skipflag        = False
+            xcorr_header            = xcorr_header_default.copy()
+            xcorr_header['netcode1']= netcode1
+            xcorr_header['netcode2']= netcode2
+            xcorr_header['stacode1']= stacode1
+            xcorr_header['stacode2']= stacode2
             staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
             for chan1 in channels1:
-                if skipflag:
-                    break
+                if skipflag: break
                 for chan2 in channels2:
                     sacfname=outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
                         pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
                     try:
                         tr=obspy.read(sacfname)[0]
                         # cross-correlation header 
-                        xcorr_header['b']=tr.stats.sac.b
-                        xcorr_header['e']=tr.stats.sac.e
-                        xcorr_header['npts']=tr.stats.npts
-                        xcorr_header['delta']=tr.stats.delta
-                        xcorr_header['stackday']=tr.stats.sac.user0
+                        xcorr_header['b']       = tr.stats.sac.b
+                        xcorr_header['e']       = tr.stats.sac.e
+                        xcorr_header['npts']    = tr.stats.npts
+                        xcorr_header['delta']   = tr.stats.delta
+                        xcorr_header['stackday']= tr.stats.sac.user0
                         try:
-                            xcorr_header['dist']=tr.stats.sac.dist
-                            xcorr_header['az']=tr.stats.sac.az
-                            xcorr_header['baz']=tr.stats.sac.baz
+                            xcorr_header['dist']= tr.stats.sac.dist
+                            xcorr_header['az']  = tr.stats.sac.az
+                            xcorr_header['baz'] = tr.stats.sac.baz
                         except AttributeError:
                             lon1=inv.networks[0].stations[0].longitude
                             lat1=inv.networks[0].stations[0].latitude
                             lon2=inv.networks[1].stations[0].longitude
                             lat2=inv.networks[1].stations[0].latitude
-                            dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                            dist=dist/1000.
-                            xcorr_header['dist']=dist
-                            xcorr_header['az']=az
-                            xcorr_header['baz']=baz
-                        xcorr_header['chan1']=chan1.code
-                        xcorr_header['chan2']=chan2.code
+                            dist, az, baz= obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                            dist         = dist/1000.
+                            xcorr_header['dist']= dist
+                            xcorr_header['az']  = az
+                            xcorr_header['baz'] = baz
+                        xcorr_header['chan1']   = chan1.code
+                        xcorr_header['chan2']   = chan2.code
                         self.add_auxiliary_data(data=tr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                     except IOError:
                         skipflag=True
                         break
-        if deletesac:
-            shutil.rmtree(outdir+'/'+pfx)
+        if deletesac: shutil.rmtree(outdir+'/'+pfx)
         print 'End read data into ASDF database'
         return
                     
@@ -807,8 +812,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
             for staid2 in staLst:
                 netcode1, stacode1=staid1.split('.')
                 netcode2, stacode2=staid2.split('.')
-                if stacode1 >= stacode2:
-                    continue
+                if stacode1 >= stacode2: continue
                 chan1E=None; chan1N=None; chan1Z=None; chan2E=None; chan2N=None; chan2Z=None
                 try:
                     channels1=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
@@ -836,14 +840,14 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 dsetEN=subdset[chan1E][chan2N]
                 dsetNE=subdset[chan1N][chan2E]
                 dsetNN=subdset[chan1N][chan2N]
-                temp_header=dsetEE.parameters.copy()
-                chan1R=cpfx1+'R'; chan1T=cpfx1+'T'; chan2R=cpfx2+'R'; chan2T=cpfx2+'T'
-                theta=temp_header['az']
-                psi=temp_header['baz']
-                Ctheta=np.cos(np.pi*theta/180.)
-                Stheta=np.sin(np.pi*theta/180.)
-                Cpsi=np.cos(np.pi*psi/180.)
-                Spsi=np.sin(np.pi*psi/180.)
+                temp_header = dsetEE.parameters.copy()
+                chan1R      = cpfx1+'R'; chan1T=cpfx1+'T'; chan2R=cpfx2+'R'; chan2T=cpfx2+'T'
+                theta       = temp_header['az']
+                psi         = temp_header['baz']
+                Ctheta      = np.cos(np.pi*theta/180.)
+                Stheta      = np.sin(np.pi*theta/180.)
+                Cpsi        = np.cos(np.pi*psi/180.)
+                Spsi        = np.sin(np.pi*psi/180.)
                 tempTT=-Ctheta*Cpsi*dsetEE.data.value+Ctheta*Spsi*dsetEN.data.value - \
                     Stheta*Spsi*dsetNN.data.value + Stheta*Cpsi*dsetNE.data.value
                 
@@ -924,11 +928,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
         """
         staLst=self.waveforms.list()
         for evid in staLst:
-            evnetcode, evstacode=evid.split('.')
-            evla, evz, evlo=self.waveforms[evid].coordinates.values()
-            pathfname=evid+'_pathfile'
-            prephaseEXE='./mhr_grvel_predict/lf_mhr_predict_earth'
-            perlst='./mhr_grvel_predict/perlist_phase'
+            evnetcode, evstacode    = evid.split('.')
+            evla, evz, evlo         = self.waveforms[evid].coordinates.values()
+            pathfname               = evid+'_pathfile'
+            prephaseEXE             = './mhr_grvel_predict/lf_mhr_predict_earth'
+            perlst                  = './mhr_grvel_predict/perlist_phase'
             if not os.path.isfile(prephaseEXE):
                 print 'lf_mhr_predict_earth executable does not exist!'
                 return
@@ -951,10 +955,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
             os.remove(pathfname)
             outdirL=outdir+'_L'
             outdirR=outdir+'_R'
-            if not os.path.isdir(outdirL):
-                os.makedirs(outdirL)
-            if not os.path.isdir(outdirR):
-                os.makedirs(outdirR)
+            if not os.path.isdir(outdirL): os.makedirs(outdirL)
+            if not os.path.isdir(outdirR): os.makedirs(outdirR)
             fout = open(evid+'_temp','wb')
             for l1 in open('PREDICTION_L'+'_'+evid):
                 l2 = l1.rstrip().split()
@@ -973,11 +975,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 if (len(l2)>8):
                     fout.close()
                     outname = outdirR + "/%s.%s.pre" % (l2[3],l2[4])
-                    fout = open(outname,"w")
+                    fout    = open(outname,"w")
                 elif (len(l2)>7):
                     fout.close()
                     outname = outdirR + "/%s.%s.pre" % (l2[2],l2[3])
-                    fout = open(outname,"w")         
+                    fout    = open(outname,"w")         
                 else:
                     fout.write("%g %g\n" % (float(l2[0]),float(l2[1])))
             fout.close()
@@ -1129,21 +1131,21 @@ class noiseASDF(pyasdf.ASDFDataSet):
             Nsub = int(len(inputStream)/subsize)
             for isub in xrange(Nsub):
                 print 'Subset:', isub,'in',Nsub,'sets'
-                cstream=inputStream[isub*subsize:(isub+1)*subsize]
-                AFTAN = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-                pool = multiprocessing.Pool(processes=nprocess)
+                cstream = inputStream[isub*subsize:(isub+1)*subsize]
+                AFTAN   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+                pool    = multiprocessing.Pool(processes=nprocess)
                 pool.map(AFTAN, cstream) #make our results with a map call
                 pool.close() #we are not adding any more processes
                 pool.join() #tell it to wait until all threads are done before going on
-            cstream=inputStream[(isub+1)*subsize:]
-            AFTAN = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-            pool = multiprocessing.Pool(processes=nprocess)
+            cstream = inputStream[(isub+1)*subsize:]
+            AFTAN   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+            pool    = multiprocessing.Pool(processes=nprocess)
             pool.map(AFTAN, cstream) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
-            AFTAN = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-            pool = multiprocessing.Pool(processes=nprocess)
+            AFTAN   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+            pool    = multiprocessing.Pool(processes=nprocess)
             pool.map(AFTAN, inputStream) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
@@ -1215,39 +1217,33 @@ class noiseASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.DISPpmf1interp, self.auxiliary_data.DISPpmf2interp
         =======================================================================================================
         """
-        if data_type=='DISPpmf2':
-            ntype=6
-        else:
-            ntype=5
-        if pers.size==0:
-            pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        if data_type=='DISPpmf2': ntype=6
+        else: ntype=5
+        if pers.size==0: pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         staLst=self.waveforms.list()
         for staid1 in staLst:
             for staid2 in staLst:
                 netcode1, stacode1=staid1.split('.')
                 netcode2, stacode2=staid2.split('.')
                 if staid1 >= staid2: continue
-                try:
-                    subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
-                except:
-                    continue
+                try: subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
+                except KeyError: continue
                 data=subdset.data.value
                 index=subdset.parameters
-                if verbose:
-                    print 'Interpolating dispersion curve for '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
+                if verbose: print 'Interpolating dispersion curve for '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
                 outindex={ 'To': 0, 'Vgr': 1, 'Vph': 2,  'amp': 3, 'snr': 4, 'inbound': 5, 'Np': pers.size }
                 Np=int(index['Np'])
                 if Np < 5:
                     warnings.warn('Not enough datapoints for: '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel, UserWarning, stacklevel=1)
                     continue
-                obsT=data[index['To']][:Np]
-                Vgr=np.interp(pers, obsT, data[index['Vgr']][:Np] )
-                Vph=np.interp(pers, obsT, data[index['Vph']][:Np] )
-                amp=np.interp(pers, obsT, data[index['amp']][:Np] )
-                inbound=(pers > obsT[0])*(pers < obsT[-1])*1
-                interpdata=np.append(pers, Vgr)
-                interpdata=np.append(interpdata, Vph)
-                interpdata=np.append(interpdata, amp)
+                obsT    = data[index['To']][:Np]
+                Vgr     = np.interp(pers, obsT, data[index['Vgr']][:Np] )
+                Vph     = np.interp(pers, obsT, data[index['Vph']][:Np] )
+                amp     = np.interp(pers, obsT, data[index['amp']][:Np] )
+                inbound = (pers > obsT[0])*(pers < obsT[-1])*1
+                interpdata  = np.append(pers, Vgr)
+                interpdata  = np.append(interpdata, Vph)
+                interpdata  = np.append(interpdata, amp)
                 if data_type=='DISPpmf2':
                     snr=np.interp(pers, obsT, data[index['snr']][:Np] )
                     interpdata=np.append(interpdata, snr)
@@ -1339,10 +1335,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
         outdir/outpfx+per_channel_ph.lst
         =======================================================================================================
         """
-        if not os.path.isdir(outdir):
-            os.makedirs(outdir)
-        if pers.size==0:
-            pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        if not os.path.isdir(outdir): os.makedirs(outdir)
+        if pers.size==0: pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         fph_lst=[]
         fgr_lst=[]
         for per in pers:
@@ -1360,10 +1354,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 netcode2, stacode2=staid2.split('.')
                 if staid1 >= staid2: continue
                 i=i+1
-                try:
-                    subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
-                except:
-                    continue
+                try: subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
+                except: continue
                 lat1, elv1, lon1=self.waveforms[staid1].coordinates.values()
                 lat2, elv2, lon2=self.waveforms[staid2].coordinates.values()
                 dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
@@ -1410,8 +1402,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.FieldDISPpmf2interp
         ============================================================================================================================
         """
-        if pers.size==0:
-            pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        if pers.size==0: pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         outindex={ 'longitude': 0, 'latitude': 1, 'Vph': 2,  'Vgr':3, 'snr': 4, 'dist': 5 }
         staLst=self.waveforms.list()
         for staid1 in staLst:
@@ -1421,20 +1412,15 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 field_lst.append(np.array([]))
                 Nfplst.append(0)
             lat1, elv1, lon1=self.waveforms[staid1].coordinates.values()
-            if verbose:
-                print 'Getting field data for: '+staid1
+            if verbose: print 'Getting field data for: '+staid1
             for staid2 in staLst:
-                if staid1==staid2:
-                    continue
+                if staid1==staid2: continue
                 netcode1, stacode1=staid1.split('.')
                 netcode2, stacode2=staid2.split('.')
-                try:
-                    subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
+                try: subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
                 except:
-                    try:
-                        subdset=self.auxiliary_data[data_type][netcode2][stacode2][netcode1][stacode1][channel]
-                    except:
-                        continue
+                    try: subdset=self.auxiliary_data[data_type][netcode2][stacode2][netcode1][stacode1][channel]
+                    except: continue
                 lat2, elv2, lon2=self.waveforms[staid2].coordinates.values()
                 dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
                 dist=dist/1000.
@@ -1446,8 +1432,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     per=pers[iper]
                     if dist < 2.*per*3.5: continue
                     ind_per=np.where(data[index['To']][:] == per)[0]
-                    if ind_per.size==0:
-                        raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
+                    if ind_per.size==0: raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
                     pvel=data[index['Vph']][ind_per]
                     gvel=data[index['Vgr']][ind_per]
                     snr=data[index['snr']][ind_per]
@@ -1507,10 +1492,14 @@ def stack4mp(inv, datadir, outdir, ylst, mlst, pfx, fnametype):
             for chan2 in channels2:
                 month=monthdict[mlst[im]]
                 yrmonth=str(ylst[im])+'.'+month
-                if fnametype==1:
+                if fnametype    == 1:
                     fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
-                elif fnametype==2:
+                elif fnametype  == 2:
                     fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
+                ############
+                elif fnametype  == 3:
+                    fname='' # modify file name here
+                ############
                 if not os.path.isfile(fname):
                     skipflag=True
                     break
@@ -1550,12 +1539,9 @@ def stack4mp(inv, datadir, outdir, ylst, mlst, pfx, fnametype):
 
 def aftan4mp(aTr, outdir, inftan, prephdir, f77, pfx):
     # print 'aftan analysis for: '+ aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm+'_'+chan1+'_'+aTr.stats.network+'.'+aTr.stats.station+'_'+chan2
-    if prephdir !=None:
-        phvelname = prephdir + "/%s.%s.pre" %(aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm, aTr.stats.network+'.'+aTr.stats.station)
-    else:
-        phvelname =''
-    if abs(aTr.stats.sac.b+aTr.stats.sac.e)< aTr.stats.delta:
-        aTr.makesym()
+    if prephdir !=None: phvelname = prephdir + "/%s.%s.pre" %(aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm, aTr.stats.network+'.'+aTr.stats.station)
+    else: phvelname =''
+    if abs(aTr.stats.sac.b+aTr.stats.sac.e)< aTr.stats.delta: aTr.makesym()
     if f77:
         aTr.aftanf77(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
             tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
@@ -1593,7 +1579,62 @@ class requestInfo(object):
 
 class quakeASDF(pyasdf.ASDFDataSet):
     """ An object to for earthquake data analysis based on ASDF database
-    """    
+    """
+    
+    def print_info(self):
+        """
+        Print information of the dataset.
+        =================================================================================================================
+        Version History:
+            Dec 8th, 2016   - first version
+        =================================================================================================================
+        """
+        outstr  = '============================================================ Earthquake Database ===========================================================\n'
+        outstr+=self.__str__()+'\n'
+        outstr += '--------------------------------------------------------- Surface wave auxiliary Data ------------------------------------------------------\n'
+        # # if 'NoiseXcorr' in self.auxiliary_data.list():
+        # #     outstr      += 'NoiseXcorr              - Cross-correlation seismogram\n'
+        # # if 'StaInfo' in self.auxiliary_data.list():
+        # #     outstr      += 'StaInfo                 - Auxiliary station information\n'
+        if 'DISPbasic1' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic1              - Basic dispersion curve, no jump correction\n'
+        if 'DISPbasic2' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic2              - Basic dispersion curve, with jump correction\n'
+        if 'DISPpmf1' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf1                - PMF dispersion curve, no jump correction\n'
+        if 'DISPpmf2' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf2                - PMF dispersion curve, with jump correction\n'
+        if 'DISPbasic1interp' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic1interp        - Interpolated DISPbasic1\n'
+        if 'DISPbasic2interp' in self.auxiliary_data.list():
+            outstr      += 'DISPbasic2interp        - Interpolated DISPbasic2\n'
+        if 'DISPpmf1interp' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf1interp          - Interpolated DISPpmf1\n'
+        if 'DISPpmf2interp' in self.auxiliary_data.list():
+            outstr      += 'DISPpmf2interp          - Interpolated DISPpmf2\n'
+        if 'FieldDISPbasic1interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPbasic1interp   - Field data of DISPbasic1\n'
+        if 'FieldDISPbasic2interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPbasic2interp   - Field data of DISPbasic2\n'
+        if 'FieldDISPpmf1interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPpmf1interp     - Field data of DISPpmf1\n'
+        if 'FieldDISPpmf2interp' in self.auxiliary_data.list():
+            outstr      += 'FieldDISPpmf2interp     - Field data of DISPpmf2\n'
+        outstr += '------------------------------------------------------ Receiver function auxiliary Data ----------------------------------------------------\n'
+        if 'RefR' in self.auxiliary_data.list():
+            outstr      += 'RefR                    - Radial receiver function\n'
+        if 'RefRHS' in self.auxiliary_data.list():
+            outstr      += 'RefRHS                  - Harmonic stripping results of radial receiver function\n'
+        if 'RefRmoveout' in self.auxiliary_data.list():
+            outstr      += 'RefRmoveout             - Move out of radial receiver function\n'
+        if 'RefRscaled' in self.auxiliary_data.list():
+            outstr      += 'RefRscaled              - Scaled radial receiver function\n'
+        if 'RefRstreback' in self.auxiliary_data.list():
+            outstr      += 'RefRstreback            - Stretch back of radial receiver function\n'
+        outstr += '============================================================================================================================================\n'
+        print outstr
+        return
+    
     def get_events(self, startdate, enddate, add2dbase=True, gcmt=False, Mmin=5.5, Mmax=None, minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None,
             latitude=None, longitude=None, minradius=None, maxradius=None, mindepth=None, maxdepth=None, magnitudetype=None):
         """Get earthquake catalog from IRIS server
@@ -1636,8 +1677,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                         latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, mindepth=mindepth,
                         maxdepth=maxdepth, magnitudetype=magnitudetype)
                     catalog=catISC+catPDE
-                except:
-                    catalog=catISC
+                except: catalog=catISC
             else: catalog=catISC
             outcatalog=obspy.core.event.Catalog()
             # check magnitude
@@ -1719,8 +1759,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                         print 'Warning: Repeated Station:' +netsta+' in Station List!'
                         continue
                 channels=[]
-                if lon>180.:
-                    lon-=360.
+                if lon>180.: lon-=360.
                 for chan in chans:
                     channel=obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
                             elevation=0.0, depth=0.0)
@@ -1803,7 +1842,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
      
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
-        """Plot data with contour
+        """Get basemap for plotting results
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
         lat_centre = (self.maxlat+self.minlat)/2.0
@@ -1839,10 +1878,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
         m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         m.drawmapboundary(fill_color="white")
         m.drawstates()
-        try:
-            geopolygons.PlotPolygon(inbasemap=m)
-        except:
-            pass
+        try: geopolygons.PlotPolygon(inbasemap=m)
+        except: pass
         return m
     
     def plot_events(self, gcmt=False, projection='lambert', valuetype='depth', geopolygons=None, showfig=True, vmin=None, vmax=None):
@@ -1896,8 +1933,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         else: etime=self.events[0].origins[0].time; stime=self.events[-1].origins[0].time
         plt.suptitle('Number of event: '+str(len(self.events))+' time range: '+str(stime)+' - '+str(etime), fontsize=20 )
         if showfig: plt.show()
-        
-        
+        return   
     
     def get_stations(self, startdate=None, enddate=None,  network=None, station=None, location=None, channel=None,
             minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None, latitude=None, longitude=None, minradius=None, maxradius=None):
@@ -2260,7 +2296,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         Input Parameters:
         network, station    - specify station
         evnumb              - event id
-        datatype            - data type ('body' - body wave, 'sruf' - surface wave)
+        datatype            - data type ('body' - body wave, 'surf' - surface wave)
         =====================================================================================================================
         """
         event = self.events[evnumb-1]
@@ -2281,7 +2317,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         Input Parameters:
         network, station    - specify station
         evnumb              - event id
-        datatype            - data type ('body' - body wave, 'sruf' - surface wave)
+        datatype            - data type ('body' - body wave, 'surf' - surface wave)
         =====================================================================================================================
         """
         event = self.events[evnumb-1]
@@ -2331,21 +2367,37 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 refTr=CURefPy.RFTrace()
                 refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0],
                         tbeg=inrefparam.tbeg, tend=inrefparam.tend)
-                refTr.IterDeconv(tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
+                refTr.IterDeconv( tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
                         minderr=inrefparam.minderr, phase=phase )
-                ref_header=ref_header_default.copy()
-                ref_header['otime']=str(otime); ref_header['network']=netcode; ref_header['station']=stacode
-                ref_header['stla']=stla; ref_header['stlo']=stlo; ref_header['evla']=evla; ref_header['evlo']=evlo; ref_header['evdp']=evdp
-                ref_header['dist']=refTr.stats.sac['dist']; ref_header['az']=refTr.stats.sac['az']; ref_header['baz']=refTr.stats.sac['baz']
-                ref_header['delta']=refTr.stats.delta; ref_header['npts']=refTr.stats.npts; ref_header['b']=refTr.stats.sac['b']; ref_header['e']=refTr.stats.sac['e']
-                ref_header['arrival']=refTr.stats.sac['user5']; ref_header['phase']=phase; ref_header['tbeg']=inrefparam.tbeg; ref_header['tend']=inrefparam.tend
-                ref_header['hslowness']=refTr.stats.sac['user4']; ref_header['ghw']=inrefparam.f0; ref_header['VR']=refTr.stats.sac['user2']
+                ref_header              = ref_header_default.copy()
+                ref_header['otime']     = str(otime)
+                ref_header['network']   = netcode
+                ref_header['station']   = stacode
+                ref_header['stla']      = stla
+                ref_header['stlo']      = stlo
+                ref_header['evla']      = evla
+                ref_header['evlo']      = evlo
+                ref_header['evdp']      = evdp
+                ref_header['dist']      = refTr.stats.sac['dist']
+                ref_header['az']        = refTr.stats.sac['az']
+                ref_header['baz']       = refTr.stats.sac['baz']
+                ref_header['delta']     = refTr.stats.delta
+                ref_header['npts']      = refTr.stats.npts
+                ref_header['b']         = refTr.stats.sac['b']
+                ref_header['e']         = refTr.stats.sac['e']
+                ref_header['arrival']   = refTr.stats.sac['user5']
+                ref_header['phase']     = phase
+                ref_header['tbeg']      = inrefparam.tbeg
+                ref_header['tend']      = inrefparam.tend
+                ref_header['hslowness'] = refTr.stats.sac['user4']
+                ref_header['ghw']       = inrefparam.f0
+                ref_header['VR']        = refTr.stats.sac['user2']
                 staid_aux=netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
                 if not refTr.move_out(): continue
                 refTr.stretch_back()
-                postdbase=refTr.postdbase
-                ref_header['moveout']=postdbase.MoveOutFlag
+                postdbase               = refTr.postdbase
+                ref_header['moveout']   = postdbase.MoveOutFlag
                 if savescaled: self.add_auxiliary_data(data=postdbase.ampC, data_type='Ref'+inrefparam.reftype+'scaled', path=staid_aux, parameters=ref_header)
                 if savemoveout: self.add_auxiliary_data(data=postdbase.ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
                 self.add_auxiliary_data(data=postdbase.strback, data_type='Ref'+inrefparam.reftype+'streback', path=staid_aux, parameters=ref_header)
@@ -2436,19 +2488,35 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth
                 otime=event.origins[0].time
                 refTr=obspy.read(sacfname)[0]
-                ref_header=ref_header_default.copy()
-                ref_header['otime']=str(otime); ref_header['network']=netcode; ref_header['station']=stacode
-                ref_header['stla']=stla; ref_header['stlo']=stlo; ref_header['evla']=evla; ref_header['evlo']=evlo; ref_header['evdp']=evdp
-                ref_header['dist']=refTr.stats.sac['dist']; ref_header['az']=refTr.stats.sac['az']; ref_header['baz']=refTr.stats.sac['baz']
-                ref_header['delta']=refTr.stats.delta; ref_header['npts']=refTr.stats.npts; ref_header['b']=refTr.stats.sac['b']; ref_header['e']=refTr.stats.sac['e']
-                ref_header['arrival']=refTr.stats.sac['user5']; ref_header['phase']=refTr.stats.sac['kuser1']; ref_header['tbeg']=inrefparam.tbeg; ref_header['tend']=inrefparam.tend
-                ref_header['hslowness']=refTr.stats.sac['user4']; ref_header['ghw']=inrefparam.f0; ref_header['VR']=refTr.stats.sac['user2']
+                ref_header              = ref_header_default.copy()
+                ref_header['otime']     = str(otime)
+                ref_header['network']   = netcode
+                ref_header['station']   = stacode
+                ref_header['stla']      = stla
+                ref_header['stlo']      = stlo
+                ref_header['evla']      = evla
+                ref_header['evlo']      = evlo
+                ref_header['evdp']      = evdp
+                ref_header['dist']      = refTr.stats.sac['dist']
+                ref_header['az']        = refTr.stats.sac['az']
+                ref_header['baz']       = refTr.stats.sac['baz']
+                ref_header['delta']     = refTr.stats.delta
+                ref_header['npts']      = refTr.stats.npts
+                ref_header['b']         = refTr.stats.sac['b']
+                ref_header['e']         = refTr.stats.sac['e']
+                ref_header['arrival']   = refTr.stats.sac['user5']
+                ref_header['phase']     = refTr.stats.sac['kuser1']
+                ref_header['tbeg']      = inrefparam.tbeg
+                ref_header['tend']      = inrefparam.tend
+                ref_header['hslowness'] = refTr.stats.sac['user4']
+                ref_header['ghw']       = inrefparam.f0
+                ref_header['VR']        = refTr.stats.sac['user2']
                 staid_aux=netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
                 if deleteref: os.remove(sacfname)
                 if not os.path.isfile(postfname): continue
-                ref_header['moveout']=1
-                postArr=np.load(postfname)
+                ref_header['moveout']   = 1
+                postArr                 = np.load(postfname)
                 ampC=postArr['arr_0']; ampTC=postArr['arr_1']; strback=postArr['arr_2']
                 if deletepost: os.remove(postfname)
                 if savescaled: self.add_auxiliary_data(data=ampC, data_type='Ref'+inrefparam.reftype+'scaled', path=staid_aux, parameters=ref_header)
@@ -2533,24 +2601,24 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 ref_header=subdset.parameters
                 if ref_header['moveout'] <0 or ref_header['VR'] < VR: continue
                 otime=ref_header['otime']; baz=ref_header['baz']
-                fsfx=str(int(baz))+'_'+staid+'_'+otime+'.out.back'
-                diff_fname=outsta+'/diffstre_'+fsfx
-                obsfname=outsta+'/obsstre_'+fsfx
-                repfname=outsta+'/repstre_'+fsfx
-                rep0fname=outsta+'/0repstre_'+fsfx
-                rep1fname=outsta+'/1repstre_'+fsfx
-                rep2fname=outsta+'/2repstre_'+fsfx
-                prefname=outsta+'/prestre_'+fsfx
+                fsfx        = str(int(baz))+'_'+staid+'_'+otime+'.out.back'
+                diff_fname  = outsta+'/diffstre_'+fsfx
+                obsfname    = outsta+'/obsstre_'+fsfx
+                repfname    = outsta+'/repstre_'+fsfx
+                rep0fname   = outsta+'/0repstre_'+fsfx
+                rep1fname   = outsta+'/1repstre_'+fsfx
+                rep2fname   = outsta+'/2repstre_'+fsfx
+                prefname    = outsta+'/prestre_'+fsfx
                 if not (os.path.isfile(diff_fname) and os.path.isfile(obsfname) and os.path.isfile(repfname) and \
                         os.path.isfile(rep0fname) and os.path.isfile(rep1fname) and os.path.isfile(rep2fname) and os.path.isfile(prefname) ):
                     continue
-                diffArr=np.loadtxt(diff_fname); os.remove(diff_fname)
-                obsArr=np.loadtxt(obsfname); os.remove(obsfname)
-                repArr=np.loadtxt(repfname); os.remove(repfname)
-                rep0Arr=np.loadtxt(rep0fname); os.remove(rep0fname)
-                rep1Arr=np.loadtxt(rep1fname); os.remove(rep1fname)
-                rep2Arr=np.loadtxt(rep2fname); os.remove(rep2fname)
-                preArr=np.loadtxt(prefname); os.remove(prefname)
+                diffArr     = np.loadtxt(diff_fname);   os.remove(diff_fname)
+                obsArr      = np.loadtxt(obsfname);     os.remove(obsfname)
+                repArr      = np.loadtxt(repfname);     os.remove(repfname)
+                rep0Arr     = np.loadtxt(rep0fname);    os.remove(rep0fname)
+                rep1Arr     = np.loadtxt(rep1fname);    os.remove(rep1fname)
+                rep2Arr     = np.loadtxt(rep2fname);    os.remove(rep2fname)
+                preArr      = np.loadtxt(prefname);     os.remove(prefname)
                 self.add_auxiliary_data(data=obsArr, data_type='Ref'+reftype+'HS',
                     path=staid_aux+'/obs/'+evid, parameters=ref_header)
                 self.add_auxiliary_data(data=diffArr, data_type='Ref'+reftype+'HS',
@@ -2565,7 +2633,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     path=staid_aux+'/rep2/'+evid, parameters=ref_header)
                 self.add_auxiliary_data(data=preArr, data_type='Ref'+reftype+'HS',
                     path=staid_aux+'/pre/'+evid, parameters=ref_header)
-        
         return
     
     def plot_ref(self, network, station, phase='P', datatype='RefRHS'):
@@ -2577,12 +2644,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
         datatype            - datatype, default = 'RefRHS', harmonic striped radial receiver function
         =====================================================================================================================
         """
-        obsHSstream=CURefPy.HStripStream()
-        diffHSstream=CURefPy.HStripStream()
-        repHSstream=CURefPy.HStripStream()
-        rep0HSstream=CURefPy.HStripStream()
-        rep1HSstream=CURefPy.HStripStream()
-        rep2HSstream=CURefPy.HStripStream()
+        obsHSstream = CURefPy.HStripStream()
+        diffHSstream= CURefPy.HStripStream()
+        repHSstream = CURefPy.HStripStream()
+        rep0HSstream= CURefPy.HStripStream()
+        rep1HSstream= CURefPy.HStripStream()
+        rep2HSstream= CURefPy.HStripStream()
         subgroup=self.auxiliary_data[datatype][network+'_'+station+'_'+phase]
         stla, elev, stlo=self.waveforms[network+'.'+station].coordinates.values()
         for evid in subgroup.obs.list():
@@ -2980,14 +3047,14 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     os.remove(outdir+'/'+finPR+'_1_DISP.1.npz')
                     os.remove(outdir+'/'+finPR+'_2_DISP.0.npz')
                     os.remove(outdir+'/'+finPR+'_2_DISP.1.npz')
-                arr1_1=f10['arr_0']
-                nfout1_1=f10['arr_1']
-                arr2_1=f11['arr_0']
-                nfout2_1=f11['arr_1']
-                arr1_2=f20['arr_0']
-                nfout1_2=f20['arr_1']
-                arr2_2=f21['arr_0']
-                nfout2_2=f21['arr_1']
+                arr1_1  = f10['arr_0']
+                nfout1_1= f10['arr_1']
+                arr2_1  = f11['arr_0']
+                nfout2_1= f11['arr_1']
+                arr1_2  = f20['arr_0']
+                nfout1_2= f20['arr_1']
+                arr2_2  = f21['arr_0']
+                nfout2_2= f21['arr_1']
                 staid_aux=evid+'/'+netcode+'_'+stacode+'_'+channel
                 if basic1:
                     parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_1}
@@ -3019,8 +3086,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """
         if data_type=='DISPpmf2': ntype=6
         else: ntype=5
-        if pers.size==0:
-            pers=np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
+        if pers.size==0: pers=np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
         staLst=self.waveforms.list()
         evnumb=0
         for event in self.events:
@@ -3039,16 +3105,16 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if Np < 5:
                     warnings.warn('Not enough datapoints for: '+ evid+' '+staid+'_'+channel, UserWarning, stacklevel=1)
                     continue
-                obsT=data[index['To']][:Np]
-                Vgr=np.interp(pers, obsT, data[index['Vgr']][:Np] )
-                Vph=np.interp(pers, obsT, data[index['Vph']][:Np] )
-                amp=np.interp(pers, obsT, data[index['amp']][:Np] )
-                inbound=(pers > obsT[0])*(pers < obsT[-1])*1
-                interpdata=np.append(pers, Vgr)
-                interpdata=np.append(interpdata, Vph)
-                interpdata=np.append(interpdata, amp)
+                obsT        = data[index['To']][:Np]
+                Vgr         = np.interp(pers, obsT, data[index['Vgr']][:Np] )
+                Vph         = np.interp(pers, obsT, data[index['Vph']][:Np] )
+                amp         = np.interp(pers, obsT, data[index['amp']][:Np] )
+                inbound     = (pers > obsT[0])*(pers < obsT[-1])*1
+                interpdata  = np.append(pers, Vgr)
+                interpdata  = np.append(interpdata, Vph)
+                interpdata  = np.append(interpdata, amp)
                 if data_type=='DISPpmf2':
-                    snr=np.interp(pers, obsT, data[index['snr']][:Np] )
+                    snr     = np.interp(pers, obsT, data[index['snr']][:Np] )
                     interpdata=np.append(interpdata, snr)
                 interpdata=np.append(interpdata, inbound)
                 interpdata=interpdata.reshape(ntype, pers.size)
@@ -3068,8 +3134,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.FieldDISPpmf2interp
         ============================================================================================================================
         """
-        if pers.size==0:
-            pers=np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
+        if pers.size==0: pers=np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
         outindex={ 'longitude': 0, 'latitude': 1, 'Vph': 2,  'Vgr':3, 'amp': 4, 'snr': 5, 'dist': 6 }
         staLst=self.waveforms.list()
         evnumb=0
@@ -3085,8 +3150,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             if verbose: print 'Getting field data for: '+evid
             for staid in staLst:
                 netcode, stacode=staid.split('.')
-                try:
-                    subdset=self.auxiliary_data[data_type][evid][netcode+'_'+stacode+'_'+channel]
+                try: subdset=self.auxiliary_data[data_type][evid][netcode+'_'+stacode+'_'+channel]
                 except KeyError: continue
                 stla, stel, stlo=self.waveforms[staid].coordinates.values()
                 az, baz, dist = geodist.inv(stlo, stla, evlo, evla); dist=dist/1000.
@@ -3098,24 +3162,23 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     per=pers[iper]
                     if dist < 2.*per*3.5: continue
                     ind_per=np.where(data[index['To']][:] == per)[0]
-                    if ind_per.size==0:
-                        raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
-                    pvel=data[index['Vph']][ind_per]
-                    gvel=data[index['Vgr']][ind_per]
-                    snr=data[index['snr']][ind_per]
-                    amp=data[index['amp']][ind_per]
-                    inbound=data[index['inbound']][ind_per]
+                    if ind_per.size==0: raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
+                    pvel    = data[index['Vph']][ind_per]
+                    gvel    = data[index['Vgr']][ind_per]
+                    snr     = data[index['snr']][ind_per]
+                    amp     = data[index['amp']][ind_per]
+                    inbound = data[index['inbound']][ind_per]
                     # quality control
                     if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10: continue
                     if inbound!=1.: continue
                     if snr < 10.: continue # different from noise data
-                    field_lst[iper]=np.append(field_lst[iper], stlo)
-                    field_lst[iper]=np.append(field_lst[iper], stla)
-                    field_lst[iper]=np.append(field_lst[iper], pvel)
-                    field_lst[iper]=np.append(field_lst[iper], gvel)
-                    field_lst[iper]=np.append(field_lst[iper], amp)
-                    field_lst[iper]=np.append(field_lst[iper], snr)
-                    field_lst[iper]=np.append(field_lst[iper], dist)
+                    field_lst[iper] = np.append(field_lst[iper], stlo)
+                    field_lst[iper] = np.append(field_lst[iper], stla)
+                    field_lst[iper] = np.append(field_lst[iper], pvel)
+                    field_lst[iper] = np.append(field_lst[iper], gvel)
+                    field_lst[iper] = np.append(field_lst[iper], amp)
+                    field_lst[iper] = np.append(field_lst[iper], snr)
+                    field_lst[iper] = np.append(field_lst[iper], dist)
                     Nfplst[iper]+=1
             if outdir!=None:
                 if not os.path.isdir(outdir): os.makedirs(outdir)
@@ -3157,8 +3220,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print 'latitude range: ', minlat, '-', maxlat, 'longitude range:', minlon, '-', maxlon
         self.minlat=minlat; self.maxlat=maxlat; self.minlon=minlon; self.maxlon=maxlon
         return
-    
-    
     
 def aftan4mp_quake(aTr, outdir, inftan, prephdir, f77, pfx):
     # print aTr.stats.network+'.'+aTr.stats.station

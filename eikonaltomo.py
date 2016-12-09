@@ -4,7 +4,10 @@ A python module to run surface wave Eikonal/Helmholtz tomography
 The code creates a datadbase based on hdf5 data format
 
 :Dependencies:
-
+    pyasdf and its dependencies
+    GMT 5.x.x (for interpolation on Earth surface)
+    numba
+    numexpr
     
 :Copyright:
     Author: Lili Feng
@@ -40,12 +43,12 @@ from numba import jit, float32, int32
 def _get_azi_weight(aziArr, validArr):
     Nevent, Nlon, Nlat = aziArr.shape
     weightArr=np.zeros((Nevent, Nlon, Nlat))
-    for i in xrange(Nevent):
-        for j in xrange(Nevent):
-            for ilon in xrange(Nlon):
-                for ilat in xrange(Nlat):
+    for ilon in xrange(Nlon):
+        for ilat in xrange(Nlat):
+            for i in xrange(Nevent):
+                for j in xrange(Nevent):
                     delAzi = abs(aziArr[i, ilon, ilat] - aziArr[j, ilon, ilat])
-                    if delAzi < 20. or delAzi > 340.:  weightArr[i, ilon, ilat] += validArr[i, ilon, ilat]    
+                    if delAzi < 20. or delAzi > 340.: weightArr[i, ilon, ilat] += validArr[i, ilon, ilat]    
     return weightArr
 
 class EikonalTomoDataSet(h5py.File):
@@ -619,7 +622,7 @@ class EikonalTomoDataSet(h5py.File):
                 # use numexpr for very large array manipulations
                 del_aziArr=numexpr.evaluate('abs(azi_event1-azi_event2)')
                 index_azi=numexpr.evaluate('(1*(del_aziArr<20)+1*(del_aziArr>340))*validArr4')
-                weightArr=numexpr.evaluate('sum(index_azi, 1)')
+                weightArr=numexpr.evaluate('sum(index_azi, 0)')
                 weightArr[reason_nArr!=0]=0
                 weightArr[weightArr!=0]=1./weightArr[weightArr!=0]
                 weightsumArr=np.sum(weightArr, axis=0)
