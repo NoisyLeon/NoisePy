@@ -39,7 +39,7 @@ class RayTomoDataSet(h5py.File):
             Dec 9th, 2016   - first version
         =================================================================================================================
         """
-        outstr  = '==================================================== Surface wave ray tomography Database ==================================================\n'
+        outstr  = '================================= Surface wave ray tomography Database ==================================\n'
         try:
             outstr      += 'Input data prefix       - '+self.attrs['data_pfx']+'\n'
             outstr      += 'Smooth run prefix       - '+self.attrs['smoothpfx']+'\n'
@@ -51,14 +51,14 @@ class RayTomoDataSet(h5py.File):
         except:
             print 'Empty Database!'
             return
-        outstr += '-------------------------------------------------------------- Smooth run data -------------------------------------------------------------\n'
+        outstr += '----------------------------------------- Smooth run data -----------------------------------------------\n'
         nid = 0
         while True:
             key =  'smooth_run_%d' %nid
             if not key in self.keys(): break
             nid+=1
             subgroup=self[key]
-            outstr      += 'Run id: '+key+'\n'
+            outstr      += '+++++++++++++++++++++++++++++++++++++++++++++ Run id: '+key+' ++++++++++++++++++++++++++++++++++++++++\n'
             # check data of different periods
             for per in per_arr:
                 per_key='%g_sec' %per
@@ -66,20 +66,20 @@ class RayTomoDataSet(h5py.File):
                     outstr  += '%g sec NOT in the database !\n' %per
             outstr      += 'Channel                             - '+str(subgroup.attrs['channel'])+'\n'
             outstr      += 'datatype(ph: phase; gr: group)      - '+str(subgroup.attrs['datatype'])+'\n'
-            outstr      += 'dlon, dlat                          - '+str(subgroup.attrs['dlon'])+', '+str(self.attrs['dlat'])+'\n'
+            outstr      += 'dlon, dlat                          - '+str(subgroup.attrs['dlon'])+', '+str(subgroup.attrs['dlat'])+'\n'
             outstr      += 'Step of integration                 - '+str(subgroup.attrs['step_of_integration'])+'\n'
             outstr      += 'Smoothing coefficient (alpha1)      - '+str(subgroup.attrs['alpha1'])+'\n'
             outstr      += 'Path density damping (alpha2)       - '+str(subgroup.attrs['alpha2'])+'\n'
-            outstr      += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma1'])+'\n'
+            outstr      += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma'])+'\n'
             outstr      += 'Comments                            - '+str(subgroup.attrs['comments'])+'\n'
-        outstr += '-------------------------------------------------------- Quality controlled run data -------------------------------------------------------\n'
+        outstr += '------------------------------------ Quality controlled run data ----------------------------------------\n'
         nid = 0
         while True:
             key =  'qc_run_%d' %nid
             if not key in self.keys(): break
             nid+=1
             subgroup=self[key]
-            outstr      += 'Run id: '+key+'\n'
+            outstr      += '+++++++++++++++++++++++++++++++++++++++++++++ Run id: '+key+' ++++++++++++++++++++++++++++++++++++++++++\n'
             # check data of different periods
             for per in per_arr:
                 per_key='%g_sec' %per
@@ -87,17 +87,18 @@ class RayTomoDataSet(h5py.File):
                     outstr  += '%g sec NOT in the database !\n' %per
             if subgroup.attrs['isotropic']: tempstr='isotropic'
             else:  tempstr='anisotropic'
+            outstr      += 'Smooth run id                       - '+str(subgroup.attrs['smoothid'])+'\n'
             outstr      += 'isotropic/anisotropic               - '+tempstr+'\n'
             outstr      += 'datatype(ph: phase; gr: group)      - '+str(subgroup.attrs['datatype'])+'\n'
             outstr      += 'wavetype(R: Rayleigh; L: Love)      - '+str(subgroup.attrs['wavetype'])+'\n'
             outstr      += 'Criteria factor/limit               - '+str(subgroup.attrs['crifactor'])+'/'+str(subgroup.attrs['crilimit'])+'\n'
-            outstr      += 'dlon, dlat                          - '+str(subgroup.attrs['dlon'])+', '+str(self.attrs['dlat'])+'\n'
+            outstr      += 'dlon, dlat                          - '+str(subgroup.attrs['dlon'])+', '+str(subgroup.attrs['dlat'])+'\n'
             outstr      += 'Step of integration                 - '+str(subgroup.attrs['step_of_integration'])+'\n'
             outstr      += 'Size of main cell (degree)          - '+str(subgroup.attrs['lengthcell'])+'\n'
             if subgroup.attrs['isotropic']:
                 outstr      += 'Smoothing coefficient (alpha)       - '+str(subgroup.attrs['alpha'])+'\n'
                 outstr      += 'Path density damping (beta)         - '+str(subgroup.attrs['beta'])+'\n'
-                outstr      += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma1'])+'\n'
+                outstr      += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma'])+'\n'
             if not subgroup.attrs['isotropic']:
                 outstr      += 'Size of anisotropic cell (degree)   - '+str(subgroup.attrs['lengthcellAni'])+'\n'
                 outstr      += 'Anisotropic paramter                - '+str(subgroup.attrs['anipara'])+'\n'
@@ -107,18 +108,18 @@ class RayTomoDataSet(h5py.File):
                 outstr      += 'xZone                               - '+str(subgroup.attrs['xZone'])+'\n'
                 outstr      += '0th smoothing coefficient(alphaAni0)- '+str(subgroup.attrs['alphaAni0'])+'\n'
                 outstr      += '0th path density damping (betaAni0) - '+str(subgroup.attrs['betaAni0'])+'\n'
-                outstr      += '0th gaussian damping (sigmaAni0)    - '+str(subgroup.attrs['sigmaAni0'])+'\n'
+                outstr      += '0th Gaussian damping (sigmaAni0)    - '+str(subgroup.attrs['sigmaAni0'])+'\n'
                 outstr      += '2rd smoothing coefficient(alphaAni2)- '+str(subgroup.attrs['alphaAni2'])+'\n'
-                outstr      += '2rd gaussian damping (sigmaAni2)    - '+str(subgroup.attrs['sigmaAni2'])+'\n'
+                outstr      += '2rd Gaussian damping (sigmaAni2)    - '+str(subgroup.attrs['sigmaAni2'])+'\n'
                 outstr      += '4th smoothing coefficient(alphaAni4)- '+str(subgroup.attrs['alphaAni4'])+'\n'
-                outstr      += '4th gaussian damping (sigmaAni4)    - '+str(subgroup.attrs['sigmaAni4'])+'\n'
+                outstr      += '4th Gaussian damping (sigmaAni4)    - '+str(subgroup.attrs['sigmaAni4'])+'\n'
             outstr      += 'Comments                            - '+str(subgroup.attrs['comments'])+'\n'
-        outstr += '============================================================================================================================================\n'
+        outstr += '=========================================================================================================\n'
         print outstr
         return
     
     
-    def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([12.]), data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_'):
+    def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_'):
         """
         Set input parameters for tomographic inversion.
         =================================================================================================================
@@ -132,8 +133,8 @@ class RayTomoDataSet(h5py.File):
         =================================================================================================================
         """
         if pers.size==0:
-            # pers=np.arange(13.)*2.+6.
-            pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+            pers=np.arange(13.)*2.+6.
+            # pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         self.attrs.create(name = 'period_array', data=pers, dtype='f')
         self.attrs.create(name = 'minlon', data=minlon, dtype='f')
         self.attrs.create(name = 'maxlon', data=maxlon, dtype='f')
@@ -377,6 +378,7 @@ class RayTomoDataSet(h5py.File):
         group.attrs.create(name = 'alphaAni4', data=alphaAni4)
         group.attrs.create(name = 'sigmaAni4', data=sigmaAni4)
         group.attrs.create(name = 'comments', data=comments)
+        group.attrs.create(name = 'smoothid', data='smooth_run_'+str(smoothid))
         if anipara==0 or isotropic: index0={'vel_iso': 0}
         elif anipara==1: index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
         elif anipara==2: index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}

@@ -1,4 +1,4 @@
-./TOMO_MISHA/itomo_sp_cu_shn /work3/leon/ray_tomo_data/raytomo_in_12_ZZ_ph.lst /work3/leon/ray_tomo_working_dir/12_ph/N_INIT_3000_500_100 12 << EOF 
+./TOMO_MISHA/itomo_sp_cu_shn ../ray_tomo_data/raytomo_in_12_ZZ_ph.lst ../ray_tomo_working_dir/12_ph/N_INIT_3000_500_100 12 << EOF 
 me 
 4 
 5 
