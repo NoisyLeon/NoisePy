@@ -58,7 +58,7 @@ class RayTomoDataSet(h5py.File):
             if not key in self.keys(): break
             nid+=1
             subgroup=self[key]
-            outstr      += '+++++++++++++++++++++++++++++++++++++++++++++ Run id: '+key+' ++++++++++++++++++++++++++++++++++++++++\n'
+            outstr      += '$$$$$$$$$$$$$$$$$$$$$$$$$$$ Run id: '+key+' $$$$$$$$$$$$$$$$$$$$$$$$$$$\n'
             # check data of different periods
             for per in per_arr:
                 per_key='%g_sec' %per
@@ -79,7 +79,7 @@ class RayTomoDataSet(h5py.File):
             if not key in self.keys(): break
             nid+=1
             subgroup=self[key]
-            outstr      += '+++++++++++++++++++++++++++++++++++++++++++++ Run id: '+key+' ++++++++++++++++++++++++++++++++++++++++++\n'
+            outstr      += '$$$$$$$$$$$$$$$$$$$$$$$$$$$ Run id: '+key+' $$$$$$$$$$$$$$$$$$$$$$$$$$$\n'
             # check data of different periods
             for per in per_arr:
                 per_key='%g_sec' %per
@@ -202,7 +202,7 @@ class RayTomoDataSet(h5py.File):
                 #     f.writelines('v \n' );
                 f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
-            # os.remove(temprunsh)
+            os.remove(temprunsh)
         # save to hdf5 dataset
         create_group=False
         while (not create_group):
@@ -492,28 +492,23 @@ class RayTomoDataSet(h5py.File):
     def np2ma(self):
         """Convert numpy data array to masked data array
         """
-        try:
-            reason_n=self.reason_n
-        except:
-            raise AttrictError('No reason_n array!')
-        self.vel_iso=self._numpy2ma(self.vel_iso)
-        self.dv=self._numpy2ma(self.dv)
-        self.pdens=self._numpy2ma(self.pdens)
-        self.pdens1=self._numpy2ma(self.pdens1)
-        self.pdens2=self._numpy2ma(self.pdens2)
-        self.azicov1=self._numpy2ma(self.azicov1)
-        self.azicov2=self._numpy2ma(self.azicov2)
+        try: reason_n=self.reason_n
+        except: raise AttrictError('No reason_n array!')
+        self.vel_iso= self._numpy2ma(self.vel_iso)
+        self.dv     = self._numpy2ma(self.dv)
+        self.pdens  = self._numpy2ma(self.pdens)
+        self.pdens1 = self._numpy2ma(self.pdens1)
+        self.pdens2 = self._numpy2ma(self.pdens2)
+        self.azicov1= self._numpy2ma(self.azicov1)
+        self.azicov2= self._numpy2ma(self.azicov2)
         try:
             self.amp2=self._numpy2ma(self.amp2)
             self.psi2=self._numpy2ma(self.psi2)
-        except:
-            pass
+        except: pass
         try:
             self.amp4=self._numpy2ma(self.amp4)
             self.psi4=self._numpy2ma(self.psi4)
-        except:
-            pass
- 
+        except: pass
         return
     
     def get_data4plot(self, dataid, period):
@@ -542,116 +537,112 @@ class RayTomoDataSet(h5py.File):
         =======================================================================================
         """
         self._get_lon_lat_arr(dataid)
-        subgroup=self[dataid+'/%g_sec'%( period )]
-        self.period=period
-        self.datatype=self[dataid].attrs['datatype']
-        try:
-            self.isotropic=self[dataid].attrs['isotropic']
-        except:
-            self.isotropic=True
+        subgroup        = self[dataid+'/%g_sec'%( period )]
+        self.period     = period
+        self.datatype   = self[dataid].attrs['datatype']
+        try: self.isotropic     = self[dataid].attrs['isotropic']
+        except: self.isotropic  = True
         if self.isotropic:
-            self.vel_iso=subgroup['velocity'].value
-            self.vel_iso=self.vel_iso.reshape(self.Nlat, self.Nlon)
-            self.dv=subgroup['Dvelocity'].value
-            self.dv=self.dv.reshape(self.Nlat, self.Nlon)
-            self.pdens=subgroup['path_density'].value
-            self.pdens=self.pdens.reshape(self.Nlat, self.Nlon)
-            self.azicov1=(subgroup['azi_coverage'].value)[:,0]
-            self.azicov1=self.azicov1.reshape(self.Nlat, self.Nlon)
-            self.azicov2=(subgroup['azi_coverage'].value)[:,1]
-            self.azicov2=self.azicov2.reshape(self.Nlat, self.Nlon)
+            self.vel_iso    = subgroup['velocity'].value
+            self.vel_iso    = self.vel_iso.reshape(self.Nlat, self.Nlon)
+            self.dv         = subgroup['Dvelocity'].value
+            self.dv         = self.dv.reshape(self.Nlat, self.Nlon)
+            self.pdens      = subgroup['path_density'].value
+            self.pdens      = self.pdens.reshape(self.Nlat, self.Nlon)
+            self.azicov1    = (subgroup['azi_coverage'].value)[:,0]
+            self.azicov1    = self.azicov1.reshape(self.Nlat, self.Nlon)
+            self.azicov2    = (subgroup['azi_coverage'].value)[:,1]
+            self.azicov2    = self.azicov2.reshape(self.Nlat, self.Nlon)
         else:
-            self.anipara=self[dataid].attrs['anipara']
+            self.anipara    = self[dataid].attrs['anipara']
             # initialize dataset
-            self.vel_iso=np.zeros(self.lonArr.shape)
+            self.vel_iso    = np.zeros(self.lonArr.shape)
             if self.anipara!=0:
-                self.amp2=np.zeros(self.lonArr.shape)
-                self.psi2=np.zeros(self.lonArr.shape)
+                self.amp2   = np.zeros(self.lonArr.shape)
+                self.psi2   = np.zeros(self.lonArr.shape)
             if self.anipara==2:
-                self.amp4=np.zeros(self.lonArr.shape)
-                self.psi4=np.zeros(self.lonArr.shape)
-            self.dv=np.zeros(self.lonArr.shape)
-            self.pdens=np.zeros(self.lonArr.shape)
-            self.pdens1=np.zeros(self.lonArr.shape)
-            self.pdens2=np.zeros(self.lonArr.shape)
-            self.azicov1=np.zeros(self.lonArr.shape)
-            self.azicov2=np.zeros(self.lonArr.shape)
-            self.cradius=np.zeros(self.lonArr.shape)
-            self.reason_n=np.ones(self.lonArr.shape)
+                self.amp4   = np.zeros(self.lonArr.shape)
+                self.psi4   = np.zeros(self.lonArr.shape)
+            self.dv         = np.zeros(self.lonArr.shape)
+            self.pdens      = np.zeros(self.lonArr.shape)
+            self.pdens1     = np.zeros(self.lonArr.shape)
+            self.pdens2     = np.zeros(self.lonArr.shape)
+            self.azicov1    = np.zeros(self.lonArr.shape)
+            self.azicov2    = np.zeros(self.lonArr.shape)
+            self.cradius    = np.zeros(self.lonArr.shape)
+            self.reason_n   = np.ones(self.lonArr.shape)
             # read data from hdf5 database
-            lon_lat_array=subgroup['lons_lats'].value
-            vel_iso=(subgroup['velocity'].value)[:,0]
-            dv=subgroup['Dvelocity'].value
-            if self.anipara!=0:
-                amp2=(subgroup['velocity'].value)[:,3]
-                psi2=(subgroup['velocity'].value)[:,4]
-            if self.anipara==2:
-                amp4=(subgroup['velocity'].value)[:,7]
-                psi4=(subgroup['velocity'].value)[:,8]
-            inlon=lon_lat_array[:,0]
-            inlat=lon_lat_array[:,1]
-            pdens=(subgroup['path_density'].value)[:,0]
-            pdens1=(subgroup['path_density'].value)[:,1]
-            pdens2=(subgroup['path_density'].value)[:,2]
-            azicov1=(subgroup['azi_coverage'].value)[:,0]
-            azicov2=(subgroup['azi_coverage'].value)[:,1]
+            lon_lat_array   = subgroup['lons_lats'].value
+            vel_iso         = (subgroup['velocity'].value)[:,0]
+            dv              = subgroup['Dvelocity'].value
+            if self.anipara != 0:
+                amp2        = (subgroup['velocity'].value)[:,3]
+                psi2        = (subgroup['velocity'].value)[:,4]
+            if self.anipara == 2:
+                amp4        = (subgroup['velocity'].value)[:,7]
+                psi4        = (subgroup['velocity'].value)[:,8]
+            inlon           = lon_lat_array[:,0]
+            inlat           = lon_lat_array[:,1]
+            pdens           = (subgroup['path_density'].value)[:,0]
+            pdens1          = (subgroup['path_density'].value)[:,1]
+            pdens2          = (subgroup['path_density'].value)[:,2]
+            azicov1         = (subgroup['azi_coverage'].value)[:,0]
+            azicov2         = (subgroup['azi_coverage'].value)[:,1]
             # cradius=(subgroup['resolution'].value)[:,0]
             for i in xrange(inlon.size):
-                lon=inlon[i]
-                lat=inlat[i]
-                index = np.where((self.lonArr==lon)*(self.latArr==lat))
+                lon     = inlon[i]
+                lat     = inlat[i]
+                index   = np.where((self.lonArr==lon)*(self.latArr==lat))
                 # print index
-                self.reason_n[index[0], index[1]]=0
-                self.vel_iso[index[0], index[1]]=vel_iso[i]
+                self.reason_n[index[0], index[1]]   = 0
+                self.vel_iso[index[0], index[1]]    = vel_iso[i]
                 if self.anipara!=0:
-                    self.amp2[index[0], index[1]]=amp2[i]
-                    self.psi2[index[0], index[1]]=psi2[i]
+                    self.amp2[index[0], index[1]]   = amp2[i]
+                    self.psi2[index[0], index[1]]   = psi2[i]
                 if self.anipara==2:
-                    self.amp4[index[0], index[1]]=amp4[i]
-                    self.psi4[index[0], index[1]]=psi4[i]
-                self.dv[index[0], index[1]]=dv[i]
-                self.pdens[index[0], index[1]]=pdens[i]
-                self.pdens1[index[0], index[1]]=pdens1[i]
-                self.pdens2[index[0], index[1]]=pdens2[i]
-                self.azicov1[index[0], index[1]]=azicov1[i]
-                self.azicov2[index[0], index[1]]=azicov2[i]
+                    self.amp4[index[0], index[1]]   = amp4[i]
+                    self.psi4[index[0], index[1]]   = psi4[i]
+                self.dv[index[0], index[1]]         = dv[i]
+                self.pdens[index[0], index[1]]      = pdens[i]
+                self.pdens1[index[0], index[1]]     = pdens1[i]
+                self.pdens2[index[0], index[1]]     = pdens2[i]
+                self.azicov1[index[0], index[1]]    = azicov1[i]
+                self.azicov2[index[0], index[1]]    = azicov2[i]
                 # self.cradius[index[0], index[1]]=cradius[i]
             self.np2ma()
         return
             
     
-    def plot_vel_iso(self, projection='lambert', fastaxis=False, geopolygons=None, showfig=True, vmin=None, vmax=None):
+    def plot_vel_iso(self, dataid=None, period=None, projection='lambert', fastaxis=False, geopolygons=None, showfig=True, vmin=None, vmax=None):
         """Plot isotropic velocity
         """
+        if dataid !=None and period !=None: self.get_data4plot(dataid=dataid, period=period)
+        try: vel_iso=self.vel_iso
+        except:
+            print 'Specify dataid and period to get data for plotting!'
+            return
         m=self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y=m(self.lonArr, self.latArr)
         cmap = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
-        im=m.pcolormesh(x, y, self.vel_iso, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        im=m.pcolormesh(x, y, vel_iso, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         cb = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label('V'+self.datatype+' (km/s)', fontsize=12, rotation=0)
         plt.title(str(self.period)+' sec', fontsize=20)
         if fastaxis:
-            try:
-                self.plot_fast_axis(inbasemap=m)
-            except:
-                pass
-        if showfig:
-            plt.show()
+            try: self.plot_fast_axis(inbasemap=m)
+            except: pass
+        if showfig: plt.show()
         return
         
     def plot_fast_axis(self, projection='lambert', inbasemap=None, factor=1, showfig=False, psitype=2):
         """Plot fast axis(psi2 or psi4)
         """
-        if inbasemap==None:
-            m=self._get_basemap(projection=projection)
-        else:
-            m=inbasemap
+        if inbasemap==None: m=self._get_basemap(projection=projection)
+        else: m=inbasemap
         x, y=m(self.lonArr, self.latArr)
-        if psitype==2:
-            psi=self.psi2
-        elif psitype==4:
-            psi=self.psi4
+        if psitype==2: psi=self.psi2
+        elif psitype==4: psi=self.psi4
         U=np.sin(psi)
         V=np.cos(psi)
         if factor!=None:
@@ -660,8 +651,7 @@ class RayTomoDataSet(h5py.File):
             U=U[0:self.Nlat:factor, 0:self.Nlon:factor]
             V=V[0:self.Nlat:factor, 0:self.Nlon:factor]
         Q = m.quiver(x, y, U, V, scale=50, width=0.001, headaxislength=0)
-        if showfig:
-            plt.show()
+        if showfig: plt.show()
         return
     
     def plot_array(self, inarray, title='', label='', projection='lambert', fastaxis=False, geopolygons=None, showfig=True, vmin=None, vmax=None):
@@ -749,23 +739,21 @@ class RayTomoDataSet(h5py.File):
         vmin/vmax           - minimum/maximum value for plotting
         =================================================================================================================
         """
-        inglbfname=inglbpfx+'_'+str(int(period))
-        inArr = np.loadtxt(inglbfname)
-        lonArr=inArr[:,0]
-        lonArr[lonArr>180]=lonArr[lonArr>180]-360
-        lonArr=lonArr.reshape(181, 360)
-        latArr=inArr[:,1]
-        latArr=latArr.reshape(181, 360)
-        phvArr=inArr[:,2]
-        phvArr=phvArr.reshape(181, 360)
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        lat_centre = (maxlat+minlat)/2.0
-        lon_centre = (maxlon+minlon)/2.0
-        m=Basemap(projection='moll',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
-        x, y=m(lonArr, latArr)
+        inglbfname          = inglbpfx+'_'+str(int(period))
+        inArr               = np.loadtxt(inglbfname)
+        lonArr              = inArr[:,0]
+        lonArr[lonArr>180]  = lonArr[lonArr>180]-360
+        lonArr              = lonArr.reshape(181, 360)
+        latArr              = inArr[:,1]
+        latArr              = latArr.reshape(181, 360)
+        phvArr              = inArr[:,2]
+        phvArr              = phvArr.reshape(181, 360)
+        minlon=self.attrs['minlon']; maxlon=self.attrs['maxlon']
+        minlat=self.attrs['minlat']; maxlat=self.attrs['maxlat']
+        lat_centre  = (maxlat+minlat)/2.0
+        lon_centre  = (maxlon+minlon)/2.0
+        m           = Basemap(projection='moll',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+        x, y        = m(lonArr, latArr)
         cmap = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         im=m.pcolormesh(x, y, phvArr, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
@@ -777,8 +765,7 @@ class RayTomoDataSet(h5py.File):
         #         name='tectonic_plates', 
         #         drawbounds=True, 
         #         color='red')
-        if showfig:
-            plt.show()
+        if showfig: plt.show()
         return
         
         
