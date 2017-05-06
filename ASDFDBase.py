@@ -1839,7 +1839,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     # tr.simulate(paz_remove=tr.stats.paz, pre_filt=(0.001, 0.005, 1, 100.0))
                     st.append(tr)
                 self.add_waveforms(st, event_id=event_id, tag=tag)    
-     
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Get basemap for plotting results
@@ -1973,7 +1972,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
             minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
             latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, level='channel')
         self.add_stationxml(inv)
-        self.inv=inv
+        try:
+            self.inv+=inv
+        except:
+            self.inv=inv
         return 
     
     def get_surf_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False):
@@ -3221,6 +3223,93 @@ class quakeASDF(pyasdf.ASDFDataSet):
         self.minlat=minlat; self.maxlat=maxlat; self.minlon=minlon; self.maxlon=maxlon
         return
     
+    def get_ms(self, Vgr=None, period=10., wfactor=20., channel='Z', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True, \
+            pmf1=True, pmf2=True, verbose=True, prephdir=None, f77=True, pfx='DISP'):
+        """Get surface wave magnitude according to Russell's formula
+        Need polish 
+        """
+        print 'Start aftan analysis!'
+        import obspy.signal
+        staLst=self.waveforms.list()
+        evnumb=0
+        for event in self.events:
+            evnumb+=1
+            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
+            otime=event.origins[0].time
+            tag='surf_ev_%05d' %evnumb
+            evid='E%05d' % evnumb
+            for staid in staLst:
+                netcode, stacode=staid.split('.')
+                stla, stz, stlo=self.waveforms[staid].coordinates.values()
+                az, baz, dist = geodist.inv(evlo, evla, stlo, stla); dist=dist/1000. 
+                if baz<0: baz+=360.
+                try:
+                    if channel!='R' or channel!='T':
+                        inST=self.waveforms[staid][tag].select(component=channel)
+                    else:
+                        st=self.waveforms[staid][tag]
+                        st.rotate('NE->RT', backazimuth=baz) 
+                        inST=st.select(component=channel)
+                except KeyError: continue
+                if len(inST)==0: continue
+                else: tr=inST[0]
+                stime=tr.stats.starttime; etime=tr.stats.endtime
+                tr.stats.sac={}; tr.stats.sac['dist']= dist; tr.stats.sac['b']=stime-otime; tr.stats.sac['e']=etime-otime
+                aftanTr=pyaftan.aftantrace(tr.data, tr.stats)
+                if prephdir !=None: phvelname = prephdir + "/%s.%s.pre" %(evid, staid)
+                else: phvelname =''
+                if f77:
+                    aftanTr.aftanf77(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
+                        tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
+                            npoints=inftan.npoints, perc=inftan.perc, phvelname=phvelname)
+                else:
+                    aftanTr.aftan(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
+                        tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
+                            npoints=inftan.npoints, perc=inftan.perc, phvelname=phvelname)
+                if verbose: print 'aftan analysis for: ' + evid+' '+staid+'_'+channel
+                ###
+                # measure Ms
+                ###
+                dist    = aftanTr.stats.sac.dist
+                Delta   = obspy.geodetics.kilometer2degrees(dist)
+                dt      = aftanTr.stats.delta
+                fcorner = 0.6/period/np.sqrt(Delta)
+                if Vgr==None:
+                    obsTArr = aftanTr.ftanparam.arr2_2[1,:aftanTr.ftanparam.nfout2_2]
+                    VgrArr  = aftanTr.ftanparam.arr2_2[2,:aftanTr.ftanparam.nfout2_2]
+                    AmpArr  = aftanTr.ftanparam.arr2_2[7,:aftanTr.ftanparam.nfout2_2]
+                    Vgr     = np.interp(period, obsTArr, VgrArr )
+                    Amp     = np.interp(period, obsTArr, AmpArr )
+                minT    = max(0., dist/Vgr-wfactor*period)
+                maxT    = min(dist/Vgr+wfactor*period, aftanTr.stats.npts*dt)
+                # minT    = max(0., dist/4.0)
+                # maxT    = min(dist/2.5, aftanTr.stats.npts*dt)
+                ntapb   = int(period/dt)
+                ntape   = int(period/dt)
+                nb      = int(minT/dt)
+                ne      = int(maxT/dt)+1
+                dataT   = aftanTr.taper(nb, ne, ntapb, ntape)
+                tempTr  = aftanTr.copy()
+                # print nb, ne
+                # return dataT
+                # tempTr.data=dataT[0]
+                fmin=1./period-fcorner
+                fmax=1./period+fcorner
+                # print fcorner
+                tempTr.filter('bandpass', freqmin=fmin, freqmax=fmax, corners=3, zerophase=True)
+                # data_envelope = obspy.signal.filter.envelope(tempTr.data)
+                # ab = data_envelope.max()
+                ab=(np.abs(tempTr.data)).max()
+                ab = ab * 1e9
+                Ms=np.log10(ab) + 0.5*np.log10( np.sin(Delta*np.pi/180.) ) + 0.0031*((20./period)**1.8)*Delta\
+                    - 0.66*np.log10(20./period)-np.log10(fcorner) # -0.43
+                print  staid, ab, Ms, Vgr, Amp, dist, Delta
+                # if staid == 'IC.HIA':return tempTr
+        
+                
+        
+        
+        
 def aftan4mp_quake(aTr, outdir, inftan, prephdir, f77, pfx):
     # print aTr.stats.network+'.'+aTr.stats.station
     if prephdir !=None:
