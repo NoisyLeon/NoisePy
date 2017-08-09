@@ -3244,7 +3244,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 az, baz, dist = geodist.inv(evlo, evla, stlo, stla); dist=dist/1000. 
                 if baz<0: baz+=360.
                 try:
-                    if channel!='R' or channel!='T':
+                    if channel!='R' and channel!='T':
                         inST=self.waveforms[staid][tag].select(component=channel)
                     else:
                         st=self.waveforms[staid][tag]
