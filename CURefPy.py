@@ -63,8 +63,8 @@ def _gaussFilter( dt, nft, f0 ):
     kernel  = w**2
     # compute the gaussian filter
     gauss   = np.zeros(nft)
-    gauss[:nft21]   = np.exp( -0.25*kernel )/dt
-    gauss[nft21:]   = np.flipud(gauss[1:nft21-1])
+    gauss[:int(nft21)]   = np.exp( -0.25*kernel )/dt
+    gauss[int(nft21):]   = np.flipud(gauss[1:int(nft21)-1])
     return gauss
 
 
@@ -381,12 +381,19 @@ class HStripStream(obspy.core.stream.Stream):
             yvalue=trace.data*ampfactor
             backazi=float(trace.stats.channel)
             ax.plot(time, yvalue+backazi, '-k', lw=0.3)
-            tfill=time[yvalue>0]
-            yfill=(yvalue+backazi)[yvalue>0]
-            ax.fill_between(tfill, backazi, yfill, color='blue', linestyle='--', lw=0.)
-            tfill=time[yvalue<0]
-            yfill=(yvalue+backazi)[yvalue<0]
-            ax.fill_between(tfill, backazi, yfill, color='red', linestyle='--', lw=0.)
+            
+            ax.fill_between(time, y2=backazi, y1=yvalue+backazi, where=yvalue>0, color='red', lw=0.01, interpolate=True)
+            ax.fill_between(time, y2=backazi, y1=yvalue+backazi, where=yvalue<0, color='blue', lw=0.01, interpolate=True)
+            
+            
+            # tfill=time[yvalue>0]
+            # yfill=(yvalue+backazi)[yvalue>0]
+            # ax.fill_between(tfill, backazi, yfill, color='blue', linestyle='--', lw=0.)
+            # tfill=time[yvalue<0]
+            # yfill=(yvalue+backazi)[yvalue<0]
+            # ax.fill_between(tfill, backazi, yfill, color='red', linestyle='--', lw=0.)
+            
+            
         plt.axis([0., 10., ymin, ymax])
         plt.xlabel('Time(sec)')
         plt.title(title)
@@ -419,7 +426,7 @@ class HarmonicStrippingDataBase(object):
         self.repST2 = repST2
         return
     
-    def PlotHSStreams(self, outdir='', stacode='', ampfactor=40, targetDT=0.02, longitude='', latitude='', browseflag=False, saveflag=True,\
+    def PlotHSStreams(self, outdir='', stacode='', ampfactor=40, targetDT=0.025, longitude='', latitude='', browseflag=False, saveflag=True,\
             obsflag=1, diffflag=0, repflag=1, rep0flag=1, rep1flag=1, rep2flag=1):
         """Plot harmonic stripping streams accoring to back-azimuth
         ===============================================================================================================
@@ -1093,7 +1100,7 @@ class RFTrace(obspy.Trace):
         it          = 0
         sumsq_i     = 1
         d_error     = 100*powerU + minderr
-        maxlag      = 0.5*nfft
+        maxlag      = int(0.5*nfft)
         while( abs(d_error) > minderr  and  it < niter ):
             it          = it+1 # iteration advance
             #   Ligorria and Ammon method

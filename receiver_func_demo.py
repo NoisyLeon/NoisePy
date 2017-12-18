@@ -4,12 +4,12 @@ import timeit
 import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
-dset=ASDFDBase.quakeASDF('../ref_ALASKA_mp.h5')
+dset=ASDFDBase.quakeASDF('../ref_U15A_mp.h5')
 # # Retrieving earthquake catalog
-# dset.get_events(startdate='2004-01-01', enddate='2008-01-01', Mmin=5.5, magnitudetype='mb')
-# # Getting station information
-# dset.get_stations(channel='BH*', station='YRT', network='XR')
-# # Downloading data
+# dset.get_events(startdate='2011-12-01', enddate='2015-06-01', Mmin=5.5, magnitudetype='mb')
+# # # Getting station information
+# dset.get_stations(channel='BH*', station='U15A', network='AE')
+# # # Downloading data
 # t1=timeit.default_timer()
 # # st=dset.get_body_waveforms()
 # st=dset.get_body_waveforms_mp( outdir='./downloaded_P', verbose=False, nprocess=6)
@@ -25,5 +25,5 @@ dset=ASDFDBase.quakeASDF('../ref_ALASKA_mp.h5')
 # dset.harmonic_stripping(outdir='.')
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
-# dset.plot_ref(network='XR', station='YRT', phase='P', datatype='RefRHS')
-# plt.show()
+dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')
+plt.show()
