@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 dset=quakedbase.quakeASDF('../ref_Alaska.h5')
 # Retrieving earthquake catalog
 dset.get_events(startdate='2011-01-01', enddate='2017-12-15', Mmin=5.5, magnitudetype='mb', gcmt=True)
-# # Getting station information
-# dset.get_stations(channel='BH*', station='U15A', network='AE')
+# Getting station information
+# # dset.get_stations(channel='BH*', station='U15A', network='AE')
 # # # Downloading data
 # t1=timeit.default_timer()
 # # st=dset.get_body_waveforms()

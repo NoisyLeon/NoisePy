@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-A python module for seismic data analysis based on ASDF database
+A python module for earthquake data analysis based on ASDF database
 
 :Methods:
     aftan analysis (use pyaftan or aftanf77)
-    C3(Correlation of coda of Cross-Correlation) computation
     Automatic Receiver Function Analysis( Iterative Deconvolution and Harmonic Stripping )
     Preparing data for surface wave tomography (Barmin's method, Eikonal/Helmholtz tomography)
-    Stacking/Rotation for Cross-Correlation Results from SEED2CORpp
-    Bayesian Monte Carlo Inversion of Surface Wave and Receiver Function datasets (To be added soon)
 
 :Dependencies:
     pyasdf and its dependencies
@@ -214,10 +211,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if year==2005 and month==9:
                     monstr      = 'sept'
                 gcmt_url_new    = gcmt_new+'/'+str(int(year))+'/'+monstr+yearstr+'.ndk'
-                print gcmt_url_new
+                # cat_new     = obspy.core.event.read_events(gcmt_url_new)
                 try:
                     cat_new     = obspy.read_events(gcmt_url_new)
+                    print('Loading catalog: '+gcmt_url_new)
                 except:
+                    print('Link not found: '+gcmt_url_new)
                     break
                 cat_new         = cat_new.filter("magnitude >= %g" %Mmin, "time >= %s" %str(starttime), "time <= %s" %str(endtime) )
                 if Mmax != None:
@@ -297,20 +296,20 @@ class quakeASDF(pyasdf.ASDFDataSet):
     def read_sac(self, datadir):
         """This function is a scratch for reading a specific datasets, DO NOT use this function!
         """
-        L=len(self.events)
-        evnumb=0
+        L       = len(self.events)
+        evnumb  = 0
         import glob
         for event in self.events:
-            event_id=event.resource_id.id.split('=')[-1]
-            magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-            event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
-            evnumb+=1
+            event_id        = event.resource_id.id.split('=')[-1]
+            magnitude       = event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
             print '================================= Getting surface wave data ==================================='
             print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude) 
-            st=obspy.Stream()
-            otime=event.origins[0].time
-            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-            tag='surf_ev_%05d' %evnumb
+            st              = obspy.Stream()
+            otime           = event.origins[0].time
+            evlo            = event.origins[0].longitude; evla=event.origins[0].latitude
+            tag             = 'surf_ev_%05d' %evnumb
             # if lon0!=None and lat0!=None:
             #     dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
             #     dist=dist/1000.
@@ -318,7 +317,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             #     commontime=True
             # else:
             #     commontime=False
-            odate=str(otime.year)+'%02d' %otime.month +'%02d' %otime.day
+            odate           = str(otime.year)+'%02d' %otime.month +'%02d' %otime.day
             for staid in self.waveforms.list():
                 netcode, stacode=staid.split('.')
                 print staid
@@ -364,32 +363,31 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """Get basemap for plotting results
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
-        lat_centre = (self.maxlat+self.minlat)/2.0
-        lon_centre = (self.maxlon+self.minlon)/2.0
+        lat_centre  = (self.maxlat+self.minlat)/2.0
+        lon_centre  = (self.maxlon+self.minlon)/2.0
         if projection=='merc':
-            m=Basemap(projection='merc', llcrnrlat=self.minlat-5., urcrnrlat=self.maxlat+5., llcrnrlon=self.minlon-5.,
-                      urcrnrlon=self.maxlon+5., lat_ts=20, resolution=resolution)
+            m       = Basemap(projection='merc', llcrnrlat=self.minlat-5., urcrnrlat=self.maxlat+5., llcrnrlon=self.minlon-5.,
+                        urcrnrlon=self.maxlon+5., lat_ts=20, resolution=resolution)
             m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
             m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             m.drawstates(color='g', linewidth=2.)
         elif projection=='global':
-            m=Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
             m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
-        
         elif projection=='regional_ortho':
-            m1 = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution='l')
-            m = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution=resolution,\
-                llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m1      = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution='l')
+            m       = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution=resolution,\
+                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz=obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
                                 self.minlat, self.maxlon) # distance is in m
-            distNS, az, baz=obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
                                 self.maxlat+2., self.minlon) # distance is in m
-            m = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
-                lat_1=self.minlat, lat_2=self.maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
+            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+                        lat_1=self.minlat, lat_2=self.maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
         m.drawcoastlines(linewidth=1.0)
@@ -397,61 +395,80 @@ class quakeASDF(pyasdf.ASDFDataSet):
         m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         m.drawmapboundary(fill_color="white")
         m.drawstates()
-        try: geopolygons.PlotPolygon(inbasemap=m)
-        except: pass
+        try:
+            geopolygons.PlotPolygon(inbasemap=m)
+        except:
+            pass
         return m
     
     def plot_events(self, gcmt=False, projection='lambert', valuetype='depth', geopolygons=None, showfig=True, vmin=None, vmax=None):
-        if gcmt: from obspy.imaging.beachball import beach; ax = plt.gca()
-        evlons=np.array([])
-        evlats=np.array([])
-        values=np.array([])
-        focmecs=[]
+        if gcmt:
+            from obspy.imaging.beachball import beach
+            ax  = plt.gca()
+        evlons  = np.array([])
+        evlats  = np.array([])
+        values  = np.array([])
+        focmecs = []
         for event in self.events:
-            event_id=event.resource_id.id.split('=')[-1]
-            magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-            otime=event.origins[0].time
-            evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth/1000.
-            if evlo > -80.: continue
-            evlons=np.append(evlons, evlo); evlats = np.append(evlats, evla);
-            if valuetype=='depth': values=np.append(values, evdp)
-            elif valuetype=='mag': values=np.append(values, magnitude)
+            event_id    = event.resource_id.id.split('=')[-1]
+            magnitude   = event.magnitudes[0].mag
+            Mtype       = event.magnitudes[0].magnitude_type
+            otime       = event.origins[0].time
+            evlo        = event.origins[0].longitude
+            evla        = event.origins[0].latitude
+            evdp        = event.origins[0].depth/1000.
+            if evlo > -80.:
+                continue
+            evlons      = np.append(evlons, evlo)
+            evlats      = np.append(evlats, evla);
+            if valuetype=='depth':
+                values  = np.append(values, evdp)
+            elif valuetype=='mag':
+                values  = np.append(values, magnitude)
             if gcmt:
-                mtensor=event.focal_mechanisms[0].moment_tensor.tensor
-                mt=[mtensor.m_rr, mtensor.m_tt, mtensor.m_pp, mtensor.m_rt, mtensor.m_rp, mtensor.m_tp]
+                mtensor = event.focal_mechanisms[0].moment_tensor.tensor
+                mt      = [mtensor.m_rr, mtensor.m_tt, mtensor.m_pp, mtensor.m_rt, mtensor.m_rp, mtensor.m_tp]
                 # nodalP=event.focal_mechanisms[0].nodal_planes.values()[1]
                 # mt=[nodalP.strike, nodalP.dip, nodalP.rake]
                 focmecs.append(mt)
-        self.minlat=evlats.min()-1.; self.maxlat=evlats.max()+1.
-        self.minlon=evlons.min()-1.; self.maxlon=evlons.max()+1.
+        self.minlat     = evlats.min()-1.; self.maxlat=evlats.max()+1.
+        self.minlon     = evlons.min()-1.; self.maxlon=evlons.max()+1.
         # self.minlat=15; self.maxlat=50
         # self.minlon=95; self.maxlon=128
-        m=self._get_basemap(projection=projection, geopolygons=geopolygons)
+        m               = self._get_basemap(projection=projection, geopolygons=geopolygons)
         import pycpt
-        cmap=pycpt.load.gmtColormap('./GMT_panoply.cpt')
+        cmap            = pycpt.load.gmtColormap('./GMT_panoply.cpt')
         # cmap =discrete_cmap(int((vmax-vmin)/0.1)+1, cmap)
-        x, y=m(evlons, evlats)
-        if vmax==None and vmin==None: vmax=values.max(); vmin=values.min()
+        x, y            = m(evlons, evlats)
+        if vmax==None and vmin==None:
+            vmax        = values.max()
+            vmin        = values.min()
         if gcmt:
             for i in xrange(len(focmecs)):
-                value=values[i]
-                rgbcolor=cmap( (value-vmin)/(vmax-vmin) )
-                b = beach(focmecs[i], xy=(x[i], y[i]), width=100000, linewidth=1, facecolor=rgbcolor)
+                value   = values[i]
+                rgbcolor= cmap( (value-vmin)/(vmax-vmin) )
+                b       = beach(focmecs[i], xy=(x[i], y[i]), width=100000, linewidth=1, facecolor=rgbcolor)
                 b.set_zorder(10)
                 ax.add_collection(b)
                 # ax.annotate(str(i), (x[i]+50000, y[i]+50000))
-            im=m.scatter(x, y, marker='o', s=1, c=values, cmap=cmap, vmin=vmin, vmax=vmax)
-            cb = m.colorbar(im, "bottom", size="3%", pad='2%')
+            im          = m.scatter(x, y, marker='o', s=1, c=values, cmap=cmap, vmin=vmin, vmax=vmax)
+            cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
             cb.set_label(valuetype, fontsize=20)
         else:
             if values.size!=0:
-                im=m.scatter(x, y, marker='o', s=300, c=values, cmap=cmap, vmin=vmin, vmax=vmax)
-                cb = m.colorbar(im, "bottom", size="3%", pad='2%')
-            else: m.plot(x,y,'o')
-        if gcmt: stime=self.events[0].origins[0].time; etime=self.events[-1].origins[0].time
-        else: etime=self.events[0].origins[0].time; stime=self.events[-1].origins[0].time
+                im      = m.scatter(x, y, marker='o', s=300, c=values, cmap=cmap, vmin=vmin, vmax=vmax)
+                cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+            else:
+                m.plot(x,y,'o')
+        if gcmt:
+            stime       = self.events[0].origins[0].time
+            etime       = self.events[-1].origins[0].time
+        else:
+            etime       = self.events[0].origins[0].time
+            stime       = self.events[-1].origins[0].time
         plt.suptitle('Number of event: '+str(len(self.events))+' time range: '+str(stime)+' - '+str(etime), fontsize=20 )
-        if showfig: plt.show()
+        if showfig:
+            plt.show()
         return   
     
     def get_stations(self, startdate=None, enddate=None,  network=None, station=None, location=None, channel=None,
@@ -483,19 +500,23 @@ class quakeASDF(pyasdf.ASDFDataSet):
                                 geographic point defined by the latitude and longitude parameters.
         =======================================================================================================
         """
-        try: starttime=obspy.core.utcdatetime.UTCDateTime(startdate)
-        except: starttime=None
-        try: endtime=obspy.core.utcdatetime.UTCDateTime(enddate)
-        except: endtime=None
-        client=Client('IRIS')
-        inv = client.get_stations(network=network, station=station, starttime=starttime, endtime=endtime, channel=channel, 
-            minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
-            latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, level='channel')
+        try:
+            starttime   = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            starttime   = None
+        try:
+            endtime     = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            endtime     = None
+        client          = Client('IRIS')
+        inv             = client.get_stations(network=network, station=station, starttime=starttime, endtime=endtime, channel=channel, 
+                            minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
+                            latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, level='channel')
         self.add_stationxml(inv)
         try:
-            self.inv+=inv
+            self.inv    +=inv
         except:
-            self.inv=inv
+            self.inv    = inv
         return 
     
     def get_surf_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False):
@@ -509,35 +530,41 @@ class quakeASDF(pyasdf.ASDFDataSet):
         vmin, vmax      - minimum/maximum velocity for surface wave window
         =====================================================================================================================
         """
-        client=Client('IRIS')
-        evnumb=0
-        L=len(self.events)
+        client  = Client('IRIS')
+        evnumb  = 0
+        L       = len(self.events)
         for event in self.events:
-            event_id=event.resource_id.id.split('=')[-1]
-            magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-            event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
-            evnumb+=1
-            print '================================= Getting surface wave data ==================================='
-            print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude) 
-            st=obspy.Stream()
-            otime=event.origins[0].time
-            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
+            event_id        = event.resource_id.id.split('=')[-1]
+            magnitude       = event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
+            print('================================= Getting surface wave data ===================================')
+            print('Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude))
+            st                  = obspy.Stream()
+            otime               = event.origins[0].time
+            evlo                = event.origins[0].longitude
+            evla                = event.origins[0].latitude
             if lon0!=None and lat0!=None:
-                dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
-                dist=dist/1000.
-                starttime=otime+dist/vmax; endtime=otime+dist/vmin
-                commontime=True
+                dist, az, baz   = obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
+                dist            = dist/1000.
+                starttime       = otime+dist/vmax
+                endtime         = otime+dist/vmin
+                commontime      = True
             else:
-                commontime=False
+                commontime      = False
             for staid in self.waveforms.list():
-                netcode, stacode=staid.split('.')
-                stla, elev, stlo=self.waveforms[staid].coordinates.values()
+                netcode, stacode= staid.split('.')
+                stla, elev, stlo= self.waveforms[staid].coordinates.values()
                 if not commontime:
-                    dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo) # distance is in m
-                    dist=dist/1000.; Delta=obspy.geodetics.kilometer2degrees(dist)
-                    if Delta<minDelta: continue
-                    if Delta>maxDelta: continue
-                    starttime=otime+dist/vmax; endtime=otime+dist/vmin
+                    dist, az, baz   = obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo) # distance is in m
+                    dist            =dist/1000.
+                    Delta           = obspy.geodetics.kilometer2degrees(dist)
+                    if Delta<minDelta:
+                        continue
+                    if Delta>maxDelta:
+                        continue
+                    starttime       = otime+dist/vmax
+                    endtime         = otime+dist/vmin
                 # location=self.waveforms[staid].StationXML[0].stations[0].channels[0].location_code
                 try:
                     # st += client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
@@ -671,16 +698,17 @@ class quakeASDF(pyasdf.ASDFDataSet):
         rotation        - rotate the seismogram to RT or not
         =====================================================================================================================
         """
-        client=Client('IRIS')
-        evnumb=0
-        L=len(self.events)
-        print '================================== Getting body wave data ====================================='
+        client          = Client('IRIS')
+        evnumb          = 0
+        L               = len(self.events)
+        print('================================== Getting body wave data =====================================')
         for event in self.events:
-            event_id=event.resource_id.id.split('=')[-1]
-            magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-            event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
-            evnumb+=1
-            otime=event.origins[0].time 
+            event_id        = event.resource_id.id.split('=')[-1]
+            magnitude       = event.magnitudes[0].mag
+            Mtype           = event.magnitudes[0].magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
+            otime           = event.origins[0].time 
             print 'Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude) 
             evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth/1000.
             tag='body_ev_%05d' %evnumb
