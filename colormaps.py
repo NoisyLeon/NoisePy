@@ -25,20 +25,18 @@ def make_colormap(colors):
     colors[z] can be either an RGB list, e.g. [1,0,0] for red, or an
     html hex string, e.g. "#ff0000" for red.
     """
-
     from matplotlib.colors import LinearSegmentedColormap, ColorConverter
     from numpy import sort
+    z   = sort(colors.keys())
+    n   = len(z)
+    z1  = min(z)
+    zn  = max(z)
+    x0  = (z - z1) / (zn - z1)
 
-    z = sort(colors.keys())
-    n = len(z)
-    z1 = min(z)
-    zn = max(z)
-    x0 = (z - z1) / (zn - z1)
-
-    CC = ColorConverter()
-    R = []
-    G = []
-    B = []
+    CC  = ColorConverter()
+    R   = []
+    G   = []
+    B   = []
     for i in range(n):
         #i'th color at level z[i]:
         Ci = colors[z[i]]
@@ -78,16 +76,20 @@ def schlieren_colormap(color=[0,0,0]):
     For Schlieren plots:
     """
     from numpy import linspace, array
-    if color=='k': color = [0,0,0]
-    if color=='r': color = [1,0,0]
-    if color=='b': color = [0,0,1]
-    if color=='g': color = [0,0.5,0]
-    color = array([1,1,1]) - array(color)
-    s  = linspace(0,1,20)
-    colors = {}
+    if color=='k':
+        color   = [0,0,0]
+    if color=='r':
+        color   = [1,0,0]
+    if color=='b':
+        color   = [0,0,1]
+    if color=='g':
+        color   = [0,0.5,0]
+    color       = array([1,1,1]) - array(color)
+    s           = linspace(0,1,20)
+    colors      = {}
     for key in s:
-        colors[key] = array([1,1,1]) - key**10 * color
-    schlieren_colors = make_colormap(colors)
+        colors[key]     = array([1,1,1]) - key**10 * color
+    schlieren_colors    = make_colormap(colors)
     return schlieren_colors
 
 
@@ -95,21 +97,21 @@ def schlieren_colormap(color=[0,0,0]):
 # Some useful colormaps follow...
 # There are also many colormaps in matplotlib.cm
 
-all_white = make_colormap({0.:'w', 1.:'w'})
-all_light_red = make_colormap({0.:'#ffdddd', 1.:'#ffdddd'})
-all_light_blue = make_colormap({0.:'#ddddff', 1.:'#ddddff'})
+all_white       = make_colormap({0.:'w', 1.:'w'})
+all_light_red   = make_colormap({0.:'#ffdddd', 1.:'#ffdddd'})
+all_light_blue  = make_colormap({0.:'#ddddff', 1.:'#ddddff'})
 all_light_green = make_colormap({0.:'#ddffdd', 1.:'#ddffdd'})
-all_light_yellow = make_colormap({0.:'#ffffdd', 1.:'#ffffdd'})
+all_light_yellow= make_colormap({0.:'#ffffdd', 1.:'#ffffdd'})
 
-red_white_blue = make_colormap({0.:'r', 0.5:'w', 1.:'b'})
-blue_white_red = make_colormap({0.:'b', 0.5:'w', 1.:'r'})
+red_white_blue  = make_colormap({0.:'r', 0.5:'w', 1.:'b'})
+blue_white_red  = make_colormap({0.:'b', 0.5:'w', 1.:'r'})
 red_yellow_blue = make_colormap({0.:'r', 0.5:'#ffff00', 1.:'b'})
 blue_yellow_red = make_colormap({0.:'b', 0.5:'#ffff00', 1.:'r'})
 yellow_red_blue = make_colormap({0.:'#ffff00', 0.5:'r', 1.:'b'})
-white_red = make_colormap({0.:'w', 1.:'r'})
-white_blue = make_colormap({0.:'w', 1.:'b'})
+white_red       = make_colormap({0.:'w', 1.:'r'})
+white_blue      = make_colormap({0.:'w', 1.:'b'})
 
 schlieren_grays = schlieren_colormap('k')
-schlieren_reds = schlieren_colormap('r')
+schlieren_reds  = schlieren_colormap('r')
 schlieren_blues = schlieren_colormap('b')
-schlieren_greens = schlieren_colormap('g')
+schlieren_greens= schlieren_colormap('g')
