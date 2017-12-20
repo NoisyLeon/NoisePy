@@ -4,11 +4,12 @@ import timeit
 import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
-dset=quakedbase.quakeASDF('../ref_Alaska.h5')
+dset=quakedbase.quakeASDF('./ref_Alaska.h5')
 # Retrieving earthquake catalog
-dset.get_events(startdate='2011-01-01', enddate='2017-12-15', Mmin=5.5, magnitudetype='mb', gcmt=True)
+# dset.get_events(startdate='2017-01-01', enddate='2017-02-01', Mmin=5.5, magnitudetype='mb', gcmt=True)
+# dset.get_events(startdate='2017-02-01', enddate='2017-12-15', Mmin=5.5, magnitudetype='mb', gcmt=True)
 # Getting station information
-# # dset.get_stations(channel='BH*', station='U15A', network='AE')
+dset.get_stations(channel='BH*', minlatitude=52., maxlatitude=72.5, minlongitude=-172., maxlongitude=-122.)
 # # # Downloading data
 # t1=timeit.default_timer()
 # # st=dset.get_body_waveforms()
