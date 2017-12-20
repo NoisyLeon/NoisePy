@@ -121,7 +121,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return
     
     def get_events(self, startdate, enddate, add2dbase=True, gcmt=False, Mmin=5.5, Mmax=None, minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None,
-            latitude=None, longitude=None, minradius=None, maxradius=None, mindepth=None, maxdepth=None, magnitudetype=None):
+            latitude=None, longitude=None, minradius=None, maxradius=None, mindepth=None, maxdepth=None, magnitudetype=None,
+            outquakeml=None):
         """Get earthquake catalog from IRIS server
         =======================================================================================================
         Input Parameters:
@@ -176,8 +177,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             gcmt_url_old    = 'http://www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/jan76_dec13.ndk'
             gcmt_new        = 'http://www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/NEW_MONTHLY'
             if starttime.year < 2005:
+                print('Loading catalog: '+gcmt_url_old)
                 cat_old     = obspy.read_events(gcmt_url_old)
-                outcatalog  = cat_old.filter("magnitude >= %g" %Mmin, "time >= %s" %str(starttime), "time <= %s" %str(endtime) )
                 if Mmax != None:
                     cat_old = cat_old.filter("magnitude <= %g" %Mmax)
                 if maxlongitude != None:
@@ -193,7 +194,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if mindepth != None:
                     cat_old = cat_old.filter("depth >= %g" %(mindepth*1000.))
                 temp_stime  = obspy.core.utcdatetime.UTCDateTime('2014-01-01')
-                outcatalog  = cat_old
+                outcatalog  = cat_old.filter("magnitude >= %g" %Mmin, "time >= %s" %str(starttime), "time <= %s" %str(endtime) )
             else:
                 outcatalog      = obspy.core.event.Catalog()
                 temp_stime      = copy.deepcopy(starttime)
@@ -239,11 +240,27 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 except:
                     temp_stime.year     +=1
                     temp_stime.month    = 1
+        try:
+            self.cat    += outcatalog
+        except:
+            self.cat    = outcatalog
         if add2dbase:
             self.add_quakeml(outcatalog)
-        else:
-            return outcatalog
+        if outquakeml != None:
+            self.cat.write(outquakeml, format='quakeml')
         return
+    
+    
+    
+    def read_quakeml(self, inquakeml, add2dbase=False):
+        self.cat    = obspy.read_events(inquakeml)
+        if add2dbase:
+            self.add_quakeml(self.cat)
+        return
+    
+    def copy_catalog(self):
+        print('Copying catalog from ASDF to memory')
+        self.cat    = self.events.copy()
     
     def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN']):
         """Read txt station list 
@@ -469,7 +486,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             plt.show()
         return   
     
-    def get_stations(self, startdate=None, enddate=None,  network=None, station=None, location=None, channel=None, includerestricted=False,
+    def get_stations(self, startdate=None, enddate=None, network=None, station=None, location=None, channel=None, includerestricted=False,
             minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None, latitude=None, longitude=None, minradius=None, maxradius=None):
         """Get station inventory from IRIS server
         =======================================================================================================
@@ -518,7 +535,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.inv    = inv
         return 
     
-    def get_surf_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False):
+    def get_surf_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False,
+                            startdate=None, enddate=None ):
         """Get surface wave data from IRIS server
         ====================================================================================================================
         Input Parameters:
@@ -532,18 +550,32 @@ class quakeASDF(pyasdf.ASDFDataSet):
         client              = Client('IRIS')
         evnumb              = 0
         L                   = len(self.events)
-        for event in self.events:
+        try:
+            stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4down  = obspy.UTCDateTime(0)
+        try:
+            etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4down  = obspy.UTCDateTime()
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
             magnitude       = event.magnitudes[0].mag
             Mtype           = event.magnitudes[0].magnitude_type
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            otime           = event.origins[0].time
+            evlo            = event.origins[0].longitude
+            evla            = event.origins[0].latitude
             evnumb          +=1
+            if otime < stime4down or otime > etime4down:
+                continue
             print('================================= Getting surface wave data ===================================')
             print('Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude))
-            st                  = obspy.Stream()
-            otime               = event.origins[0].time
-            evlo                = event.origins[0].longitude
-            evla                = event.origins[0].latitude
+            st              = obspy.Stream()
             if lon0!=None and lat0!=None:
                 dist, az, baz   = obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
                 dist            = dist/1000.
@@ -582,11 +614,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
             st.detrend()
             st.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
             tag         = 'surf_ev_%05d' %evnumb
+            # adding waveforms
             self.add_waveforms(st, event_id=event_id, tag=tag)
         return
     
     def get_surf_waveforms_mp(self, outdir, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False,
-            subsize=1000, deletemseed=False, nprocess=None, snumb=0, enumb=None):
+            subsize=1000, deletemseed=False, nprocess=None, snumb=0, enumb=None, startdate=None, enddate=None):
         """Get surface wave data from IRIS server with multiprocessing
         ====================================================================================================================
         Input Parameters:
@@ -609,8 +642,20 @@ class quakeASDF(pyasdf.ASDFDataSet):
         reqwaveLst  = []
         swave       = snumb*subsize
         iwave       = 0
+        try:
+            stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4down  = obspy.UTCDateTime(0)
+        try:
+            etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4down  = obspy.UTCDateTime()
         print('================================= Preparing for surface wave data download ===================================')
-        for event in self.events:
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        for event in self.cat:
             eventid         = event.resource_id.id.split('=')[-1]
             magnitude       = event.magnitudes[0].mag
             Mtype           = event.magnitudes[0].magnitude_type
@@ -619,6 +664,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             otime           = event.origins[0].time
             evlo            = event.origins[0].longitude
             evla            = event.origins[0].latitude
+            if otime < stime4down or otime > etime4down:
+                continue
             if lon0!=None and lat0!=None:
                 dist, az, baz   = obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
                 dist            = dist/1000.
@@ -676,7 +723,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print('==================================== Reading downloaded surface wave data ====================================')
         evnumb              = 0
         no_resp             = 0
-        for event in self.events:
+        for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
             magnitude       = event.magnitudes[0].mag
             Mtype           = event.magnitudes[0].magnitude_type
@@ -684,6 +731,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
             evnumb          += 1
             evid            = 'E%05d' %evnumb
             tag             = 'surf_ev_%05d' %evnumb
+            otime           = event.origins[0].time
+            if otime < stime4down or otime > etime4down:
+                continue
             print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude)
             for staid in self.waveforms.list():
                 netcode, stacode    = staid.split('.')
@@ -699,7 +749,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return
     
     def get_body_waveforms(self, minDelta=30, maxDelta=150, channel='BHE,BHN,BHZ', phase='P',
-                        startoffset=-30., endoffset=60.0, verbose=True, rotation=True):
+                        startoffset=-30., endoffset=60.0, verbose=True, rotation=True, startdate=None, enddate=None):
         """Get body wave data from IRIS server
         ====================================================================================================================
         Input Parameters:
@@ -714,15 +764,29 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """
         client          = Client('IRIS')
         evnumb          = 0
-        L               = len(self.events)
+        try:
+            stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4down  = obspy.UTCDateTime(0)
+        try:
+            etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4down  = obspy.UTCDateTime()
         print('================================== Getting body wave data =====================================')
-        for event in self.events:
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        L                   = len(self.cat)
+        for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
             magnitude       = event.magnitudes[0].mag
             Mtype           = event.magnitudes[0].magnitude_type
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             evnumb          +=1
-            otime           = event.origins[0].time 
+            otime           = event.origins[0].time
+            if otime < stime4down or otime > etime4down:
+                continue
             print 'Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude) 
             evlo            = event.origins[0].longitude
             evla            = event.origins[0].latitude
@@ -770,7 +834,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return
     
     def get_body_waveforms_mp(self, outdir, minDelta=30, maxDelta=150, channel='BHE,BHN,BHZ', phase='P', startoffset=-30., endoffset=60.0,
-            verbose=False, subsize=1000, deletemseed=False, nprocess=6, snumb=0, enumb=None, rotation=True):
+            verbose=False, subsize=1000, deletemseed=False, nprocess=6, snumb=0, enumb=None, rotation=True, startdate=None, enddate=None):
         """Get body wave data from IRIS server
         ====================================================================================================================
         Input Parameters:
@@ -788,18 +852,32 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """
         client              = Client('IRIS')
         evnumb              = 0
-        L                   = len(self.events)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         reqwaveLst          = []
+        try:
+            stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4down  = obspy.UTCDateTime(0)
+        try:
+            etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4down  = obspy.UTCDateTime()
         print('================================== Preparing download body wave data ======================================')
         swave               = snumb*subsize
         iwave               = 0
-        for event in self.events:
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        L   = len(self.cat)
+        for event in self.cat:
             magnitude       = event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             evnumb          += 1
-            otime           = event.origins[0].time 
+            otime           = event.origins[0].time
+            if otime < stime4down or otime > etime4down:
+                continue
             print 'Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude) 
             evlo            = event.origins[0].longitude
             evla            = event.origins[0].latitude
@@ -862,13 +940,16 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print('==================================== Reading downloaded body wave data ====================================')
         evnumb              = 0
         no_resp             = 0
-        for event in self.events:
+        for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
             magnitude       = event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             evnumb          += 1
             evid            = 'E%05d' %evnumb
             tag             = 'body_ev_%05d' %evnumb
+            otime           = event.origins[0].time
+            if otime < stime4down or otime > etime4down:
+                continue
             print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude) 
             for staid in self.waveforms.list():
                 netcode, stacode    = staid.split('.')
@@ -882,46 +963,78 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print('================================== End reading downloaded body wave data ==================================')
         print 'Number of file without resp:', no_resp
         return
+    
+    def read_body_waveforms_DMT(self, datadir):
+        
+        evnumb              = 0
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        L                   = len(self.cat)
+        for event in self.cat:
+            event_id        = event.resource_id.id.split('=')[-1]
+            magnitude       = event.magnitudes[0].mag
+            Mtype           = event.magnitudes[0].magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
+            otime           = event.origins[0].time
+            
+            subdatadir      = otime.year
+            
+        
+        
         
     def write2sac(self, network, station, evnumb, datatype='body'):
         """ Extract data from ASDF to SAC file
         ====================================================================================================================
-        Input Parameters:
+        input parameters:
         network, station    - specify station
         evnumb              - event id
         datatype            - data type ('body' - body wave, 'surf' - surface wave)
         =====================================================================================================================
         """
-        event = self.events[evnumb-1]
-        otime=event.origins[0].time
-        tag=datatype+'_ev_%05d' %evnumb
-        st=self.waveforms[network+'.'+station][tag]
-        stla, elev, stlo=self.waveforms[network+'.'+station].coordinates.values()
-        evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth
+        event           = self.events[evnumb-1]
+        otime           = event.origins[0].time
+        tag             = datatype+'_ev_%05d' %evnumb
+        st              = self.waveforms[network+'.'+station][tag]
+        stla, elev, stlo= self.waveforms[network+'.'+station].coordinates.values()
+        evlo            = event.origins[0].longitude
+        evla            = event.origins[0].latitude
+        evdp            = event.origins[0].depth
         for tr in st:
-            tr.stats.sac=obspy.core.util.attribdict.AttribDict()
-            tr.stats.sac['evlo']=evlo; tr.stats.sac['evla']=evla; tr.stats.sac['evdp']=evdp
-            tr.stats.sac['stlo']=stlo; tr.stats.sac['stla']=stla    
+            tr.stats.sac            = obspy.core.util.attribdict.AttribDict()
+            tr.stats.sac['evlo']    = evlo
+            tr.stats.sac['evla']    = evla
+            tr.stats.sac['evdp']    = evdp
+            tr.stats.sac['stlo']    = stlo
+            tr.stats.sac['stla']    = stla    
         st.write(str(otime)+'..sac', format='sac')
+        return
     
     def get_obspy_trace(self, network, station, evnumb, datatype='body'):
         """ Get obspy trace data from ASDF
         ====================================================================================================================
-        Input Parameters:
+        input parameters:
         network, station    - specify station
         evnumb              - event id
         datatype            - data type ('body' - body wave, 'surf' - surface wave)
         =====================================================================================================================
         """
-        event = self.events[evnumb-1]
-        tag=datatype+'_ev_%05d' %evnumb
-        st=self.waveforms[network+'.'+station][tag]
-        stla, elev, stlo=self.waveforms[network+'.'+station].coordinates.values()
-        evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth
+        event               = self.events[evnumb-1]
+        tag                 = datatype+'_ev_%05d' %evnumb
+        st                  = self.waveforms[network+'.'+station][tag]
+        stla, elev, stlo    = self.waveforms[network+'.'+station].coordinates.values()
+        evlo                = event.origins[0].longitude
+        evla                = event.origins[0].latitude
+        evdp                = event.origins[0].depth
         for tr in st:
-            tr.stats.sac=obspy.core.util.attribdict.AttribDict()
-            tr.stats.sac['evlo']=evlo; tr.stats.sac['evla']=evla; tr.stats.sac['evdp']=evdp
-            tr.stats.sac['stlo']=stlo; tr.stats.sac['stla']=stla    
+            tr.stats.sac            = obspy.core.util.attribdict.AttribDict()
+            tr.stats.sac['evlo']    = evlo
+            tr.stats.sac['evla']    = evla
+            tr.stats.sac['evdp']    = evdp
+            tr.stats.sac['stlo']    = stlo
+            tr.stats.sac['stla']    = stla    
         return st
     
     def compute_ref(self, inrefparam=CURefPy.InputRefparam(), savescaled=True, savemoveout=True, verbose=True):
@@ -935,20 +1048,29 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """
         print '================================== Receiver Function Analysis ======================================'
         for staid in self.waveforms.list():
-            netcode, stacode=staid.split('.')
-            print 'Station: '+staid
-            stla, elev, stlo=self.waveforms[staid].coordinates.values()
-            evnumb=0
-            for event in self.events:
-                evnumb+=1
-                evid='E%05d' %evnumb
-                tag='body_ev_%05d' %evnumb
-                try: st=self.waveforms[staid][tag]
-                except KeyError: continue
-                phase=st[0].stats.asdf.labels[0]
-                if inrefparam.phase != '' and inrefparam.phase != phase: continue
-                evlo=event.origins[0].longitude; evla=event.origins[0].latitude; evdp=event.origins[0].depth
-                otime=event.origins[0].time
+            netcode, stacode    = staid.split('.')
+            print('Station: '+staid)
+            stla, elev, stlo    = self.waveforms[staid].coordinates.values()
+            evnumb              = 0
+            try:
+                print self.cat
+            except AttributeError:
+                self.copy_catalog()
+            for event in self.cat:
+                evnumb          += 1
+                evid            = 'E%05d' %evnumb
+                tag             = 'body_ev_%05d' %evnumb
+                try:
+                    st          = self.waveforms[staid][tag]
+                except KeyError:
+                    continue
+                phase           = st[0].stats.asdf.labels[0]
+                if inrefparam.phase != '' and inrefparam.phase != phase:
+                    continue
+                evlo            = event.origins[0].longitude
+                evla            = event.origins[0].latitude
+                evdp            = event.origins[0].depth
+                otime           = event.origins[0].time
                 for tr in st:
                     tr.stats.sac=obspy.core.util.attribdict.AttribDict()
                     tr.stats.sac['evlo']=evlo; tr.stats.sac['evla']=evla; tr.stats.sac['evdp']=evdp

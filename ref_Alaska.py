@@ -4,16 +4,22 @@ import timeit
 import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
-dset=quakedbase.quakeASDF('./ref_Alaska.h5')
+# dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Alaska.h5')
+dset=quakedbase.quakeASDF('cat_inv_Alaska.h5')
+# print dset.events[0]
 # Retrieving earthquake catalog
-# dset.get_events(startdate='2017-01-01', enddate='2017-02-01', Mmin=5.5, magnitudetype='mb', gcmt=True)
-# dset.get_events(startdate='2017-02-01', enddate='2017-12-15', Mmin=5.5, magnitudetype='mb', gcmt=True)
+# ISC catalog
+# dset.get_events(startdate='1991-01-01', enddate='2015-02-01', Mmin=5.5, magnitudetype='mb', gcmt=True)
+# gcmt catalog
+# dset.get_events(startdate='1991-01-01', enddate='2017-08-31', Mmin=5.5, magnitudetype='mb', gcmt=True)
 # Getting station information
-dset.get_stations(channel='BH*', minlatitude=52., maxlatitude=72.5, minlongitude=-172., maxlongitude=-122.)
-# # # Downloading data
+# dset.get_stations(channel='BH*', minlatitude=52., maxlatitude=72.5, minlongitude=-172., maxlongitude=-122.)
+
+# Downloading data
 # t1=timeit.default_timer()
 # # st=dset.get_body_waveforms()
-# st=dset.get_body_waveforms_mp( outdir='./downloaded_P', verbose=False, nprocess=6)
+# dset.get_body_waveforms_mp( outdir='/scratch/summit/life9360/ALASKA_work/downloaded_P', verbose=True, nprocess=24)
+# dset.get_body_waveforms( verbose=True)
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
 # 
