@@ -44,27 +44,27 @@ def _gaussFilter( dt, nft, f0 ):
     Compute a gaussian filter in the freq domain which is unit area in time domain
     private function for IterDeconv
     ================================================================================
-    Input:
-    dt  - sampling time interval
-    nft - number freq points
-    f0  - width of filter
+    :::input parameters:::
+    dt      - sampling time interval
+    nft     - number freq points
+    f0      - width of filter
     
     Output:
-    gauss  - Gaussian filter array (numpy)
+    gauss   - Gaussian filter array (numpy)
     filter has the form: exp( - (0.5*w/f0)^2 ) the units of the filter are 1/s
     ================================================================================
     """
-    df      = 1.0/(nft*dt)
-    nft21   = 0.5*nft + 1
+    df                  = 1.0/(nft*dt)
+    nft21               = 0.5*nft + 1
     # get frequencies
-    f       = df*np.arange(nft21)
-    w       = 2*np.pi*f
-    w       = w/f0
-    kernel  = w**2
+    f                   = df*np.arange(nft21)
+    w                   = 2*np.pi*f
+    w                   = w/f0
+    kernel              = w**2
     # compute the gaussian filter
-    gauss   = np.zeros(nft)
-    gauss[:int(nft21)]   = np.exp( -0.25*kernel )/dt
-    gauss[int(nft21):]   = np.flipud(gauss[1:int(nft21)-1])
+    gauss               = np.zeros(nft)
+    gauss[:int(nft21)]  = np.exp( -0.25*kernel )/dt
+    gauss[int(nft21):]  = np.flipud(gauss[1:int(nft21)-1])
     return gauss
 
 
@@ -1041,11 +1041,20 @@ class RFTrace(obspy.Trace):
         Read raw R/T/Z data for receiver function analysis
         Arrival time will be read/computed for given phase, then data will be trimed according to tbeg and tend.
         """
-        if isinstance (Ztr, str): self.Ztr=obspy.read(Ztr)[0]
-        else: self.Ztr=Ztr
-        if isinstance (RTtr, str): self.RTtr=obspy.read(RTtr)[0]
-        else: self.RTtr=RTtr
-        stime=self.Ztr.stats.starttime; etime=self.Ztr.stats.endtime
+        if isinstance (Ztr, str):
+            self.Ztr    = obspy.read(Ztr)[0]
+        elif isinstance(Ztr, obspy.Trace):
+            self.Ztr    = Ztr
+        else:
+            raise TypeError('Unexpecetd type for Ztr!')
+        if isinstance (RTtr, str):
+            self.RTtr   = obspy.read(RTtr)[0]
+        elif isinstance(RTtr, obspy.Trace):
+            self.RTtr   = RTtr
+        else:
+            raise TypeError('Unexpecetd type for RTtr!')
+        stime           = self.Ztr.stats.starttime
+        etime           = self.Ztr.stats.endtime
         self.Ztr.trim(starttime=stime+tbeg, endtime=etime+tend)
         self.RTtr.trim(starttime=stime+tbeg, endtime=etime+tend)
         return
@@ -1054,20 +1063,20 @@ class RFTrace(obspy.Trace):
         """
         Compute receiver function with iterative deconvolution algorithmn
         ========================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         tdel       - phase delay
         f0         - Gaussian width factor
         niter      - number of maximum iteration
         minderr    - minimum misfit improvement, iteration will stop if improvement between two steps is smaller than minderr
         phase      - phase name, default is P
 
-        Input:
+        ::: input data  :::
         Ztr        - read from self.Ztr
         RTtr       - read from self.RTtr
         
-        Output:
+        ::: output data :::
         self.data  - data array(numpy)
-        SAC header:
+        ::: SAC header :::
         b          - begin time
         e          - end time
         user0      - Gaussian Width factor
@@ -1075,18 +1084,18 @@ class RFTrace(obspy.Trace):
         user4      - horizontal slowness
         ========================================================================================================================
         """
-        Ztr     = self.Ztr
-        RTtr    = self.RTtr
-        dt      = Ztr.stats.delta
-        npts    = Ztr.stats.npts
-        RMS     = np.zeros(niter)  # RMS errors
-        nfft    = 2**(npts-1).bit_length() # number points in fourier transform
-        P0      = np.zeros(nfft) # predicted spikes
+        Ztr         = self.Ztr
+        RTtr        = self.RTtr
+        dt          = Ztr.stats.delta
+        npts        = Ztr.stats.npts
+        RMS         = np.zeros(niter, dtype=np.float64)  # RMS errors
+        nfft        = 2**(npts-1).bit_length() # number points in fourier transform
+        P0          = np.zeros(nfft, dtype=np.float64) # predicted spikes
         # Resize and rename the numerator and denominator
-        U0          = np.zeros(nfft) #add zeros to the end
-        W0          = np.zeros(nfft)
-        U0[:npts]   = RTtr.data # clear UIN;
-        W0[:npts]   = Ztr.data # clear WIN;
+        U0          = np.zeros(nfft, dtype=np.float64) #add zeros to the end
+        W0          = np.zeros(nfft, dtype=np.float64)
+        U0[:npts]   = RTtr.data 
+        W0[:npts]   = Ztr.data 
         # get filter in Freq domain 
         gauss       = _gaussFilter( dt, nfft, f0 )
         # filter signals
@@ -1132,7 +1141,8 @@ class RFTrace(obspy.Trace):
         self.stats.sac['e']     = -tdel+npts*dt
         self.stats.sac['user0'] = f0
         self.stats.sac['user2'] = (1.0-RMS[it-1])*100.0
-        if addhs: self.addHSlowness(phase=phase)
+        if addhs:
+            self.addHSlowness(phase=phase)
         return
     
     def addHSlowness(self, phase='P'):
@@ -1140,18 +1150,24 @@ class RFTrace(obspy.Trace):
         Add horizontal slowness to user4 SAC header, distance. az, baz will also be added
         Computed for a given phase using taup and iasp91 model
         """
-        evla=self.stats.sac['evla']; evlo=self.stats.sac['evlo']
-        stla=self.stats.sac['stla']; stlo=self.stats.sac['stlo']
-        dist, az, baz           = obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo); dist=dist/1000.  # distance is in m
+        evla                    = self.stats.sac['evla']
+        evlo                    = self.stats.sac['evlo']
+        stla                    = self.stats.sac['stla']
+        stlo                    = self.stats.sac['stlo']
+        dist, az, baz           = obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo)
+        dist                    = dist/1000.  # distance is in km
         self.stats.sac['dist']  = dist
         self.stats.sac['az']    = az
         self.stats.sac['baz']   = baz
         evdp                    = self.stats.sac['evdp']/1000.
         Delta                   = obspy.geodetics.kilometer2degrees(dist)
-        arrivals = taupmodel.get_travel_times(source_depth_in_km=evdp, distance_in_degree=Delta, phase_list=[phase])
-        arr=arrivals[0]; rayparam=arr.ray_param_sec_degree; arr_time=arr.time
-        self.stats.sac['user4']=rayparam
-        self.stats.sac['user5']=arr_time
+        arrivals                = taupmodel.get_travel_times(source_depth_in_km=evdp,\
+                                                distance_in_degree=Delta, phase_list=[phase])
+        arr                     = arrivals[0]
+        rayparam                = arr.ray_param_sec_degree
+        arr_time                = arr.time
+        self.stats.sac['user4'] = rayparam
+        self.stats.sac['user5'] = arr_time
         return
     
     def init_postdbase(self):

@@ -830,7 +830,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if verbose:
                     print 'Getting data for:', staid
                 self.add_waveforms(st, event_id=event_id, tag=tag, labels=phase)
-            # print '===================================== Removing response ======================================='
         return
     
     def get_body_waveforms_mp(self, outdir, minDelta=30, maxDelta=150, channel='BHE,BHN,BHZ', phase='P', startoffset=-30., endoffset=60.0,
@@ -964,40 +963,56 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print 'Number of file without resp:', no_resp
         return
     
-    def read_body_waveforms_DMT(self, datadir, minDelta=30, maxDelta=150, startdate=None, enddate=None, rotation=True, phase='P'):
-        
+    def read_body_waveforms_DMT(self, datadir, minDelta=30, maxDelta=150, startdate=None, enddate=None, rotation=True, phase='P', verbose=True):
+        """read body wave data downloaded using obspyDMT
+        ====================================================================================================================
+        ::: input parameters :::
+        datadir         - data directory
+        min/maxDelta    - minimum/maximum epicentral distance, in degree
+        phase           - body wave phase 
+        start/enddate   - start and end date for reading downloaded data
+        rotation        - rotate the seismogram to RT or not
+        =====================================================================================================================
+        """
         evnumb              = 0
         try:
             print self.cat
         except AttributeError:
             self.copy_catalog()
         try:
-            stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
+            stime4read  = obspy.core.utcdatetime.UTCDateTime(startdate)
         except:
-            stime4down  = obspy.UTCDateTime(0)
+            stime4read  = obspy.UTCDateTime(0)
         try:
-            etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
+            etime4read  = obspy.core.utcdatetime.UTCDateTime(enddate)
         except:
-            etime4down  = obspy.UTCDateTime()
-        L                   = len(self.cat)
+            etime4read  = obspy.UTCDateTime()
+        L               = len(self.cat)
+        print('==================================== Reading downloaded body wave data ====================================')
         for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
-            magnitude       = event.magnitudes[0].mag
-            Mtype           = event.magnitudes[0].magnitude_type
+            pmag            = event.preferred_magnitude()
+            magnitude       = pmag.mag
+            Mtype           = pmag.magnitude_type
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             evnumb          +=1
-            otime           = event.origins[0].time
-            if otime < stime4down or otime > etime4down:
+            porigin         = event.preferred_origin()
+            otime           = porigin.time
+            if otime < stime4read or otime > etime4read:
                 continue
             print('Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
-            evlo            = event.origins[0].longitude
-            evla            = event.origins[0].latitude
-            evdp            = event.origins[0].depth/1000.
+            evlo            = porigin.longitude
+            evla            = porigin.latitude
+            evdp            = porigin.depth/1000.
             tag             = 'body_ev_%05d' %evnumb
-            suddatadir      = datadir+'/'+'%d%02d%02d_%02d%02d%02d.a' %(otime.year, otime.month, otime.day, otime.hour, otime.minute, otime.second)
+            suddatadir      = datadir+'/'+'%d%02d%02d_%02d%02d%02d.a' \
+                                %(otime.year, otime.month, otime.day, otime.hour, otime.minute, otime.second)
+            Ndata           = 0
+            outstr          = ''
             for staid in self.waveforms.list():
                 netcode, stacode    = staid.split('.')
-                infpfx              = suddatadir + '/'+netcode+'.'+stacode
+                infpfx              = suddatadir + '/raw/'+netcode+'.'+stacode
+                # infpfx              = suddatadir + '/processed/'+netcode+'.'+stacode
                 fnameZ              = infpfx + '..BHZ'
                 fnameE              = infpfx + '..BHE'
                 fnameN              = infpfx + '..BHN'
@@ -1010,7 +1025,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
                         fnameE      = infpfx + '.10.BHE'
                         fnameN      = infpfx + '.10.BHN'
                         if not (os.path.isfile(fnameZ) and os.path.isfile(fnameE) and os.path.isfile(fnameN)):
+                            if verbose:
+                                print('No data for: '+staid)
                             continue
+                if verbose:
+                    print 'Reading data for:', staid
                 stla, elev, stlo    = self.waveforms[staid].coordinates.values()
                 elev                = elev/1000.
                 az, baz, dist       = geodist.inv(evlo, evla, stlo, stla)
@@ -1026,16 +1045,28 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 st                  +=obspy.read(fnameE)
                 st                  +=obspy.read(fnameN)
                 if rotation:
-                    st.rotate('NE->RT', back_azimuth=baz)
-                if verbose:
-                    print 'Getting data for:', staid
+                    try:
+                        st.rotate('NE->RT', back_azimuth=baz)
+                    except ValueError:
+                        stime4trim  = obspy.UTCDateTime(0)
+                        etime4trim  = obspy.UTCDateTime()
+                        for tr in st:
+                            if stime4trim < tr.stats.starttime:
+                                stime4trim  = tr.stats.starttime
+                            if etime4trim > tr.stats.endtime:
+                                etime4trim  = tr.stats.endtime
+                        st.trim(starttime=stime4trim, endtime=etime4trim)
+                        st.rotate('NE->RT', back_azimuth=baz)
                 self.add_waveforms(st, event_id=event_id, tag=tag, labels=phase)
+                Ndata   += 1
+                outstr  += staid
+                outstr  += ' '
+            print(str(Ndata)+' data streams are stored in ASDF')
+            print('STATION CODE: '+outstr)
+            print('-----------------------------------------------------------------------------------------------------------')
+        print('================================== End reading downloaded body wave data ==================================')
         return
-            
-            
-        
-        
-        
+
     def write2sac(self, network, station, evnumb, datatype='body'):
         """ Extract data from ASDF to SAC file
         ====================================================================================================================
@@ -1088,7 +1119,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             tr.stats.sac['stla']    = stla    
         return st
     
-    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), savescaled=True, savemoveout=True, verbose=True):
+    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), savescaled=True, savemoveout=True, verbose=True, startdate=None, enddate=None):
         """Compute receiver function and post processed data(moveout, stretchback)
         ====================================================================================================================
         Input Parameters:
@@ -1101,6 +1132,14 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print self.cat
         except AttributeError:
             self.copy_catalog()
+        try:
+            stime4ref   = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4ref   = obspy.UTCDateTime(0)
+        try:
+            etime4ref   = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4ref   = obspy.UTCDateTime()
         print '================================== Receiver Function Analysis ======================================'
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
@@ -1118,10 +1157,13 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 phase           = st[0].stats.asdf.labels[0]
                 if inrefparam.phase != '' and inrefparam.phase != phase:
                     continue
-                evlo            = event.origins[0].longitude
-                evla            = event.origins[0].latitude
-                evdp            = event.origins[0].depth
-                otime           = event.origins[0].time
+                porigin         = event.preferred_origin()
+                evlo            = porigin.longitude
+                evla            = porigin.latitude
+                evdp            = porigin.depth
+                otime           = porigin.time
+                if otime < stime4ref or otime > etime4ref:
+                    continue
                 for tr in st:
                     tr.stats.sac        = obspy.core.util.attribdict.AttribDict()
                     tr.stats.sac['evlo']= evlo
@@ -1130,10 +1172,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     tr.stats.sac['stlo']= stlo
                     tr.stats.sac['stla']= stla
                 if verbose:
-                    magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-                    event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
-                    print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude) 
-                refTr=CURefPy.RFTrace()
+                    pmag            = event.preferred_magnitude()
+                    magnitude       = pmag.mag
+                    Mtype           = pmag.magnitude_type
+                    event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+                    print('Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude))
+                refTr               = CURefPy.RFTrace()
                 refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0],
                         tbeg=inrefparam.tbeg, tend=inrefparam.tend)
                 refTr.IterDeconv( tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
@@ -1161,14 +1205,17 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 ref_header['hslowness'] = refTr.stats.sac['user4']
                 ref_header['ghw']       = inrefparam.f0
                 ref_header['VR']        = refTr.stats.sac['user2']
-                staid_aux=netcode+'_'+stacode+'_'+phase+'/'+evid
+                staid_aux               = netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
-                if not refTr.move_out(): continue
+                if not refTr.move_out():
+                    continue
                 refTr.stretch_back()
                 postdbase               = refTr.postdbase
                 ref_header['moveout']   = postdbase.MoveOutFlag
-                if savescaled: self.add_auxiliary_data(data=postdbase.ampC, data_type='Ref'+inrefparam.reftype+'scaled', path=staid_aux, parameters=ref_header)
-                if savemoveout: self.add_auxiliary_data(data=postdbase.ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
+                if savescaled:
+                    self.add_auxiliary_data(data=postdbase.ampC, data_type='Ref'+inrefparam.reftype+'scaled', path=staid_aux, parameters=ref_header)
+                if savemoveout:
+                    self.add_auxiliary_data(data=postdbase.ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
                 self.add_auxiliary_data(data=postdbase.strback, data_type='Ref'+inrefparam.reftype+'streback', path=staid_aux, parameters=ref_header)
         return
     

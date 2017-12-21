@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
 # dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Alaska.h5')
-dset=quakedbase.quakeASDF('cat_inv_Alaska.h5')
+dset=quakedbase.quakeASDF('ref_Alaska.h5')
+# dset.cat = quakedbase.obspy.read_events('/scratch/summit/life9360/ALASKA_work/quakeml/alaska_2017_aug.ml')
+dset.cat = quakedbase.obspy.read_events('test.ml')
 # print dset.events[0]
 # Retrieving earthquake catalog
 # ISC catalog
