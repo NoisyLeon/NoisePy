@@ -964,13 +964,21 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print 'Number of file without resp:', no_resp
         return
     
-    def read_body_waveforms_DMT(self, datadir):
+    def read_body_waveforms_DMT(self, datadir, minDelta=30, maxDelta=150, startdate=None, enddate=None, rotation=True, phase='P'):
         
         evnumb              = 0
         try:
             print self.cat
         except AttributeError:
             self.copy_catalog()
+        try:
+            stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4down  = obspy.UTCDateTime(0)
+        try:
+            etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4down  = obspy.UTCDateTime()
         L                   = len(self.cat)
         for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
@@ -979,8 +987,51 @@ class quakeASDF(pyasdf.ASDFDataSet):
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             evnumb          +=1
             otime           = event.origins[0].time
+            if otime < stime4down or otime > etime4down:
+                continue
+            print('Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+            evlo            = event.origins[0].longitude
+            evla            = event.origins[0].latitude
+            evdp            = event.origins[0].depth/1000.
+            tag             = 'body_ev_%05d' %evnumb
+            suddatadir      = datadir+'/'+'%d%02d%02d_%02d%02d%02d.a' %(otime.year, otime.month, otime.day, otime.hour, otime.minute, otime.second)
+            for staid in self.waveforms.list():
+                netcode, stacode    = staid.split('.')
+                infpfx              = suddatadir + '/'+netcode+'.'+stacode
+                fnameZ              = infpfx + '..BHZ'
+                fnameE              = infpfx + '..BHE'
+                fnameN              = infpfx + '..BHN'
+                if not (os.path.isfile(fnameZ) and os.path.isfile(fnameE) and os.path.isfile(fnameN)):
+                    fnameZ          = infpfx + '.00.BHZ'
+                    fnameE          = infpfx + '.00.BHE'
+                    fnameN          = infpfx + '.00.BHN'
+                    if not (os.path.isfile(fnameZ) and os.path.isfile(fnameE) and os.path.isfile(fnameN)):
+                        fnameZ      = infpfx + '.10.BHZ'
+                        fnameE      = infpfx + '.10.BHE'
+                        fnameN      = infpfx + '.10.BHN'
+                        if not (os.path.isfile(fnameZ) and os.path.isfile(fnameE) and os.path.isfile(fnameN)):
+                            continue
+                stla, elev, stlo    = self.waveforms[staid].coordinates.values()
+                elev                = elev/1000.
+                az, baz, dist       = geodist.inv(evlo, evla, stlo, stla)
+                dist                = dist/1000.
+                if baz<0.:
+                    baz             += 360.
+                Delta               = obspy.geodetics.kilometer2degrees(dist)
+                if Delta<minDelta:
+                    continue
+                if Delta>maxDelta:
+                    continue
+                st                  = obspy.read(fnameZ)
+                st                  +=obspy.read(fnameE)
+                st                  +=obspy.read(fnameN)
+                if rotation:
+                    st.rotate('NE->RT', back_azimuth=baz)
+                if verbose:
+                    print 'Getting data for:', staid
+                self.add_waveforms(st, event_id=event_id, tag=tag, labels=phase)
+        return
             
-            subdatadir      = otime.year
             
         
         
@@ -1046,16 +1097,16 @@ class quakeASDF(pyasdf.ASDFDataSet):
         savemoveout     - save moveout data
         =====================================================================================================================
         """
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
         print '================================== Receiver Function Analysis ======================================'
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
             print('Station: '+staid)
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
             evnumb              = 0
-            try:
-                print self.cat
-            except AttributeError:
-                self.copy_catalog()
             for event in self.cat:
                 evnumb          += 1
                 evid            = 'E%05d' %evnumb
@@ -1072,9 +1123,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 evdp            = event.origins[0].depth
                 otime           = event.origins[0].time
                 for tr in st:
-                    tr.stats.sac=obspy.core.util.attribdict.AttribDict()
-                    tr.stats.sac['evlo']=evlo; tr.stats.sac['evla']=evla; tr.stats.sac['evdp']=evdp
-                    tr.stats.sac['stlo']=stlo; tr.stats.sac['stla']=stla
+                    tr.stats.sac        = obspy.core.util.attribdict.AttribDict()
+                    tr.stats.sac['evlo']= evlo
+                    tr.stats.sac['evla']= evla
+                    tr.stats.sac['evdp']= evdp
+                    tr.stats.sac['stlo']= stlo
+                    tr.stats.sac['stla']= stla
                 if verbose:
                     magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
                     event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
