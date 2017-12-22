@@ -1148,6 +1148,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print('Station: '+staid)
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
             evnumb              = 0
+            # Ndata               
             for event in self.cat:
                 evnumb          += 1
                 evid            = 'E%05d' %evnumb

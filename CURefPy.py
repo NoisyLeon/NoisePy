@@ -32,7 +32,8 @@ import matplotlib.pylab as plb
 import matplotlib.pyplot as plt
 from obspy.taup import TauPyModel
 import warnings
-from numba import jit
+import numba
+# from numba import jit
 # from pyproj import Geod
 # 
 # geodist = Geod(ellps='WGS84')
@@ -91,8 +92,60 @@ def _FreFilter(inW, FilterW, dt ):
     FilterdW= np.real(np.fft.ifft(FinW))
     return FilterdW
 
+@numba.jit( numba.types.UniTuple(numba.float64[:], 2) (numba.float64[:], numba.float64[:], numba.float64) )
+def _stretch(tarr, data, slow):
+    """Stretch data given slowness, private function for move_out
+    """
+    dt          = tarr[1] - tarr[0]
+    # depth arrays
+    dz          = 0.5
+    zmax        = 240.
+    zarr        = np.arange(int(zmax/dz), dtype=np.float64)*dz
+    nz          = zarr.size
+    # layer array
+    harr        = np.ones(nz, dtype=np.float64)*dz
+    # velocity arrays
+    vpvs        = 1.7
+    vp          = 6.4
+    vparr       = np.ones(nz, dtype=np.float64)*vp
+    vparr       = vparr + (zarr>60.)*np.ones(nz, dtype = np.float64) * 1.4
+    vsarr       = vparr/vpvs
+    # 1/vsarr**2 and 1/vparr**2
+    sv2         = vsarr**(-2)
+    pv2         = vparr**(-2)
+    # dz/vs - dz/vp
+    difft       = np.zeros(nz+1, dtype=np.float64)
+    difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz 
+    cumdifft    = np.cumsum(difft)
+    # dz*( sqrt(1/vs^2 - s^2) - sqrt(1/vp^2 - s^2))
+    slowarr     = np.ones(nz, dtype=np.float64)*slow*slow
+    difft2      = (np.sqrt(sv2-slowarr)-np.sqrt(pv2-slowarr))*dz # dz/
+    cumdifft2   = np.cumsum(difft2)
+    indt        = np.round(cumdifft2/dt)
+    indt[0]     = 0
+    if len(indt) == 1:
+        indt    = np.array([np.int_(indt)])
+    else:
+        indt    = np.int_(indt)
+    npts        = data.size
+    indt2       = indt[indt<npts]
+    nseis       = data[indt2]
+    tf          = cumdifft[nseis.size-1]
+    ntf         = int(tf/dt)
+    tarr2       = np.arange(ntf, dtype=np.float64)*dt
+    nt2         = tarr2.size
+    data2       = np.zeros(nt2, dtype=np.float64)
+    j           = 0
+    for tempt in tarr2:
+        indarr  = np.where(cumdifft <= tempt)[0]
+        index   = indarr[-1]
+        data2[j]= nseis[index] + (nseis[index+1]-nseis[index])* \
+                        (tempt-cumdifft[index])/(cumdifft[index+1]-cumdifft[index])
+        j       += 1
+    return tarr2, data2
 
-def _stretch (t1, nd1, slow):
+
+def _stretch_old(t1, nd1, slow):
     """Stretch data given slowness, private function for move_out
     """
     dzi         = 0.5
@@ -1064,7 +1117,7 @@ class RFTrace(obspy.Trace):
         self.RTtr.trim(starttime=stime+tbeg, endtime=etime+tend)
         return
     
-    def IterDeconv(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
+    def IterDeconv_old(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
         """
         Compute receiver function with iterative deconvolution algorithmn
         ========================================================================================================================
@@ -1143,7 +1196,97 @@ class RFTrace(obspy.Trace):
         self.stats              = RTtr.stats
         self.data               = RFI
         self.stats.sac['b']     = -tdel
-        self.stats.sac['e']     = -tdel+npts*dt
+        self.stats.sac['e']     = -tdel+(npts-1)*dt
+        self.stats.sac['user0'] = f0
+        self.stats.sac['user2'] = (1.0-RMS[it-1])*100.0
+        if addhs:
+            self.addHSlowness(phase=phase)
+        return
+    
+    
+    def IterDeconv(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
+        """
+        Compute receiver function with iterative deconvolution algorithmn
+        ========================================================================================================================
+        ::: input parameters :::
+        tdel       - phase delay
+        f0         - Gaussian width factor
+        niter      - number of maximum iteration
+        minderr    - minimum misfit improvement, iteration will stop if improvement between two steps is smaller than minderr
+        phase      - phase name, default is P
+
+        ::: input data  :::
+        Ztr        - read from self.Ztr
+        RTtr       - read from self.RTtr
+        
+        ::: output data :::
+        self.data  - data array(numpy)
+        ::: SAC header :::
+        b          - begin time
+        e          - end time
+        user0      - Gaussian Width factor
+        user2      - Variance reduction, (1-rms)*100
+        user4      - horizontal slowness
+        ========================================================================================================================
+        """
+        Ztr         = self.Ztr
+        RTtr        = self.RTtr
+        dt          = Ztr.stats.delta
+        npts        = Ztr.stats.npts
+        RMS         = np.zeros(niter, dtype=np.float64)  # RMS errors
+        nfft        = 2**(npts-1).bit_length() # number points in fourier transform
+        P0          = np.zeros(nfft, dtype=np.float64) # predicted spikes
+        # Resize and rename the numerator and denominator
+        U0          = np.zeros(nfft, dtype=np.float64) #add zeros to the end
+        W0          = np.zeros(nfft, dtype=np.float64)
+        U0[:npts]   = RTtr.data 
+        W0[:npts]   = Ztr.data
+        # continue here
+        
+        
+        # get filter in Freq domain 
+        gauss       = _gaussFilter( dt, nfft, f0 )
+        # filter signals
+        Wf0         = np.fft.fft(W0)
+        FilteredU0  = _FreFilter(U0, gauss, dt )
+        FilteredW0  = _FreFilter(W0, gauss, dt )
+        R           = FilteredU0 #  residual numerator
+        # Get power in numerator for error scaling
+        powerU      = np.sum(FilteredU0**2)
+        # Loop through iterations
+        it          = 0
+        sumsq_i     = 1
+        d_error     = 100*powerU + minderr
+        maxlag      = int(0.5*nfft)
+        while( abs(d_error) > minderr  and  it < niter ):
+            it          = it+1 # iteration advance
+            #   Ligorria and Ammon method
+            RW          = np.real(np.fft.ifft(np.fft.fft(R)*np.conj(np.fft.fft(FilteredW0))))
+            sumW0       = np.sum(FilteredW0**2)
+            RW          = RW/sumW0
+            imax        = np.argmax(abs(RW[:maxlag]))
+            amp         = RW[imax]/dt; # scale the max and get correct sign
+            #   compute predicted deconvolution
+            P0[imax]    = P0[imax] + amp  # get spike signal - predicted RF
+            P           = _FreFilter(P0, gauss*Wf0, dt*dt ) # convolve with filter
+            #   compute residual with filtered numerator
+            R           = FilteredU0 - P
+            sumsq       = np.sum(R**2)/powerU
+            RMS[it-1]   = sumsq # scaled error
+            d_error     = 100*(sumsq_i - sumsq)  # change in error 
+            sumsq_i     = sumsq  # store rms for computing difference in next   
+        # Compute final receiver function
+        P                       = _FreFilter(P0, gauss, dt )
+        # Phase shift
+        P                       = _phaseshift(P, nfft, dt, tdel)
+        # output first nt samples
+        RFI                     = P[:npts]
+        # output the rms values 
+        RMS                     = RMS[:it]
+        self.stats              = RTtr.stats
+        self.data               = RFI
+        self.stats.sac['b']     = -tdel
+        self.stats.sac['e']     = -tdel+(npts-1)*dt
         self.stats.sac['user0'] = f0
         self.stats.sac['user2'] = (1.0-RMS[it-1])*100.0
         if addhs:
@@ -1231,7 +1374,7 @@ class RFTrace(obspy.Trace):
         #----------------------------------------
         # Step 3: Stretch Data
         #----------------------------------------
-        nt2, data2  = _stretch (tarr1, data, tslow)
+        nt2, data2  = _stretch_old (tarr1, data, tslow)
         #--------------------------------------------------------
         # Step 4: Discard data with negative value at zero time
         #--------------------------------------------------------
