@@ -1044,6 +1044,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 st                  = obspy.read(fnameZ)
                 st                  +=obspy.read(fnameE)
                 st                  +=obspy.read(fnameN)
+                if len(st) != 3:
+                    continue
                 if rotation:
                     try:
                         st.rotate('NE->RT', back_azimuth=baz)
@@ -1154,6 +1156,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     st          = self.waveforms[staid][tag]
                 except KeyError:
                     continue
+                if len(st) != 3:
+                    continue
                 phase           = st[0].stats.asdf.labels[0]
                 if inrefparam.phase != '' and inrefparam.phase != phase:
                     continue
@@ -1207,6 +1211,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 ref_header['VR']        = refTr.stats.sac['user2']
                 staid_aux               = netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
+                # move out
                 if not refTr.move_out():
                     continue
                 refTr.stretch_back()

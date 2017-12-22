@@ -95,39 +95,40 @@ def _FreFilter(inW, FilterW, dt ):
 def _stretch (t1, nd1, slow):
     """Stretch data given slowness, private function for move_out
     """
-    slowi   = slow
-    dzi     = 0.5
-    dzmax   = 240.
-    dZ      = np.arange(int(dzmax/dzi))*0.5
-    Rv      = 1.7
-    dt      = t1[1] - t1[0]
-    ndz     = dZ.size
-    zthk    = np.ones(ndz)*dzi
-    cpv     = 6.4
-    pvel    = np.ones(ndz)*cpv
-    pvel    = pvel+(dZ>60)*np.ones(ndz)*1.4
-    svel1   = pvel/Rv
-    sv2     = svel1**(-2)
-    pv2     = (svel1*Rv)**(-2)
-    cc      = (np.sqrt(sv2)-np.sqrt(pv2))*dzi
-    cc      = np.append(0., cc)
-    vtt     = np.cumsum(cc)
-    p2      = np.ones(ndz)
-    p2      = p2*slowi*slowi
-    cc2     = (np.sqrt(sv2-p2)-np.sqrt(pv2-p2))*dzi
-    mtt     = np.cumsum(cc2)
-    ntt     = np.round(mtt/dt)
-    ntt[0]  = 0.
-    if len(ntt)==1: kk = np.array([np.int_(ntt)])
-    else: kk = np.int_(ntt)
-    Ldatain = nd1.size
-    kkk     = kk[kk<Ldatain]
-    nseis   = nd1[kkk]
-    time    = vtt[len(nseis)-1]
-    n1      = int(time/dt)
-    t2      = np.arange(n1)*dt
-    Lt2     = t2.size
-    d2      = np.array([])
+    dzi         = 0.5
+    dzmax       = 240.
+    dZ          = np.arange(int(dzmax/dzi))*0.5
+    Rv          = 1.7
+    dt          = t1[1] - t1[0]
+    ndz         = dZ.size
+    zthk        = np.ones(ndz)*dzi
+    cpv         = 6.4
+    pvel        = np.ones(ndz)*cpv
+    pvel        = pvel+(dZ>60)*np.ones(ndz)*1.4
+    svel1       = pvel/Rv
+    sv2         = svel1**(-2)
+    pv2         = (svel1*Rv)**(-2)
+    cc          = (np.sqrt(sv2)-np.sqrt(pv2))*dzi
+    cc          = np.append(0., cc)
+    vtt         = np.cumsum(cc)
+    p2          = np.ones(ndz)
+    p2          = p2*slow*slow
+    cc2         = (np.sqrt(sv2-p2)-np.sqrt(pv2-p2))*dzi
+    mtt         = np.cumsum(cc2)
+    ntt         = np.round(mtt/dt)
+    ntt[0]      = 0.
+    if len(ntt)==1:
+        kk      = np.array([np.int_(ntt)])
+    else:
+        kk      = np.int_(ntt)
+    Ldatain     = nd1.size
+    kkk         = kk[kk<Ldatain]
+    nseis       = nd1[kkk]
+    time        = vtt[len(nseis)-1]
+    n1          = int(time/dt)
+    t2          = np.arange(n1)*dt
+    Lt2         = t2.size
+    d2          = np.array([])
     for tempt in t2:
         tempd   = 0.
         smallTF = np.where(vtt <= tempt)[0]
@@ -535,6 +536,10 @@ class PostDatabase(object):
     ===============================================================================================================
     Parameters:
     MoveOutFlag - succeeded compute moveout or not
+                    1   - valid move-outed receiver function
+                    -1  - negative value at zero
+                    -2  - too large amplitude, value1 = maximum amplitude 
+                    -3  - too large or too small horizontal slowness, value1 = horizontal slowness
     ampC        - scaled receiver function
     ampTC       - moveout of receiver function
     strback     - stretched back receiver function
@@ -1128,13 +1133,13 @@ class RFTrace(obspy.Trace):
             d_error     = 100*(sumsq_i - sumsq)  # change in error 
             sumsq_i     = sumsq  # store rms for computing difference in next   
         # Compute final receiver function
-        P   = _FreFilter(P0, gauss, dt )
+        P                       = _FreFilter(P0, gauss, dt )
         # Phase shift
-        P   = _phaseshift(P, nfft, dt, tdel)
+        P                       = _phaseshift(P, nfft, dt, tdel)
         # output first nt samples
-        RFI = P[:npts]
+        RFI                     = P[:npts]
         # output the rms values 
-        RMS = RMS[:it]
+        RMS                     = RMS[:it]
         self.stats              = RTtr.stats
         self.data               = RFI
         self.stats.sac['b']     = -tdel
@@ -1174,7 +1179,7 @@ class RFTrace(obspy.Trace):
         """
         Initialize post-processing database
         """
-        self.postdbase=PostDatabase()
+        self.postdbase  = PostDatabase()
         return
     
     def move_out(self):
@@ -1184,49 +1189,63 @@ class RFTrace(obspy.Trace):
         self.init_postdbase()
         tslow       = self.stats.sac['user4']/111.12
         ratio       = self.stats.sac['user2']
-        b           = self.stats.sac['b']; e = self.stats.sac['e']
-        baz         = self.stats.sac['baz']; dt = self.stats.delta; npts = self.stats.npts
-        samprate    = 1./dt
-        a           = 0.
-        t           = np.arange(0, npts/samprate, 1./samprate)
-        nb          = int(np.ceil((a-b)*samprate))
-        t1          = np.arange((0+nb)/samprate, (0+nb)/samprate+35, 1/samprate) # t1= nb ~ nb+ 35s
-        nt          = np.arange(0+nb, 0+nb+20*samprate, 1) # nt= nb ~ nb+ 20s
-        if nt[-1]>npts: return False
-        if len(nt)==1: data=self.data[np.array([np.int_(nt)])]
-        else: data=self.data[np.int_(nt)]
-        nt1         = (nt - nb)/samprate
+        b           = self.stats.sac['b']
+        e           = self.stats.sac['e']
+        baz         = self.stats.sac['baz']
+        dt          = self.stats.delta
+        npts        = self.stats.npts
+        fs          = 1./dt
+        o           = 0.
+        t           = np.arange(0, npts/fs, 1./fs)
+        nb          = int(np.ceil((o-b)*fs))  # index for t = 0.
+        nt          = np.arange(0+nb, 0+nb+20*fs, 1) # nt= nb ~ nb+ 20*fs, index array for data 
+        if nt[-1]>npts:
+            return False
+        if len(nt)==1:
+            data    = self.data[np.array([np.int_(nt)])]
+        else:
+            data    = self.data[np.int_(nt)]
+        tarr1       = (nt - nb)/fs  # time array for move-outed data
         flag        = 0 # flag signifying whether postdatabase has been written or not
+        #---------------------------------------------------------------------------------
         # Step 1: Discard data with too large or too small H slowness
+        #---------------------------------------------------------------------------------
         if (tslow <= 0.04 or tslow > 0.1):
             self.postdbase.MoveOutFlag  = -3
-            self.postdbase.value1       = tslow
+            self.postdbase.value        = tslow
             flag                        = 1
         refvp       = 6.0
         refslow     = 0.06 # Reference Horizontal Slowness
+        #-----------------------------------------------------------------------------------------------
         # Step 2: Discard data with too large Amplitude in receiver function after amplitude correction
+        #-----------------------------------------------------------------------------------------------
+        # correct amplitude to reference horizontal slowness
         reffactor   = np.arcsin(refslow*refvp)/np.arcsin(tslow*refvp)
         data        = data*reffactor
         absdata     = np.abs(data)
         maxdata     = absdata.max()
         if ( maxdata > 1 and flag == 0):
-            self.postdbase.MoveOutFlag=-2
-            self.postdbase.value1=maxdata
-            flag = 1
-        # Amplitude correction is done.
+            self.postdbase.MoveOutFlag  = -2
+            self.postdbase.value1       = maxdata
+            flag                        = 1
+        #----------------------------------------
         # Step 3: Stretch Data
-        nt2, data2  = _stretch (nt1, data, tslow)
+        #----------------------------------------
+        nt2, data2  = _stretch (tarr1, data, tslow)
+        #--------------------------------------------------------
         # Step 4: Discard data with negative value at zero time
+        #--------------------------------------------------------
         if (data2[0] < 0 and flag == 0):
             self.postdbase.MoveOutFlag  = -1
             self.postdbase.value1       = data2[0]
-            flag = 1     
+            flag                        = 1     
         if (flag == 0):
             self.postdbase.MoveOutFlag  = 1
-            self.postdbase.value1       = None 
+            self.postdbase.value1       = None
+        
         DATA1               = data/1.42
         L                   = DATA1.size
-        self.postdbase.ampC = np.append(nt1,DATA1)
+        self.postdbase.ampC = np.append(tarr1,DATA1)
         self.postdbase.ampC = self.postdbase.ampC.reshape((2, L))
         self.postdbase.ampC = self.postdbase.ampC.T
         DATA2               = data2/1.42
@@ -1234,11 +1253,12 @@ class RFTrace(obspy.Trace):
         self.postdbase.ampTC= np.append(nt2,DATA2)
         self.postdbase.ampTC= self.postdbase.ampTC.reshape((2, L))
         self.postdbase.ampTC= self.postdbase.ampTC.T
-        win1 = 3.; win2 = 8.
-        cutted_data2    = data2[(nt2>=win1)*(nt2<=win2)]
-        cutted_nt2      = nt2[(nt2>=win1)*(nt2<=win2)]
-        peak            = cutted_data2.max()
-        time            = cutted_nt2[cutted_data2.argmax()]
+        win1                = 3.
+        win2                = 8.
+        cutted_data2        = data2[(nt2>=win1)*(nt2<=win2)]
+        cutted_nt2          = nt2[(nt2>=win1)*(nt2<=win2)]
+        peak                = cutted_data2.max()
+        time                = cutted_nt2[cutted_data2.argmax()]
         return True
 
     def stretch_back(self):
