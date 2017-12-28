@@ -33,13 +33,50 @@ import matplotlib.pyplot as plt
 from obspy.taup import TauPyModel
 import warnings
 import numba
+from scipy import fftpack
+
 # from numba import jit
 # from pyproj import Geod
 # 
 # geodist = Geod(ellps='WGS84')
-taupmodel = TauPyModel(model="iasp91")
-stretchbackdatafname='./strechback.data'
+taupmodel           = TauPyModel(model="iasp91")
+stretchbackdatafname= './stretchback.data'
+templatedata        =  np.loadtxt(stretchbackdatafname)
 
+def generate_strbackdata(outfname=None):
+    # depth arrays
+    dz          = 0.5
+    zmax        = 240.
+    zarr        = np.arange(int(zmax/dz), dtype=np.float64)*dz
+    nz          = zarr.size
+    # layer array
+    harr        = np.ones(nz, dtype=np.float64)*dz
+    # velocity arrays
+    vpvs        = 1.7
+    vp          = 6.4
+    vparr       = np.ones(nz, dtype=np.float64)*vp
+    vparr       = vparr + (zarr>60.)*np.ones(nz, dtype = np.float64) * 1.4
+    vsarr       = vparr/vpvs
+    # 1/vsarr**2 and 1/vparr**2
+    sv2         = vsarr**(-2)
+    pv2         = vparr**(-2)
+    # dz/vs - dz/vp, time array for vertically incident wave
+    difft       = np.zeros(nz+1, dtype=np.float64)
+    difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz 
+    cumdifft    = np.cumsum(difft)
+    # # dz*(tan(a1p) - tan(a1s))*sin(a0p)/vp0 +dz / cos(a1s)/vs - dz / cos(a1p)/vp
+    # # s = sin(a1s)/vs = sin(a1p)/vp = sin(a0p) / vp0
+    # time array for wave with given slowness
+    refslow     = 0.06
+    s2          = np.ones(nz, dtype=np.float64)*refslow*refslow
+    difft2      = np.zeros(nz+1, dtype=np.float64)
+    difft2[1:]  = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # dz/
+    cumdifft2   = np.cumsum(difft2)
+    ta          = np.arange(0, 16.54+0.005, 0.005)
+    tp          = np.interp(ta, cumdifft, cumdifft2)
+    return ta, tp
+    
+# @numba.jit( numba.float64[:](numba.float64, numba.int32, numba.float64) )
 def _gaussFilter( dt, nft, f0 ):
     """
     Compute a gaussian filter in the freq domain which is unit area in time domain
@@ -68,11 +105,12 @@ def _gaussFilter( dt, nft, f0 ):
     gauss[int(nft21):]  = np.flipud(gauss[1:int(nft21)-1])
     return gauss
 
-
+# @numba.jit( numba.float64[:](numba.float64[:], numba.int32, numba.float64,  numba.float64) )
 def _phaseshift( x, nfft, DT, TSHIFT ):
     """Add a shift to the data into the freq domain, private function for IterDeconv
     """
-    Xf      = np.fft.fft(x)
+    Xf      = fftpack.fft(x)
+    # Xf      = np.fft.fft(x)
     # phase shift in radians
     shift_i = round(TSHIFT/DT) # removed +1 from here.
     p       = np.arange(nfft)+1
@@ -80,21 +118,78 @@ def _phaseshift( x, nfft, DT, TSHIFT ):
     # apply shift
     Xf      = Xf*(np.cos(p) - 1j*np.sin(p))
     # back into time
-    x       = np.real( np.fft.ifft(Xf) )/np.cos(2*np.pi*shift_i/nfft)
+    x       = np.real( fftpack.ifft(Xf) )/np.cos(2*np.pi*shift_i/nfft)
+    # x       = np.real( np.fft.ifft(Xf) )/np.cos(2*np.pi*shift_i/nfft)
     return x
 
-
+# @numba.jit( numba.float64[:](numba.float64[:], numba.float64[:],  numba.float64) )
 def _FreFilter(inW, FilterW, dt ):
     """Filter input array in frequency domain, private function for IterDeconv
     """
-    FinW    = np.fft.fft(inW)
+    # # FinW    = np.fft.fft(inW)
+    FinW    = fftpack.fft(inW)
     FinW    = FinW*FilterW*dt
-    FilterdW= np.real(np.fft.ifft(FinW))
+    # # FilterdW= np.real(np.fft.ifft(FinW))
+    FilterdW= np.real(fftpack.ifft(FinW))
     return FilterdW
 
-@numba.jit( numba.types.UniTuple(numba.float64[:], 2) (numba.float64[:], numba.float64[:], numba.float64) )
+# @numba.jit( numba.types.Tuple((numba.float64[:], numba.float64[:], numba.int32)) (numba.float64[:], numba.float64[:], \
+#                 numba.float64, numba.int32, numba.float64, numba.float64, numba.int32, numba.float64) )
+def _iter_deconv(U0, W0, dt, npts, tdel, f0, niter, minderr):
+    nfft        = 2**(npts-1).bit_length() # number points in fourier transform
+    RMS         = np.zeros(niter, dtype=np.float64)  # RMS errors
+    P0          = np.zeros(nfft, dtype=np.float64) # predicted spikes
+    RW          = np.zeros(nfft, dtype=np.float64)
+    P           = np.zeros(nfft, dtype=np.float64) # predicted spikes
+    R           = np.zeros(nfft, dtype=np.float64)
+    # get filter in Freq domain 
+    gauss       = _gaussFilter( dt, nfft, f0 )
+    # filter signals
+    Wf0         = np.fft.fft(W0)
+    FilteredU0  = _FreFilter(U0, gauss, dt )
+    FilteredW0  = _FreFilter(W0, gauss, dt )
+    R           = FilteredU0 #  residual numerator
+    # Get power in numerator for error scaling
+    powerU      = np.sum(FilteredU0**2)
+    # Loop through iterations
+    it          = 0
+    sumsq_i     = 1
+    d_error     = 100*powerU + minderr
+    maxlag      = int(0.5*nfft)
+
+    while( abs(d_error) > minderr  and  it < niter ):
+        it          = it+1 # iteration advance
+        #   Ligorria and Ammon method
+        # temp        = np.real(np.fft.ifft(np.fft.fft(R)*np.conj(np.fft.fft(FilteredW0))))
+        R[:]        = np.real( pyculib.fft.ifft(pyculib.fft.fft(R)*np.conj(pyculib.fft.fft(FilteredW0))))
+        # RW[:]       = np.real(np.fft.ifft(np.fft.fft(R)*np.conj(np.fft.fft(FilteredW0))))
+        # sumW0       = np.sum(FilteredW0**2)
+        # RW[:]       = RW/sumW0
+        # imax        = np.argmax(abs(RW[:maxlag]))
+        # amp         = RW[imax]/dt; # scale the max and get correct sign
+        #   # compute predicted deconvolution
+        # P0[imax]    = P0[imax] + amp  # get spike signal - predicted RF
+        # P           = _FreFilter(P0, gauss*Wf0, dt*dt ) # convolve with filter
+        # # compute residual with filtered numerator
+        # R[:]        = FilteredU0 - P
+        # sumsq       = np.sum(R**2)/powerU
+        # RMS[it-1]   = sumsq # scaled error
+        # d_error     = 100*(sumsq_i - sumsq)  # change in error 
+        # sumsq_i     = sumsq  # store rms for computing difference in next   
+    # Compute final receiver function
+    P                       = _FreFilter(P0, gauss, dt )
+    # Phase shift
+    P                       = _phaseshift(P, nfft, dt, tdel)
+    # output first nt samples
+    RFI                     = P[:npts]
+    # output the rms values 
+    RMS                     = RMS[:it]
+    
+    return RFI, RMS, it
+
+# @numba.jit( numba.types.UniTuple(numba.float64[:], 2) (numba.float64[:], numba.float64[:], numba.float64) )
 def _stretch(tarr, data, slow):
-    """Stretch data given slowness, private function for move_out
+    """Stretch data to vertically incident receiver function given slowness, private function for move_out
     """
     dt          = tarr[1] - tarr[0]
     # depth arrays
@@ -113,37 +208,132 @@ def _stretch(tarr, data, slow):
     # 1/vsarr**2 and 1/vparr**2
     sv2         = vsarr**(-2)
     pv2         = vparr**(-2)
-    # dz/vs - dz/vp
+    # dz/vs - dz/vp, time array for vertically incident wave
     difft       = np.zeros(nz+1, dtype=np.float64)
-    difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz 
+    difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz
     cumdifft    = np.cumsum(difft)
-    # dz*( sqrt(1/vs^2 - s^2) - sqrt(1/vp^2 - s^2))
-    slowarr     = np.ones(nz, dtype=np.float64)*slow*slow
-    difft2      = (np.sqrt(sv2-slowarr)-np.sqrt(pv2-slowarr))*dz # dz/
+    # # dz*(tan(a1p) - tan(a1s))*sin(a0p)/vp0 +dz / cos(a1s)/vs - dz / cos(a1p)/vp
+    # # s = sin(a1s)/vs = sin(a1p)/vp = sin(a0p) / vp0
+    # time array for wave with given slowness
+    s2          = np.ones(nz, dtype=np.float64)*slow*slow
+    difft2      = np.zeros(nz+1, dtype=np.float64)
+    difft2[1:]  = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # dz/
+    # # # difft2      = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # originally, and data2 = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
     cumdifft2   = np.cumsum(difft2)
-    indt        = np.round(cumdifft2/dt)
-    indt[0]     = 0
-    if len(indt) == 1:
-        indt    = np.array([np.int_(indt)])
-    else:
-        indt    = np.int_(indt)
-    npts        = data.size
-    indt2       = indt[indt<npts]
-    nseis       = data[indt2]
-    tf          = cumdifft[nseis.size-1]
+    # interpolate data to correspond to cumdifft2 array
+    nseis       = np.interp(cumdifft2, tarr, data)
+    # get new time array
+    tf          = cumdifft[-1]
     ntf         = int(tf/dt)
     tarr2       = np.arange(ntf, dtype=np.float64)*dt
-    nt2         = tarr2.size
-    data2       = np.zeros(nt2, dtype=np.float64)
-    j           = 0
-    for tempt in tarr2:
-        indarr  = np.where(cumdifft <= tempt)[0]
-        index   = indarr[-1]
-        data2[j]= nseis[index] + (nseis[index+1]-nseis[index])* \
-                        (tempt-cumdifft[index])/(cumdifft[index+1]-cumdifft[index])
-        j       += 1
+    # originally it is
+    # data2     = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    # because originally cumdifft2[0] != 0, this should be wrong !
+    # # # data2       = np.interp(tarr2, cumdifft[:-1], nseis)
+    data2       = np.interp(tarr2, cumdifft, nseis)
     return tarr2, data2
 
+
+def _stretch_new_uncorrected(tarr, data, slow):
+    """Stretch data to vertically incident receiver function given slowness, private function for move_out
+    """
+    dt          = tarr[1] - tarr[0]
+    # depth arrays
+    dz          = 0.5
+    zmax        = 240.
+    zarr        = np.arange(int(zmax/dz), dtype=np.float64)*dz
+    nz          = zarr.size
+    # layer array
+    harr        = np.ones(nz, dtype=np.float64)*dz
+    # velocity arrays
+    vpvs        = 1.7
+    vp          = 6.4
+    vparr       = np.ones(nz, dtype=np.float64)*vp
+    vparr       = vparr + (zarr>60.)*np.ones(nz, dtype = np.float64) * 1.4
+    vsarr       = vparr/vpvs
+    # 1/vsarr**2 and 1/vparr**2
+    sv2         = vsarr**(-2)
+    pv2         = vparr**(-2)
+    # dz/vs - dz/vp, time array for vertically incident wave
+    difft       = np.zeros(nz+1, dtype=np.float64)
+    difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz
+    cumdifft    = np.cumsum(difft)
+    # # dz*(tan(a1p) - tan(a1s))*sin(a0p)/vp0 +dz / cos(a1s)/vs - dz / cos(a1p)/vp
+    # # s = sin(a1s)/vs = sin(a1p)/vp = sin(a0p) / vp0
+    # time array for wave with given slowness
+    s2          = np.ones(nz, dtype=np.float64)*slow*slow
+    # # difft2      = np.zeros(nz+1, dtype=np.float64)
+    # # difft2[1:]  = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # dz/
+    difft2      = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # originally, and data2 = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    cumdifft2   = np.cumsum(difft2)
+    # interpolate data to correspond to cumdifft2 array
+    nseis       = np.interp(cumdifft2, tarr, data)
+    # get new time array
+    tf          = cumdifft[-1]
+    ntf         = int(tf/dt)
+    tarr2       = np.arange(ntf, dtype=np.float64)*dt
+    # originally it is
+    # data2     = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    # because originally cumdifft2[0] != 0, this should be wrong !
+    data2       = np.interp(tarr2, cumdifft[:-1], nseis)
+    # data2       = np.interp(tarr2, cumdifft, nseis)
+    return tarr2, data2
+
+
+def _stretch_vera(tarr, data, slow):
+    """Stretch data to vertically incident receiver function given slowness, private function for move_out
+    """
+    dt          = tarr[1] - tarr[0]
+    # depth arrays
+    dz          = 0.5
+    zmax        = 240.
+    zarr        = np.arange(int(zmax/dz), dtype=np.float64)*dz
+    nz          = zarr.size
+    # layer array
+    harr        = np.ones(nz, dtype=np.float64)*dz
+    # velocity arrays
+    vpvs        = 1.7
+    vp          = 6.4
+    vparr       = np.ones(nz, dtype=np.float64)*vp
+    vparr       = vparr + (zarr>60.)*np.ones(nz, dtype = np.float64) * 1.4
+    vsarr       = vparr/vpvs
+    # 1/vsarr**2 and 1/vparr**2
+    sv2         = vsarr**(-2)
+    pv2         = vparr**(-2)
+    # dz/vs - dz/vp, time array for vertically incident wave
+    # # # difft       = np.zeros(nz+1, dtype=np.float64)
+    # # # difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz
+    difft       = (np.sqrt(sv2) - np.sqrt(pv2)) * dz
+    cumdifft    = np.cumsum(difft)
+    # # dz*(tan(a1p) - tan(a1s))*sin(a0p)/vp0 +dz / cos(a1s)/vs - dz / cos(a1p)/vp
+    # # s = sin(a1s)/vs = sin(a1p)/vp = sin(a0p) / vp0
+    # time array for wave with given slowness
+    s2          = np.ones(nz, dtype=np.float64)*slow*slow
+    # # # difft2      = np.zeros(nz+1, dtype=np.float64)
+    # # # difft2[1:]  = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # dz/
+    difft2      = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # originally, and data2 = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    cumdifft2   = np.cumsum(difft2)
+    # interpolate data to correspond to cumdifft2 array
+    nseis       = np.interp(cumdifft2, tarr, data)
+    # get new time array
+    tf          = cumdifft[-1]
+    ntf         = int(tf/dt)
+    tarr2       = np.arange(ntf, dtype=np.float64)*dt
+    # originally it is
+    # data2     = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    # because originally cumdifft2[0] != 0, this should be wrong !
+    # # # data2       = np.interp(tarr2, cumdifft[:-1], nseis)
+    data2       = np.interp(tarr2, cumdifft, nseis)
+    print cumdifft2[1]/cumdifft[1]
+    # data2       = np.zeros(tarr2.size, dtype=np.float64)
+    # j = 0
+    # for tempt in tarr2:
+    #     indarr  = np.where(cumdifft <= tempt)[0]
+    #     index   = indarr[-1]
+    #     data2[j]= nseis[index] + (nseis[index+1]-nseis[index])* \
+    #                     (tempt-cumdifft[index])/(cumdifft[index+1]-cumdifft[index])
+    #     j       += 1
+    return tarr2, data2
 
 def _stretch_old(t1, nd1, slow):
     """Stretch data given slowness, private function for move_out
@@ -1117,7 +1307,7 @@ class RFTrace(obspy.Trace):
         self.RTtr.trim(starttime=stime+tbeg, endtime=etime+tend)
         return
     
-    def IterDeconv_old(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
+    def IterDeconv(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
         """
         Compute receiver function with iterative deconvolution algorithmn
         ========================================================================================================================
@@ -1171,7 +1361,8 @@ class RFTrace(obspy.Trace):
         while( abs(d_error) > minderr  and  it < niter ):
             it          = it+1 # iteration advance
             #   Ligorria and Ammon method
-            RW          = np.real(np.fft.ifft(np.fft.fft(R)*np.conj(np.fft.fft(FilteredW0))))
+            # # # RW          = np.real(np.fft.ifft(np.fft.fft(R)*np.conj(np.fft.fft(FilteredW0))))
+            RW          = np.real(fftpack.ifft(fftpack.fft(R)*np.conj(fftpack.fft(FilteredW0))))
             sumW0       = np.sum(FilteredW0**2)
             RW          = RW/sumW0
             imax        = np.argmax(abs(RW[:maxlag]))
@@ -1204,7 +1395,7 @@ class RFTrace(obspy.Trace):
         return
     
     
-    def IterDeconv(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
+    def IterDeconv_new(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
         """
         Compute receiver function with iterative deconvolution algorithmn
         ========================================================================================================================
@@ -1233,64 +1424,23 @@ class RFTrace(obspy.Trace):
         RTtr        = self.RTtr
         dt          = Ztr.stats.delta
         npts        = Ztr.stats.npts
-        RMS         = np.zeros(niter, dtype=np.float64)  # RMS errors
         nfft        = 2**(npts-1).bit_length() # number points in fourier transform
-        P0          = np.zeros(nfft, dtype=np.float64) # predicted spikes
         # Resize and rename the numerator and denominator
         U0          = np.zeros(nfft, dtype=np.float64) #add zeros to the end
         W0          = np.zeros(nfft, dtype=np.float64)
         U0[:npts]   = RTtr.data 
         W0[:npts]   = Ztr.data
-        # continue here
         
-        
-        # get filter in Freq domain 
-        gauss       = _gaussFilter( dt, nfft, f0 )
-        # filter signals
-        Wf0         = np.fft.fft(W0)
-        FilteredU0  = _FreFilter(U0, gauss, dt )
-        FilteredW0  = _FreFilter(W0, gauss, dt )
-        R           = FilteredU0 #  residual numerator
-        # Get power in numerator for error scaling
-        powerU      = np.sum(FilteredU0**2)
-        # Loop through iterations
-        it          = 0
-        sumsq_i     = 1
-        d_error     = 100*powerU + minderr
-        maxlag      = int(0.5*nfft)
-        while( abs(d_error) > minderr  and  it < niter ):
-            it          = it+1 # iteration advance
-            #   Ligorria and Ammon method
-            RW          = np.real(np.fft.ifft(np.fft.fft(R)*np.conj(np.fft.fft(FilteredW0))))
-            sumW0       = np.sum(FilteredW0**2)
-            RW          = RW/sumW0
-            imax        = np.argmax(abs(RW[:maxlag]))
-            amp         = RW[imax]/dt; # scale the max and get correct sign
-            #   compute predicted deconvolution
-            P0[imax]    = P0[imax] + amp  # get spike signal - predicted RF
-            P           = _FreFilter(P0, gauss*Wf0, dt*dt ) # convolve with filter
-            #   compute residual with filtered numerator
-            R           = FilteredU0 - P
-            sumsq       = np.sum(R**2)/powerU
-            RMS[it-1]   = sumsq # scaled error
-            d_error     = 100*(sumsq_i - sumsq)  # change in error 
-            sumsq_i     = sumsq  # store rms for computing difference in next   
-        # Compute final receiver function
-        P                       = _FreFilter(P0, gauss, dt )
-        # Phase shift
-        P                       = _phaseshift(P, nfft, dt, tdel)
-        # output first nt samples
-        RFI                     = P[:npts]
-        # output the rms values 
-        RMS                     = RMS[:it]
-        self.stats              = RTtr.stats
-        self.data               = RFI
-        self.stats.sac['b']     = -tdel
-        self.stats.sac['e']     = -tdel+(npts-1)*dt
-        self.stats.sac['user0'] = f0
-        self.stats.sac['user2'] = (1.0-RMS[it-1])*100.0
-        if addhs:
-            self.addHSlowness(phase=phase)
+        RFI, RMS, it= _iter_deconv(U0, W0, dt, npts, tdel, f0, niter, minderr)
+        # 
+        # self.stats              = RTtr.stats
+        # self.data               = RFI
+        # self.stats.sac['b']     = -tdel
+        # self.stats.sac['e']     = -tdel+(npts-1)*dt
+        # self.stats.sac['user0'] = f0
+        # self.stats.sac['user2'] = (1.0-RMS[it-1])*100.0
+        # if addhs:
+        #     self.addHSlowness(phase=phase)
         return
     
     def addHSlowness(self, phase='P'):
@@ -1374,7 +1524,7 @@ class RFTrace(obspy.Trace):
         #----------------------------------------
         # Step 3: Stretch Data
         #----------------------------------------
-        nt2, data2  = _stretch_old (tarr1, data, tslow)
+        tarr2, data2= _stretch (tarr1, data, tslow)
         #--------------------------------------------------------
         # Step 4: Discard data with negative value at zero time
         #--------------------------------------------------------
@@ -1385,7 +1535,9 @@ class RFTrace(obspy.Trace):
         if (flag == 0):
             self.postdbase.MoveOutFlag  = 1
             self.postdbase.value1       = None
-        
+        #--------------------------------------------------------
+        # Step 5: Store the original and stretched data
+        #--------------------------------------------------------
         DATA1               = data/1.42
         L                   = DATA1.size
         self.postdbase.ampC = np.append(tarr1,DATA1)
@@ -1393,28 +1545,53 @@ class RFTrace(obspy.Trace):
         self.postdbase.ampC = self.postdbase.ampC.T
         DATA2               = data2/1.42
         L                   = DATA2.size
-        self.postdbase.ampTC= np.append(nt2,DATA2)
+        self.postdbase.ampTC= np.append(tarr2, DATA2)
         self.postdbase.ampTC= self.postdbase.ampTC.reshape((2, L))
         self.postdbase.ampTC= self.postdbase.ampTC.T
-        win1                = 3.
-        win2                = 8.
-        cutted_data2        = data2[(nt2>=win1)*(nt2<=win2)]
-        cutted_nt2          = nt2[(nt2>=win1)*(nt2<=win2)]
-        peak                = cutted_data2.max()
-        time                = cutted_nt2[cutted_data2.argmax()]
+        # # # win1                = 3.
+        # # # win2                = 8.
+        # # # cutted_data2        = data2[(tarr2>=win1)*(tarr2<=win2)]
+        # # # cutted_nt2          = tarr2[(tarr2>=win1)*(tarr2<=win2)]
+        # # # peak                = cutted_data2.max()
+        # # # time                = cutted_nt2[cutted_data2.argmax()]
         return True
 
     def stretch_back(self):
         """
         strech the receiver function back to slow = 0.06 using the strech ship from the result of strech_back.py
         """
-        # streching factor
+        # stretched data
+        t0                      = self.postdbase.ampTC[:,0]
+        a0                      = self.postdbase.ampTC[:,1]
+        npts0                   = t0.size
+        t0max                   = t0.max()
+        dt                      = t0[1]-t0[0]
+        ta                      = templatedata[:,0]
+        tp                      = templatedata[:,1]
+        npts2                   = ta.size
+        tamax                   = ta.max()
+        npts3                   = int(min(t0max,tamax)/dt)-1
+        strebackT               = np.arange(npts3, dtype = np.float64)*dt
+        nseis                   = np.interp( ta, t0, a0)
+        strebackA               = np.interp(strebackT, tp, nseis)
+        # store the stretched-back data
+        L                       = strebackA.size
+        self.postdbase.strback  = np.append(strebackT,strebackA)
+        self.postdbase.strback  = self.postdbase.strback.reshape((2, L))
+        self.postdbase.strback  = self.postdbase.strback.T
+        return
+    
+    def stretch_back_old(self):
+        """
+        strech the receiver function back to slow = 0.06 using the strech ship from the result of strech_back.py
+        """
+        # streteched data
         t0          = self.postdbase.ampTC[:,0]
         a0          = self.postdbase.ampTC[:,1]
         n1          = len(t0)
         tt1         = t0.max()
         dt          = t0[1]-t0[0]
-        templatedata= np.loadtxt(stretchbackdatafname)
+        # templatedata= np.loadtxt(stretchbackdatafname)
         ta=templatedata[:,0]; tp=templatedata[:,1]
         n2          = len(ta)
         tt2         = ta.max()
@@ -1424,8 +1601,9 @@ class RFTrace(obspy.Trace):
         for tempt in strebackT:
             smallTF = np.where(tp>=tempt)[0]
             indexj  = smallTF[0]-1
-            if indexj<0: indexj=0;
-            newt    = ta[indexj];
+            if indexj<0:
+                indexj  = 0;
+            newt        = ta[indexj];
             smallTF_t0  = np.where(t0<=newt)[0]
             indexk      = smallTF_t0[-1]
             newv        = a0[indexk] + (a0[indexk+1] - a0[indexk])*(newt - t0[indexk])/(t0[indexk+1]-t0[indexk])
@@ -1439,11 +1617,13 @@ class RFTrace(obspy.Trace):
     def save_data(self, outdir):
         """Save receiver function and post processed (moveout, stretchback) data to output directory
         """
-        outfname=outdir+'/'+self.stats.sac['kuser0']+'.sac'
+        outfname    = outdir+'/'+self.stats.sac['kuser0']+'.sac'
         warnings.filterwarnings('ignore', category=UserWarning, append=True)
         self.write(outfname, 'sac')
-        try: np.savez( outdir+'/'+self.stats.sac['kuser0']+'.post', self.postdbase.ampC, self.postdbase.ampTC, self.postdbase.strback)
-        except: return
+        try:
+            np.savez( outdir+'/'+self.stats.sac['kuser0']+'.post', self.postdbase.ampC, self.postdbase.ampTC, self.postdbase.strback)
+        except:
+            return
         return 
 
 

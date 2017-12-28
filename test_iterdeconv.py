@@ -4,6 +4,7 @@ import timeit
 import matplotlib.pyplot as plt
 import CURefPy
 import obspy
+import copy
 # Initialize ASDF dataset
 # dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Alaska.h5')
 dset=quakedbase.quakeASDF('ref_Alaska.h5')
@@ -28,3 +29,9 @@ inrefparam  = CURefPy.InputRefparam()
 refTr       = CURefPy.RFTrace()
 refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0], tbeg=inrefparam.tbeg, tend=inrefparam.tend)
 refTr.IterDeconv( tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter, minderr=inrefparam.minderr, phase='P' )
+
+refTr.move_out()
+
+refTrold = copy.deepcopy(refTr)
+refTr.stretch_back()
+refTrold.stretch_back_old()
