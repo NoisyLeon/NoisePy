@@ -1125,7 +1125,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """Compute receiver function and post processed data(moveout, stretchback)
         ====================================================================================================================
         ::: input parameters :::
-        inrefparam      - input parameters, refer to InputRefparam in CURefPy for details
+        inrefparam      - input parameters for receiver function, refer to InputRefparam in CURefPy for details
         savescaled      - save scaled post processed data
         savemoveout     - save moveout data
         =====================================================================================================================
@@ -1231,7 +1231,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         """Compute receiver function and post processed data(moveout, stretchback) with multiprocessing
         ====================================================================================================================
         ::: input parameters :::
-        inrefparam      - input parameters, refer to InputRefparam in CURefPy for details
+        inrefparam      - input parameters for receiver function, refer to InputRefparam in CURefPy for details
         savescaled      - save scaled post processed data
         savemoveout     - save moveout data
         subsize         - subsize of processing list, use to prevent lock in multiprocessing process
@@ -1240,8 +1240,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
         nprocess        - number of processes
         =====================================================================================================================
         """
-        print '================================== Receiver Function Analysis ======================================'
-        print 'Preparing data for multiprocessing'
+        print('================================== Receiver Function Analysis ======================================')
+        print('Preparing data for multiprocessing')
         try:
             print self.cat
         except AttributeError:
