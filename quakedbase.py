@@ -1011,8 +1011,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             outstr          = ''
             for staid in self.waveforms.list():
                 netcode, stacode    = staid.split('.')
-                infpfx              = suddatadir + '/raw/'+netcode+'.'+stacode
-                # infpfx              = suddatadir + '/processed/'+netcode+'.'+stacode
+                infpfx              = suddatadir + '/processed/'+netcode+'.'+stacode
                 fnameZ              = infpfx + '..BHZ'
                 fnameE              = infpfx + '..BHE'
                 fnameN              = infpfx + '..BHN'
@@ -1068,6 +1067,100 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print('-----------------------------------------------------------------------------------------------------------')
         print('================================== End reading downloaded body wave data ==================================')
         return
+    
+    def read_body_waveforms_DMT_rtz(self, datadir, minDelta=30, maxDelta=150, startdate=None, enddate=None, phase='P', verbose=True):
+        """read body wave data downloaded using obspyDMT, RTZ component
+        ====================================================================================================================
+        ::: input parameters :::
+        datadir         - data directory
+        min/maxDelta    - minimum/maximum epicentral distance, in degree
+        phase           - body wave phase 
+        start/enddate   - start and end date for reading downloaded data
+        rotation        - rotate the seismogram to RT or not
+        =====================================================================================================================
+        """
+        evnumb              = 0
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        try:
+            stime4read  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4read  = obspy.UTCDateTime(0)
+        try:
+            etime4read  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4read  = obspy.UTCDateTime()
+        L               = len(self.cat)
+        print('==================================== Reading downloaded body wave data ====================================')
+        for event in self.cat:
+            event_id        = event.resource_id.id.split('=')[-1]
+            pmag            = event.preferred_magnitude()
+            magnitude       = pmag.mag
+            Mtype           = pmag.magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
+            porigin         = event.preferred_origin()
+            otime           = porigin.time
+            if otime < stime4read or otime > etime4read:
+                continue
+            print('Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+            evlo            = porigin.longitude
+            evla            = porigin.latitude
+            evdp            = porigin.depth/1000.
+            tag             = 'body_ev_%05d' %evnumb
+            suddatadir      = datadir+'/'+'%d%02d%02d_%02d%02d%02d.a' \
+                                %(otime.year, otime.month, otime.day, otime.hour, otime.minute, otime.second)
+            Ndata           = 0
+            outstr          = ''
+            for staid in self.waveforms.list():
+                netcode, stacode    = staid.split('.')
+                infpfx              = suddatadir + '/processed/'+netcode+'.'+stacode
+                fnameZ              = infpfx + '..BHZ'
+                fnameR              = infpfx + '..BHR'
+                fnameT              = infpfx + '..BHT'
+                if not (os.path.isfile(fnameZ) and os.path.isfile(fnameR) and os.path.isfile(fnameT)):
+                    fnameZ          = infpfx + '.00.BHZ'
+                    fnameR          = infpfx + '.00.BHR'
+                    fnameT          = infpfx + '.00.BHT'
+                    if not (os.path.isfile(fnameZ) and os.path.isfile(fnameR) and os.path.isfile(fnameT)):
+                        fnameZ      = infpfx + '.10.BHZ'
+                        fnameR      = infpfx + '.10.BHR'
+                        fnameT      = infpfx + '.10.BHT'
+                        if not (os.path.isfile(fnameZ) and os.path.isfile(fnameR) and os.path.isfile(fnameT)):
+                            if verbose:
+                                print('No data for: '+staid)
+                            continue
+                if verbose:
+                    print 'Reading data for:', staid
+                stla, elev, stlo    = self.waveforms[staid].coordinates.values()
+                elev                = elev/1000.
+                az, baz, dist       = geodist.inv(evlo, evla, stlo, stla)
+                dist                = dist/1000.
+                if baz<0.:
+                    baz             += 360.
+                Delta               = obspy.geodetics.kilometer2degrees(dist)
+                if Delta<minDelta:
+                    continue
+                if Delta>maxDelta:
+                    continue
+                st                  = obspy.read(fnameZ)
+                st                  +=obspy.read(fnameR)
+                st                  +=obspy.read(fnameT)
+                if len(st) != 3:
+                    continue
+                self.add_waveforms(st, event_id=event_id, tag=tag, labels=phase)
+                Ndata   += 1
+                outstr  += staid
+                outstr  += ' '
+            print(str(Ndata)+' data streams are stored in ASDF')
+            print('STATION CODE: '+outstr)
+            print('-----------------------------------------------------------------------------------------------------------')
+        print('================================== End reading downloaded body wave data ==================================')
+        return
+    
+    
 
     def write2sac(self, network, station, evnumb, datatype='body'):
         """ Extract data from ASDF to SAC file

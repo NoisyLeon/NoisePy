@@ -1,3 +1,0 @@
-slurmstepd: error: Exceeded step memory limit at some point.
-slurmstepd: error: Exceeded job memory limit at some point.
-slurmstepd: error: *** JOB 523094 ON shas0508 CANCELLED AT 2017-12-21T10:15:13 ***
