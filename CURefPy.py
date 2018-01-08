@@ -356,13 +356,15 @@ def _group ( inbaz, indat):
 def _difference ( aa, bb, NN):
     """Compute difference between two input array, private function for harmonic stripping
     """
-    if NN > 0: L = min(len(aa),len(bb),NN)
-    else: L = min(len(aa),len(bb))
-    aa  = aa[:L]
-    bb  = bb[:L]
-    core= np.sum((aa-bb)*(aa-bb))
-    core= core / L
-    return np.sqrt(core)
+    if NN > 0:
+        L   = min(len(aa), len(bb), NN)
+    else:
+        L   = min(len(aa), len(bb))
+    aa      = aa[:L]
+    bb      = bb[:L]
+    diff    = np.sum((aa-bb)*(aa-bb))
+    diff    = diff / L
+    return np.sqrt(diff)
 
 def _invert_A0 ( inbaz, indat, inun ):   #only invert for A0 part
     """Invert for A0, private function for harmonic stripping
@@ -819,92 +821,81 @@ class PostRefLst(object):
             time    = PostData.ampTC[:,0]
             data    = PostData.ampTC[:,1]
             L       = time.size
-            tflag   = True
+            flag    = True
             if abs(data).max()>1:
-                tflag   = False
+                flag    = False
             if data[abs(time)<0.1].min()<0.02:
-                tflag   = False
-            if tflag:
+                flag    = False
+            if flag:
                 PostData.Len= L
                 lens        = np.append(lens, L)
                 outlst.append(PostData)
                 bazArr      = np.append( bazArr, np.floor(PostData.header['baz']))
-        #Grouped data
-        NLst        = len(outlst)
-        gbaz        = np.zeros(Lmin, dtype=np.float64)
-        gdata       = np.zeros(Lmin, dtype=np.float64)
-        gun         = np.zeros(Lmin, dtype=np.float64)
-        nv1         = np.zeros(Lmin, dtype=np.float64)
-        nu1         = np.zeros(Lmin, dtype=np.float64)
+        #Group data array
+        gbaz        = np.array([])
+        gdata       = np.array([])
+        gun         = np.array([])
+        dat_avg     = np.zeros(Lmin, dtype=np.float64)
+        weight_avg  = np.zeros(Lmin, dtype=np.float64)
         ## store the stacked RF#
         Lmin        = int(lens.min())
         time1       = outlst[0].ampTC[:,0]
         time1       = time1[:Lmin]
-        
+        NLst        = len(outlst)
         tdat        = np.zeros(NLst, dtype=np.float64)
         for i in range(Lmin):
             for j in range (NLst):
                 tdat[j] = outlst[j].ampTC[i, 1]
             b1,d1,u1    = _group(bazArr, tdat)
-            gbaz[i]     = b1
-            gdata[i]    = d1
-            gun[i]      = u1
-            
+            gbaz        = np.append(gbaz, b1)
+            gdata       = np.append(gdata, d1)
+            gun         = np.append(gun, u1)
             d1DIVu1     = d1/u1
             DIVu1       = 1./u1
             wmean       = np.sum(d1DIVu1)
             weight      = np.sum(DIVu1)
             if (weight > 0.):
-                nv1[i]  = wmean/weight
+                dat_avg[i]  = wmean/weight
             else:
                 print "weight is zero!!! ", len(d1), u1, d1
                 sys.exit()
-            nu1     = np.append(nu1, np.sum(u1)/len(u1))
-            
-        lengthbaz   = len(b1)
-        gbaz        = gbaz.reshape((Lmin, lengthbaz))
-        gdata       = gdata.reshape((Lmin, lengthbaz))
-        gun         = gun.reshape((Lmin, lengthbaz))
-
-        # Save wmean.txt
+            weight_avg[i]   = np.sum(u1)/len(u1)
+        Ngbaz       = len(b1)
+        gbaz        = gbaz.reshape((Lmin, Ngbaz))
+        gdata       = gdata.reshape((Lmin, Ngbaz))
+        gun         = gun.reshape((Lmin, Ngbaz))
+        # Save average data
         outname     = outdir+"/wmean.txt"
-        Lnt1        = len(nt1)
-        outwmeanArr = np.append(nt1, nv1)
-        outwmeanArr = np.append(outwmeanArr, nu1)
-        outwmeanArr = outwmeanArr.reshape((3,Lnt1))
+        outwmeanArr = np.append(time1, dat_avg)
+        outwmeanArr = np.append(outwmeanArr, weight_avg)
+        outwmeanArr = outwmeanArr.reshape((3, Lmin))
         outwmeanArr = outwmeanArr.T
         np.savetxt(outname, outwmeanArr, fmt='%g')
-        # Save bin_*_txt
-        for i in xrange (lengthbaz): # back -azimuth
+        # Save baz bin data
+        for i in range (Ngbaz): # back -azimuth
             outname     = outdir+"/bin_%d_txt" % (int(gbaz[0][i]))
-            outbinArr   = np.append(nt1[:Lmin], gdata[:,i])
-            outbinArr   = np.append(outbinArr, gun[:,i])
-            outbinArr   = outbinArr.reshape((3,Lmin ))
+            outbinArr   = np.append(time1[:Lmin], gdata[:, i])
+            outbinArr   = np.append(outbinArr, gun[:, i])
+            outbinArr   = outbinArr.reshape((3, Lmin ))
             outbinArr   = outbinArr.T
             np.savetxt(outname, outbinArr, fmt='%g')
-        
-        tdiff = -1.
-        for i in xrange(len(outlst)):
-            time    = outlst[i].strback[:,0]
-            data    = outlst[i].strback[:,1]
-            tflag   = 1.
-            Lmin    = min( len(time) , len(nt1) )
-            AA      = data[:Lmin]
-            BB      = nv1[:Lmin]
-            tdiff   = _difference ( AA, BB, 0)
-            if (tdiff > 0.1): tflag = 0.
-            outlst[i].tdiff=tdiff
+        # compute and store trace difference
+        for i in range(len(outlst)):
+            time            = outlst[i].ampTC[:,0]
+            data            = outlst[i].ampTC[:,1]
+            Lmin            = min( len(time) , len(time1) )
+            tdiff           = _difference ( data[:Lmin], dat_avg[:Lmin], 0)
+            outlst[i].tdiff = tdiff
         return outlst
     
-    
-    
     def QControl_tdiff(self, tdiff=0.08):
-        """Remove data given threshold tdiff
+        """Remove data given threshold trace difference value
         """
-        tempLst=PostRefLst()
+        outlst      = PostRefLst()
         for PostData in self.PostDatas:
-            if PostData.tdiff<tdiff : tempLst.append(PostData)
-        return tempLst
+            if PostData.tdiff<tdiff:
+                tempLst.append(PostData)
+        return outlst
     
     
     def HarmonicStripping(self, stacode, outdir):
@@ -1459,9 +1450,10 @@ class RFTrace(obspy.Trace):
     def save_data(self, outdir):
         """Save receiver function and post processed (moveout) data to output directory
         """
-        outfname    = outdir+'/'+self.stats.sac['kuser0']+'.sac'
+        outfname                = outdir+'/'+self.stats.sac['kuser0']+'.sac'
         warnings.filterwarnings('ignore', category=UserWarning, append=True)
-        self.write(outfname, 'sac')
+        self.stats.sac['user6'] = self.postdbase.MoveOutFlag
+        self.write(outfname, format = 'sac')
         try:
             np.savez( outdir+'/'+self.stats.sac['kuser0']+'.post', self.postdbase.ampC, self.postdbase.ampTC)
         except:

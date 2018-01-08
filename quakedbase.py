@@ -1489,7 +1489,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     os.remove(sacfname)
                 if not os.path.isfile(postfname):
                     continue
-                ref_header['moveout']   = 1
+                ref_header['moveout']   = refTr.stats.sac['user6']
                 postArr                 = np.load(postfname)
                 ampC                    = postArr['arr_0']
                 ampTC                   = postArr['arr_1']
@@ -1551,7 +1551,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print(str(Ndata)+' receiver function traces ')
             
             qcLst               = postLst.remove_bad(outsta)
+            
             qcLst               = qcLst.QControl_tdiff(tdiff=tdiff)
+            
             qcLst.HarmonicStripping(outdir=outsta, stacode=staid)
             staid_aux           = netcode+'_'+stacode+'_'+phase
             # wmean.txt
