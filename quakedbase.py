@@ -112,8 +112,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             outstr      += 'RefRHS                  - Harmonic stripping results of radial receiver function\n'
         if 'RefRmoveout' in self.auxiliary_data.list():
             outstr      += 'RefRmoveout             - Move out of radial receiver function\n'
-        if 'RefRscaled' in self.auxiliary_data.list():
-            outstr      += 'RefRscaled              - Scaled radial receiver function\n'
+        if 'RefRampc' in self.auxiliary_data.list():
+            outstr      += 'RefRampc              - Scaled radial receiver function\n'
         if 'RefRstreback' in self.auxiliary_data.list():
             outstr      += 'RefRstreback            - Stretch back of radial receiver function\n'
         outstr  += '============================================================================================================================================\n'
@@ -1129,17 +1129,19 @@ class quakeASDF(pyasdf.ASDFDataSet):
                         fnameR      = infpfx + '.10.BHR'
                         fnameT      = infpfx + '.10.BHT'
                         if not (os.path.isfile(fnameZ) and os.path.isfile(fnameR) and os.path.isfile(fnameT)):
-                            if verbose:
-                                print('No data for: '+staid)
-                            continue
+                            fnameZ      = infpfx + '.01.BHZ'
+                            fnameR      = infpfx + '.01.BHR'
+                            fnameT      = infpfx + '.01.BHT'
+                            if not (os.path.isfile(fnameZ) and os.path.isfile(fnameR) and os.path.isfile(fnameT)):
+                                if verbose:
+                                    print('No data for: '+staid)
+                                continue
                 if verbose:
                     print 'Reading data for:', staid
                 stla, elev, stlo    = self.waveforms[staid].coordinates.values()
                 elev                = elev/1000.
                 az, baz, dist       = geodist.inv(evlo, evla, stlo, stla)
                 dist                = dist/1000.
-                if baz<0.:
-                    baz             += 360.
                 Delta               = obspy.geodetics.kilometer2degrees(dist)
                 if Delta<minDelta:
                     continue
@@ -1214,13 +1216,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
             tr.stats.sac['stla']    = stla    
         return st
     
-    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), savescaled=True, savemoveout=True, verbose=True, startdate=None, enddate=None):
-        """Compute receiver function and post processed data(moveout, stretchback)
+    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), refslow=0.06, saveampc=True, verbose=True, startdate=None, enddate=None):
+        """Compute receiver function and post processed data(moveout)
         ====================================================================================================================
         ::: input parameters :::
-        inrefparam      - input parameters for receiver function, refer to InputRefparam in CURefPy for details
-        savescaled      - save scaled post processed data
-        savemoveout     - save moveout data
+        inrefparam  - input parameters for receiver function, refer to InputRefparam in CURefPy for details
+        saveampc    - save amplitude corrected post processed data
         =====================================================================================================================
         """
         try:
@@ -1241,7 +1242,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print('Station: '+staid)
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
             evnumb              = 0
-            # Ndata               
+            Ndata               = 0              
             for event in self.cat:
                 evnumb          += 1
                 evid            = 'E%05d' %evnumb
@@ -1305,32 +1306,29 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 ref_header['VR']        = refTr.stats.sac['user2']
                 staid_aux               = netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
-                # move out to vertically incident receiver function
-                if not refTr.move_out():
+                # move out to reference slowness receiver function
+                if not refTr.move_out(refslow=refslow):
                     continue
-                # stretch back to reference slowness
-                refTr.stretch_back()
                 postdbase               = refTr.postdbase
                 ref_header['moveout']   = postdbase.MoveOutFlag
-                if savescaled:
-                    self.add_auxiliary_data(data=postdbase.ampC, data_type='Ref'+inrefparam.reftype+'scaled', path=staid_aux, parameters=ref_header)
-                if savemoveout:
-                    self.add_auxiliary_data(data=postdbase.ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
-                self.add_auxiliary_data(data=postdbase.strback, data_type='Ref'+inrefparam.reftype+'streback', path=staid_aux, parameters=ref_header)
+                if saveampc:
+                    self.add_auxiliary_data(data=postdbase.ampC, data_type='Ref'+inrefparam.reftype+'ampc', path=staid_aux, parameters=ref_header)
+                self.add_auxiliary_data(data=postdbase.ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
+                Ndata                   += 1
+            print(str(Ndata)+' data streams are prepared for ref computation')
         return
     
-    def compute_ref_mp(self, outdir, inrefparam=CURefPy.InputRefparam(), savescaled=True, savemoveout=True, \
-                verbose=False, subsize=1000, deleteref=True, deletepost=True, nprocess=None, startdate=None, enddate=None):
-        """Compute receiver function and post processed data(moveout, stretchback) with multiprocessing
+    def compute_ref_mp(self, outdir, inrefparam=CURefPy.InputRefparam(), saveampc=True, verbose=False, \
+            subsize=1000, nprocess=6, startdate=None, enddate=None, readdata=True, deleteref=True, deletepost=True):
+        """Compute receiver function and post processed data(moveout) with multiprocessing
         ====================================================================================================================
         ::: input parameters :::
-        inrefparam      - input parameters for receiver function, refer to InputRefparam in CURefPy for details
-        savescaled      - save scaled post processed data
-        savemoveout     - save moveout data
-        subsize         - subsize of processing list, use to prevent lock in multiprocessing process
-        deleteref       - delete SAC receiver function data
-        deletepost      - delete npz post processed data
-        nprocess        - number of processes
+        inrefparam  - input parameters for receiver function, refer to InputRefparam in CURefPy for details
+        saveampc    - save amplitude corrected post processed data
+        subsize     - subsize of processing list, use to prevent lock in multiprocessing process
+        deleteref   - delete SAC receiver function data
+        deletepost  - delete npz post processed data
+        nprocess    - number of processes
         =====================================================================================================================
         """
         print('================================== Receiver Function Analysis ======================================')
@@ -1347,6 +1345,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
             etime4ref       = obspy.core.utcdatetime.UTCDateTime(enddate)
         except: 
             etime4ref       = obspy.UTCDateTime()
+        #---------------------------------------
+        # preparing refLst for multiprocessing
+        #---------------------------------------
         refLst              = []
         for staid in self.waveforms.list():
             netcode, stacode= staid.split('.')
@@ -1356,6 +1357,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             outsta          = outdir+'/'+staid
             if not os.path.isdir(outsta):
                 os.makedirs(outsta)
+            Ndata           = 0
             for event in self.cat:
                 evnumb      +=1
                 evid        = 'E%05d' %evnumb
@@ -1393,42 +1395,64 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0],
                         tbeg=inrefparam.tbeg, tend=inrefparam.tend)
                 refLst.append( refTr )
+                Ndata               += 1
+            print(str(Ndata)+' data streams are prepared for ref computation')
+        #---------------------------------------
+        # multiprocessing for receiver function
+        #---------------------------------------
         print('Start multiprocessing receiver function analysis !')
         if len(refLst) > subsize:
             Nsub            = int(len(refLst)/subsize)
             for isub in range(Nsub):
                 print 'Subset:', isub,'in',Nsub,'sets'
                 cstream     = refLst[isub*subsize:(isub+1)*subsize]
-                REF         = partial(ref4mp, outdir=outsta, inrefparam=inrefparam)
+                REF         = partial(ref4mp, outdir=outdir, inrefparam=inrefparam)
                 pool        = multiprocessing.Pool(processes=nprocess)
                 pool.map(REF, cstream) #make our results with a map call
                 pool.close() #we are not adding any more processes
                 pool.join() #tell it to wait until all threads are done before going on
             cstream         = refLst[(isub+1)*subsize:]
-            REF             = partial(ref4mp, outdir=outsta, inrefparam=inrefparam)
+            REF             = partial(ref4mp, outdir=outdir, inrefparam=inrefparam)
             pool            = multiprocessing.Pool(processes=nprocess)
             pool.map(REF, cstream) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
-            REF             = partial(ref4mp, outdir=outsta, inrefparam=inrefparam)
+            REF             = partial(ref4mp, outdir=outdir, inrefparam=inrefparam)
             pool            = multiprocessing.Pool(processes=nprocess)
             pool.map(REF, refLst) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         print('End of multiprocessing receiver function analysis !')
+        if readdata:
+            self.read_ref_data(datadir=outdir, saveampc=saveampc, inrefparam=inrefparam, deleteref=deleteref, deletepost=deletepost)
+        return
+    
+    def read_ref_data(self, datadir, saveampc=True, inrefparam=CURefPy.InputRefparam(), deleteref=True, deletepost=True):
+        """read receiver function data
+        ====================================================================================================================
+        ::: input parameters :::
+        inrefparam  - input parameters for receiver function, refer to InputRefparam in CURefPy for details
+        saveampc    - save amplitude corrected post processed data
+        subsize     - subsize of processing list, use to prevent lock in multiprocessing process
+        deleteref   - delete SAC receiver function data
+        deletepost  - delete npz post processed data
+        =====================================================================================================================
+        """
         print('Start reading receiver function data !')
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
             print('Station: '+staid)
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
-            outsta              = outdir+'/'+staid
+            datasta             = datadir+'/'+staid
             evnumb              = 0
+            Ndata               = 0
             for event in self.cat:
                 evnumb          +=1
                 evid            ='E%05d' %evnumb
-                sacfname        = outsta+'/'+evid+'.sac'; postfname = outsta+'/'+evid+'.post.npz'
-                if not os.path.isfile(sacfname):
+                sacfname        = datasta+'/'+evid+'.sac'
+                postfname       = datasta+'/'+evid+'.post.npz'
+                if not (os.path.isfile(sacfname) and os.path.isfile(postfname)):
                     continue
                 evlo                    = event.origins[0].longitude
                 evla                    = event.origins[0].latitude
@@ -1458,6 +1482,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 ref_header['hslowness'] = refTr.stats.sac['user4']
                 ref_header['ghw']       = inrefparam.f0
                 ref_header['VR']        = refTr.stats.sac['user2']
+                phase                   = inrefparam.phase
                 staid_aux               = netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
                 if deleteref:
@@ -1468,32 +1493,36 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 postArr                 = np.load(postfname)
                 ampC                    = postArr['arr_0']
                 ampTC                   = postArr['arr_1']
-                strback                 = postArr['arr_2']
                 if deletepost:
                     os.remove(postfname)
-                if savescaled:
-                    self.add_auxiliary_data(data=ampC, data_type='Ref'+inrefparam.reftype+'scaled', path=staid_aux, parameters=ref_header)
-                if savemoveout:
-                    self.add_auxiliary_data(data=ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
-                self.add_auxiliary_data(data=strback, data_type='Ref'+inrefparam.reftype+'streback', path=staid_aux, parameters=ref_header)
+                if saveampc:
+                    self.add_auxiliary_data(data=ampC, data_type='Ref'+inrefparam.reftype+'ampc', path=staid_aux, parameters=ref_header)
+                self.add_auxiliary_data(data=ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
+                Ndata                   += 1
+            print(str(Ndata)+' ref data streams are stored in ASDF')
             if deleteref*deletepost:
-                shutil.rmtree(outsta)
-        print('End reading receiver function data !')       
+                shutil.rmtree(datasta)
+        print('End reading receiver function data !')
         return
+        
     
-    def harmonic_stripping(self, outdir, data_type='RefRstreback', VR=80, tdiff=0.08, phase='P', reftype='R'):
+    def harmonic_stripping(self, outdir, data_type='RefRmoveout', VR=80., tdiff=0.08, phase='P', reftype='R'):
         """Harmonic stripping analysis
         ====================================================================================================================
         ::: input parameters :::
         outdir          - output directory
-        data_type       - datatype, default is 'RefRstreback', stretchback radial receiver function
+        data_type       - datatype, default is 'RefRmoveout', moveouted radial receiver function
         VR              - threshold variance reduction for quality control
         tdiff           - threshold trace difference for quality control
         phase           - phase, default = 'P'
         reftype         - receiver function type, default = 'R'
         =====================================================================================================================
         """
-        print '================================== Harmonic Stripping Analysis ======================================'
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        print('================================== Harmonic Stripping Analysis ======================================')
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
             print('Station: '+staid)
@@ -1503,7 +1532,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             outsta              = outdir+'/'+staid
             if not os.path.isdir(outsta):
                 os.makedirs(outsta)
-            for event in self.events:
+            Ndata               = 0
+            for event in self.cat:
                 evnumb          +=1
                 evid            = 'E%05d' %evnumb
                 try:
@@ -1514,8 +1544,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if ref_header['moveout'] <0 or ref_header['VR'] < VR:
                     continue
                 pdbase          = CURefPy.PostDatabase()
-                pdbase.strback  = subdset.data.value; pdbase.header=subdset.parameters
+                pdbase.ampTC    = subdset.data.value
+                pdbase.header   = subdset.parameters
                 postLst.append(pdbase)
+                Ndata           += 1
+            print(str(Ndata)+' receiver function traces ')
+            
             qcLst               = postLst.remove_bad(outsta)
             qcLst               = qcLst.QControl_tdiff(tdiff=tdiff)
             qcLst.HarmonicStripping(outdir=outsta, stacode=staid)
@@ -2331,9 +2365,9 @@ def get_waveforms4mp(reqinfo, outdir, client, pre_filt, verbose=True, rotation=F
 def ref4mp(refTr, outdir, inrefparam):
     refTr.IterDeconv(tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
             minderr=inrefparam.minderr, phase=refTr.Ztr.stats.sac['kuser1'] )
-    if not refTr.move_out():
+    if not refTr.move_out(refslow=inrefparam.refslow):
         return
-    refTr.stretch_back()
-    refTr.save_data(outdir)
+    outsta      = outdir+'/'+refTr.stats.network+'.'+refTr.stats.station
+    refTr.save_data(outdir=outsta)
     return
 

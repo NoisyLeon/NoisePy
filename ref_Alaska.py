@@ -26,8 +26,8 @@ dset.cat = quakedbase.obspy.read_events('test.ml')
 # print t2-t1, 'sec'
 # 
 # # Computing receiver function
-dset.compute_ref()
-# dset.compute_ref_mp(outdir='/work3/leon/ref_working', verbose=True, nprocess=4)
+# dset.compute_ref()
+dset.compute_ref_mp(outdir='../test_ref', verbose=True, nprocess=4)
 # try: del dset.auxiliary_data.RefRHS
 # except: pass
 # 

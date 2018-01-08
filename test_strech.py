@@ -27,14 +27,16 @@ else:
     data    = data[np.int_(nt)]
 tarr1       = (nt - nb)/fs  # time array for move-outed data
 
+slow=0.06
 tarr2, data2  = CURefPy._stretch_old (tarr1, data, slow)
-tarr2_n, data2_n  = CURefPy._stretch (tarr1, data, slow)
-tarr2_v, data2_v  = CURefPy._stretch_vera (tarr1, data, slow)
-tarr2_u, data2_u  = CURefPy._stretch_new_uncorrected (tarr1, data, slow)
+tarr2_n, data2_n  = CURefPy._stretch (tarr1, data, slow, refslow=0.06)
+# tarr2_v, data2_v  = CURefPy._stretch_vera (tarr1, data, slow)
+# tarr2_u, data2_u  = CURefPy._stretch_new_uncorrected (tarr1, data, slow)
 
 plt.plot(tarr2, data2, '-', label='old')
-plt.plot(tarr2_u, data2_u, '-.', label='uncorrected')
+# plt.plot(tarr2_u, data2_u, '-.', label='uncorrected')
 # plt.plot(tarr2_v, data2_v, '-.', label='vera')
+plt.plot(tarr1, data, '.-', label='unstretched')
 plt.plot(tarr2_n, data2_n, '--', label='corrected')
 plt.legend(fontsize=20)
 plt.show()

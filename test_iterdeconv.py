@@ -33,5 +33,5 @@ refTr.IterDeconv( tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.nit
 refTr.move_out()
 
 refTrold = copy.deepcopy(refTr)
-refTr.stretch_back()
-refTrold.stretch_back_old()
+# # # refTr.stretch_back()
+# # # refTrold.stretch_back_old()
