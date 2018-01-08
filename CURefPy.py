@@ -835,10 +835,10 @@ class PostRefLst(object):
         gbaz        = np.array([])
         gdata       = np.array([])
         gun         = np.array([])
-        dat_avg     = np.zeros(Lmin, dtype=np.float64)
-        weight_avg  = np.zeros(Lmin, dtype=np.float64)
         ## store the stacked RF#
         Lmin        = int(lens.min())
+        dat_avg     = np.zeros(Lmin, dtype=np.float64)
+        weight_avg  = np.zeros(Lmin, dtype=np.float64)
         time1       = outlst[0].ampTC[:,0]
         time1       = time1[:Lmin]
         NLst        = len(outlst)
@@ -888,25 +888,25 @@ class PostRefLst(object):
             outlst[i].tdiff = tdiff
         return outlst
     
-    def QControl_tdiff(self, tdiff=0.08):
+    def thresh_tdiff(self, tdiff=0.08):
         """Remove data given threshold trace difference value
         """
         outlst      = PostRefLst()
         for PostData in self.PostDatas:
             if PostData.tdiff<tdiff:
-                tempLst.append(PostData)
+                outlst.append(PostData)
         return outlst
     
     
-    def HarmonicStripping(self, stacode, outdir):
+    def harmonic_stripping(self, stacode, outdir):
         """
-        Harmonic Stripping Analysis for quality controlled data.
+        Harmonic stripping analysis for quality controlled data.
         ===============================================================================================================
         ::: input parameters :::
         stacode     - station code( e.g. TA.R11A )
         outdir      - output directory
         
-        Output:
+        ::: output :::
         outdir/bin_%d_rf.dat, outdir/A0.dat, outdir/A1.dat, outdir/A2.dat, outdir/A0_A1_A2.dat
         outdir/average_vr.dat, outdir/variance_reduction.dat
         outdir/prestre_*, outdir/repstre_*, outdir/obsstre_*, outdir/repstre_*
@@ -920,14 +920,14 @@ class PostRefLst(object):
         names   = []
         eventT  = []
         for PostData in self.PostDatas:
-            time = PostData.strback[:,0]
-            data = PostData.strback[:,1]
+            time    = PostData.ampTC[:,0]
+            data    = PostData.ampTC[:,1]
             adata.append(data)
             atime.append(time)
-            L    = len(time)
-            lens = np.append(lens, L)
-            baz  = np.append(baz, np.floor(PostData.header['baz']))
-            name = 'stre_'+str(int(PostData.header['baz']))+'_'+stacode+'_'+str(PostData.header['otime'])+'.out.back'
+            L       = len(time)
+            lens    = np.append(lens, L)
+            baz     = np.append(baz, np.floor(PostData.header['baz']))
+            name    = 'stre_'+str(int(PostData.header['baz']))+'_'+stacode+'_'+str(PostData.header['otime'])+'.out.back'
             names.append(name)
             eventT.append(PostData.header['otime'])
         # parameters in 3 different inversion
@@ -1224,6 +1224,7 @@ class PostRefLst(object):
             outArr  = outArr.T
             np.savetxt(outname, outArr, fmt='%g')
         return
+    
 
 class RFTrace(obspy.Trace):
     """

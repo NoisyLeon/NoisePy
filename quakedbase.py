@@ -1315,7 +1315,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     self.add_auxiliary_data(data=postdbase.ampC, data_type='Ref'+inrefparam.reftype+'ampc', path=staid_aux, parameters=ref_header)
                 self.add_auxiliary_data(data=postdbase.ampTC, data_type='Ref'+inrefparam.reftype+'moveout', path=staid_aux, parameters=ref_header)
                 Ndata                   += 1
-            print(str(Ndata)+' data streams are prepared for ref computation')
+            print(str(Ndata)+' data streams processed for ref computation')
         return
     
     def compute_ref_mp(self, outdir, inrefparam=CURefPy.InputRefparam(), saveampc=True, verbose=False, \
@@ -1549,12 +1549,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 postLst.append(pdbase)
                 Ndata           += 1
             print(str(Ndata)+' receiver function traces ')
-            
             qcLst               = postLst.remove_bad(outsta)
+            qcLst               = qcLst.thresh_tdiff(tdiff=tdiff)
             
-            qcLst               = qcLst.QControl_tdiff(tdiff=tdiff)
-            
-            qcLst.HarmonicStripping(outdir=outsta, stacode=staid)
+            qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             staid_aux           = netcode+'_'+stacode+'_'+phase
             # wmean.txt
             wmeanArr            = np.loadtxt(outsta+'/wmean.txt'); os.remove(outsta+'/wmean.txt')

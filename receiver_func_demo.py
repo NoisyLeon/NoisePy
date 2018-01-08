@@ -4,9 +4,9 @@ import timeit
 import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
-dset=quakedbase.quakeASDF('./ref_U15A.h5')
+dset=quakedbase.quakeASDF('../ref_U15A.h5')
 # # Retrieving earthquake catalog
-dset.get_events(startdate='2011-12-01', enddate='2015-06-01', Mmin=5.5, magnitudetype='mb', add2dbase=False, outquakeml='U15A_cat.ml')
+# dset.get_events(startdate='2011-12-01', enddate='2015-06-01', Mmin=5.5, magnitudetype='mb', add2dbase=False, outquakeml='U15A_cat.ml')
 # # # # Getting station information
 # dset.get_stations(channel='BH*', station='U15A', network='AE')
 # # # # Downloading data
@@ -17,13 +17,14 @@ dset.get_events(startdate='2011-12-01', enddate='2015-06-01', Mmin=5.5, magnitud
 # print t2-t1, 'sec'
 #
 # # Computing receiver function
-dset.compute_ref()
+# dset.compute_ref()
 # dset.compute_ref_mp(outdir='/work3/leon/ref_working', verbose=True, nprocess=4)
 # try: del dset.auxiliary_data.RefRHS
 # except: pass
 # 
 # # Harmonic analysis
-# dset.harmonic_stripping(outdir='.')
+dset.read_quakeml('U15A_cat.ml')
+dset.harmonic_stripping(outdir='../test_ref_working')
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
 # dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')
