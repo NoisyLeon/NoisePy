@@ -4,13 +4,13 @@ import timeit
 import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
-dset=quakedbase.quakeASDF('../ref_U15A.h5')
-# # Retrieving earthquake catalog
-# dset.get_events(startdate='2011-12-01', enddate='2015-06-01', Mmin=5.5, magnitudetype='mb', add2dbase=False, outquakeml='U15A_cat.ml')
-# # # # Getting station information
-# dset.get_stations(channel='BH*', station='U15A', network='AE')
-# # # # Downloading data
-# # t1=timeit.default_timer()
+dset=quakedbase.quakeASDF('../ref_R11A.h5')
+# # # # Retrieving earthquake catalog
+# dset.get_events(startdate='2007-07-01', enddate='2012-12-31', Mmin=5.5, magnitudetype='mb', add2dbase=True)
+# # # # # # Getting station information
+# dset.get_stations(channel='BH*', station='R11A', network='TA')
+# # # # # Downloading data
+# # # t1=timeit.default_timer()
 # st=dset.get_body_waveforms()
 # st=dset.get_body_waveforms_mp( outdir='./downloaded_P', verbose=False, nprocess=6)
 # t2=timeit.default_timer()
@@ -23,8 +23,8 @@ dset=quakedbase.quakeASDF('../ref_U15A.h5')
 # except: pass
 # 
 # # Harmonic analysis
-dset.read_quakeml('U15A_cat.ml')
-dset.harmonic_stripping(outdir='../test_ref_working')
+# dset.read_quakeml('U15A_cat.ml')
+out = dset.harmonic_stripping(outdir='../test_ref_working')
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
 # dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')

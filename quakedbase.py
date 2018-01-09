@@ -260,7 +260,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
     
     def copy_catalog(self):
         print('Copying catalog from ASDF to memory')
-        self.cat    = self.events.copy()
+        self.cat    = self.events
+        return
     
     def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN']):
         """Read txt station list 
@@ -780,17 +781,22 @@ class quakeASDF(pyasdf.ASDFDataSet):
         L                   = len(self.cat)
         for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
-            magnitude       = event.magnitudes[0].mag
-            Mtype           = event.magnitudes[0].magnitude_type
+            pmag            = event.preferred_magnitude()
+            magnitude       = pmag.mag
+            Mtype           = pmag.magnitude_type
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             evnumb          +=1
-            otime           = event.origins[0].time
+            porigin         = event.preferred_origin()
+            otime           = porigin.time
             if otime < stime4down or otime > etime4down:
                 continue
-            print 'Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude) 
-            evlo            = event.origins[0].longitude
-            evla            = event.origins[0].latitude
-            evdp            = event.origins[0].depth/1000.
+            try:
+                print 'Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude)
+            except:
+                print 'Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', M = '+str(magnitude)
+            evlo            = porigin.longitude
+            evla            = porigin.latitude
+            evdp            = porigin.depth/1000.
             tag             = 'body_ev_%05d' %evnumb
             for staid in self.waveforms.list():
                 netcode, stacode    = staid.split('.')
@@ -1068,7 +1074,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print('================================== End reading downloaded body wave data ==================================')
         return
     
-    def read_body_waveforms_DMT_rtz(self, datadir, minDelta=30, maxDelta=150, startdate=None, enddate=None, phase='P', verbose=True):
+    def read_body_waveforms_DMT_rtz(self, datadir, minDelta=30, maxDelta=150, startdate=None, enddate=None, phase='P', verbose=False):
         """read body wave data downloaded using obspyDMT, RTZ component
         ====================================================================================================================
         ::: input parameters :::
@@ -1079,7 +1085,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         rotation        - rotate the seismogram to RT or not
         =====================================================================================================================
         """
-        evnumb              = 0
+        evnumb          = 0
         try:
             print self.cat
         except AttributeError:
@@ -1216,7 +1222,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             tr.stats.sac['stla']    = stla    
         return st
     
-    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), refslow=0.06, saveampc=True, verbose=True, startdate=None, enddate=None):
+    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), refslow=0.06, saveampc=True, verbose=False, startdate=None, enddate=None):
         """Compute receiver function and post processed data(moveout)
         ====================================================================================================================
         ::: input parameters :::
@@ -1551,8 +1557,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print(str(Ndata)+' receiver function traces ')
             qcLst               = postLst.remove_bad(outsta)
             qcLst               = qcLst.thresh_tdiff(tdiff=tdiff)
-            
+            # return qcLst
+            # qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
+            return
             staid_aux           = netcode+'_'+stacode+'_'+phase
             # wmean.txt
             wmeanArr            = np.loadtxt(outsta+'/wmean.txt'); os.remove(outsta+'/wmean.txt')
