@@ -913,23 +913,25 @@ class PostRefLst(object):
         outdir/0repstre_*, outdir/1repstre_*, outdir/2repstre_*, outdir/diffstre_*
         ===============================================================================================================
         """
-        baz     = np.array([])
-        lens    = np.array([])
+        NLst    = len(self.PostDatas)
+        baz     = np.zeros(NLst, dtype=np.float64)
+        lens    = np.zeros(NLst, dtype=np.float64)
         atime   = []
         adata   = []
         names   = []
         eventT  = []
-        for PostData in self.PostDatas:
+        for i in range(NLst):
+            PostData= self.PostDatas[i]
             time    = PostData.ampTC[:,0]
             data    = PostData.ampTC[:,1]
             adata.append(data)
             atime.append(time)
-            L       = len(time)
-            lens    = np.append(lens, L)
-            baz     = np.append(baz, np.floor(PostData.header['baz']))
-            name    = 'stre_'+str(int(PostData.header['baz']))+'_'+stacode+'_'+str(PostData.header['otime'])+'.out.back'
+            lens[i] = time.size
+            baz[i]  = np.floor(PostData.header['baz'])
+            name    = 'moveout_'+str(int(PostData.header['baz']))+'_'+stacode+'_'+str(PostData.header['otime'])
             names.append(name)
             eventT.append(PostData.header['otime'])
+        
         # parameters in 3 different inversion
         zA0     = np.array([])
         oA0     = np.array([])
@@ -955,9 +957,10 @@ class PostRefLst(object):
         gdata   = np.array([])
         gun     = np.array([])
         Lmin    = int(lens.min())
-        for i in xrange (Lmin):
-            tdat=np.array([])
-            for PostData in self.PostDatas: tdat = np.append(tdat,PostData.strback[i,1])
+        tdat    = np.zeros(NLst, dtype=np.float64)
+        for i in range (Lmin):
+            for PostData in self.PostDatas:
+                tdat[i] = PostData.ampTC[i,1]  
             aa      = tdat.mean()
             naa     = tdat.std()
             baz1,tdat1,udat1=_group(baz, tdat)
