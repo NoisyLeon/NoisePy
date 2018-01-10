@@ -503,8 +503,8 @@ def A3pre3 ( inbaz, A1, phi1, A2, phi2 ):
 def A3pre ( inbaz, A0, A1, phi1, A2, phi2):
     return A0 + A1*np.sin(inbaz + phi1) + A2*np.sin(2*inbaz + phi2)
 
-def _match1 ( data1, data2 ):
-    """Compute matching of two input data
+def _match( data1, data2 ):
+    """compute matching of two input data
     """
     nn          = min(len(data1), len(data2))
     data1       = data1[:nn]
@@ -899,7 +899,7 @@ class PostRefLst(object):
         return outlst
     
     
-    def harmonic_stripping(self, stacode, outdir):
+    def harmonic_stripping(self, stacode, outdir, savetxt=True):
         """
         Harmonic stripping analysis for quality controlled data.
         ===============================================================================================================
@@ -917,16 +917,11 @@ class PostRefLst(object):
         NLst    = len(self.PostDatas)
         baz     = np.zeros(NLst, dtype=np.float64)
         lens    = np.zeros(NLst, dtype=np.float64)
-        # # # atime   = []
-        # # # adata   = []
         names   = []
         eventT  = []
         for i in range(NLst):
             PostData= self.PostDatas[i]
             time    = PostData.ampTC[:,0]
-            # # # data    = PostData.ampTC[:,1]
-            # # # adata.append(data)
-            # # # atime.append(time)
             lens[i] = time.size
             baz[i]  = np.floor(PostData.header['baz'])
             name    = 'moveout_'+str(int(PostData.header['baz']))+'_'+stacode+'_'+str(PostData.header['otime'])
@@ -959,7 +954,7 @@ class PostRefLst(object):
         A2      = np.zeros(Lmin, dtype=np.float64)
         phi1    = np.zeros(Lmin, dtype=np.float64)
         phi2    = np.zeros(Lmin, dtype=np.float64)
-        
+        # misfit arrays
         mfArr0  = np.zeros(Lmin, dtype=np.float64)  # misfit between A0 and R[i]
         mfArr1  = np.zeros(Lmin, dtype=np.float64)  # misfit between A0+A1+A2 and R[i]
         mfArr2  = np.zeros(Lmin, dtype=np.float64)  # misfit between A0+A1+A2 and binned data
@@ -974,8 +969,6 @@ class PostRefLst(object):
         for i in range (Lmin):
             for j in range(NLst):
                 tdat[j]         = self.PostDatas[j].ampTC[i, 1]
-            # # datmean             = tdat.mean()
-            # # datstd              = tdat.std()
             baz1,tdat1,udat1    = _group(baz, tdat)
             gbaz                = np.append(gbaz, baz1)
             gdata               = np.append(gdata, tdat1)
@@ -1004,9 +997,9 @@ class PostRefLst(object):
             phi1[i]                             = tempphi1
             A2[i]                               = tempA2
             phi2[i]                             = tempphi2
-            # 
-            Aavg                                = tdat.mean()
-            Astd                                = tdat.std()
+            # average amplitude and std
+            Aavg[i]                             = tdat.mean()
+            Astd[i]                             = tdat.std()
             # compute misfit for raw baz array
             misfit0         = np.sqrt(np.sum((A0[i] - adata[:, i])**2)/NLst)
             predatraw       = A3pre( baz*np.pi/180., A0=A0[i], A1=A1[i], phi1=phi1[i], A2=A2[i], phi2=phi2[i])
@@ -1022,251 +1015,240 @@ class PostRefLst(object):
             predatbin       = A3pre( baz1*np.pi/180., A0=A0[i], A1=A1[i], phi1=phi1[i], A2=A2[i], phi2=phi2[i])
             misfit2         = np.sqrt(np.sum((predatbin - tdat1)**2)/Nbin)
             wNbin           = np.sum(1./(udat1**2))
-            misfit3         = np.sqrt(np.sum((predatbin - tdat1)**2 /(udat1**2))/wNbin)
+            misfit3         = np.sqrt(np.sum( (predatbin - tdat1)**2 /(udat1**2) )/wNbin)
             mfArr2[i]       = misfit2
             mfArr3[i]       = misfit3
-            
-            # # 
-            # # 
-            # # mf  = 0.
-            # # mf1 = 0.
-            # # for j in range (NLst):
-            # #     mf  = mf + (A0[i] - adata[j][i])**2
-            # #     vv  = A3pre(baz[j]*np.pi/180., tempv0, tempv1, tempv2, tempv3, tempv4)
-            # #     mf1 = mf1 + (vv - adata[j][i])**2
-            # # mf  = np.sqrt(mf/len(baz))
-            # # mf1 = np.sqrt(mf1/len(baz))
-            # # if (mf<0.005):
-            # #     mf = 0.005
-            # # if (mf1<0.005):
-            # #     mf1 = 0.005
-            # # MF0 = np.append(MF0, mf-0.)
-            # # MF1 = np.append(MF1, mf1-0.)
-            
-            # # mf2 = 0.
-            # # mf3 = 0.
-            # # V1  = 0.
-            # # for j in np.arange (len(baz1)):
-            # #     vv  = A3pre(baz1[j]*np.pi/180.,tempv0,tempv1,tempv2,tempv3,tempv4)
-            # #     mf2 = mf2 + (vv - tdat1[j])**2;
-            # #     mf3 = mf3 + (vv - tdat1[j])**2/udat1[j]**2
-            # #     V1  = V1 + 1./(udat1[j]**2)
-            # # 
-            # # mf2 = np.sqrt(mf2/len(baz1))
-            # # mf3 = np.sqrt(mf3/V1)
-            # # MF2 = np.append(MF2, mf2-0.)
-            # # MF3 = np.append(MF3, mf3-0.)
         Nbin        = baz1.size
         gbaz        = gbaz.reshape((Lmin, Nbin))
         gdata       = gdata.reshape((Lmin, Nbin))
         gun         = gun.reshape((Lmin, Nbin))
-        # #Output grouped data
-        # for i in xrange (len(gbaz[0])): #baz
-        #     tname       = outdir+"/bin_%g_rf.dat" % (gbaz[0][i])
-        #     outbinArr   = np.append(atime[0][:Lmin], gdata[:,i])
-        #     outbinArr   = np.append(outbinArr, gun[:,i])
-        #     outbinArr   = outbinArr.reshape((3,Lmin ))
-        #     outbinArr   = outbinArr.T
-        #     np.savetxt(tname, outbinArr, fmt='%g')
-        # 
-        # time    = atime[0]
-        # time    = time[:Lmin]
-        # 
-        # ttA     = zA0
-        # timef0  = time[(ttA>-2)*(ttA<2)]
-        # ttAf0   = ttA[(ttA>-2)*(ttA<2)]
-        # Lf0     = timef0.size
-        # outArrf0= np.append(timef0,ttAf0)
-        # outArrf0= outArrf0.reshape((2,Lf0))
-        # outArrf0= outArrf0.T
-        # np.savetxt(outdir+"/A0.dat", outArrf0, fmt='%g')
-        # 
-        # ttA     = oA0
-        # ttA1    = oA1
-        # PHI1    = oSIG1
-        # ttAf1   = ttA[(ttA>-2)*(ttA<2)]
-        # ttA1f1  = ttA1[(ttA>-2)*(ttA<2)]
-        # PHI1f1  = PHI1[(ttA>-2)*(ttA<2)]
-        # timef1  = time[(ttA>-2)*(ttA<2)]
-        # Lf1     = ttAf1.size
-        # PHI1f1  = PHI1f1+(PHI1f1<0)*np.pi
-        # outArrf1= np.append(timef1, ttAf1)
-        # outArrf1= np.append(outArrf1, ttA1f1)
-        # outArrf1= np.append(outArrf1, PHI1f1)
-        # outArrf1= outArrf1.reshape((4,Lf1))
-        # outArrf1= outArrf1.T
-        # np.savetxt(outdir+"/A1.dat", outArrf1, fmt='%g')
-        # 
-        # ttA     = tA0[:Lmin]
-        # ttA2    = tA2[:Lmin]
-        # PHI2    = tSIG2[:Lmin]
-        # ttAf2   = ttA[(ttA>-2)*(ttA<2)]
-        # ttA2f2  = ttA2[(ttA>-2)*(ttA<2)]
-        # PHI2f2  = PHI2[(ttA>-2)*(ttA<2)]
-        # timef2  = time[(ttA>-2)*(ttA<2)]
-        # Lf2     = ttAf2.size
-        # PHI2f2  = PHI2f2+(PHI2f2<0)*np.pi
-        # outArrf2= np.append(timef2, ttAf2)
-        # outArrf2= np.append(outArrf2, ttA2f2)
-        # outArrf2= np.append(outArrf2, PHI2f2)
-        # outArrf2= outArrf2.reshape((4,Lf2))
-        # outArrf2= outArrf2.T
-        # np.savetxt(outdir+"/A2.dat", outArrf2, fmt='%g')
-        # 
-        # ttA     = A0
-        # ttA1    = A1
-        # ttA2    = A2
-        # PHI1    = SIG1
-        # PHI2    = SIG2
-        # ttAf3   = ttA[(ttA>-200)*(ttA<200)]
-        # ttA1f3  = ttA1[(ttA>-200)*(ttA<200)]
-        # ttA2f3  = ttA2[(ttA>-200)*(ttA<200)];
-        # PHI1f3  = PHI1[(ttA>-200)*(ttA<200)]*180/np.pi
-        # PHI2f3  = PHI2[(ttA>-200)*(ttA<200)]*180/np.pi
-        # timef3  = time[(ttA>-200)*(ttA<200)]
-        # MF0f3   = MF0[(ttA>-200)*(ttA<200)]
-        # MF1f3   = MF1[(ttA>-200)*(ttA<200)]
-        # MF2f3   = MF2[(ttA>-200)*(ttA<200)]
-        # MF3f3   = MF3[(ttA>-200)*(ttA<200)]
-        # AAf3    = A_A[(ttA>-200)*(ttA<200)]
-        # AAunf3  = A_A_un[(ttA>-200)*(ttA<200)]
-        # Lf3     = ttAf3.size
-        # outArrf3= np.append(timef3, ttAf3)
-        # outArrf3= np.append(outArrf3, ttA1f3)
-        # outArrf3= np.append(outArrf3, PHI1f3)
-        # outArrf3= np.append(outArrf3, ttA2f3)
-        # outArrf3= np.append(outArrf3, PHI2f3)
-        # outArrf3= np.append(outArrf3, MF0f3)
-        # outArrf3= np.append(outArrf3, MF1f3)
-        # outArrf3= np.append(outArrf3, MF2f3)
-        # outArrf3= np.append(outArrf3, MF3f3)
-        # outArrf3= np.append(outArrf3, AAf3)
-        # outArrf3= np.append(outArrf3, AAunf3)
-        # outArrf3= outArrf3.reshape((12,Lf3))
-        # outArrf3= outArrf3.T
-        # np.savetxt(outdir+"/A0_A1_A2.dat", outArrf3, fmt='%g')
-        # ##################################################################
-        # Latime  = len(atime)
-        # if len(baz)==1: fbaz=np.array([np.float_(baz)])
-        # else: fbaz=np.float_(baz)
-        # fbaz    = fbaz[:Latime]
-        # lfadata = np.array([])
-        # ##################################################################
-        # rdata   = np.array([])
-        # drdata  = np.array([]) # this is raw - 0 - 1 - 2
-        # rdata0  = np.array([]) # only 0
-        # lfrdata1= np.array([]) # 0+1
-        # lfrdata2= np.array([]) # 0+2
-        # vr0     = np.array([])
-        # vr1     = np.array([])
-        # vr2     = np.array([])
-        # vr3     = np.array([])
-        # for j in xrange(Latime): lfadata=np.append(lfadata, adata[j][:Lmin])
-        # lfadata=lfadata.reshape((Latime, Lmin))
-        # for i in xrange(Lmin):
-        #     ttA     = A0[i]
-        #     ttA1    = A1[i]
-        #     ttA2    = A2[i]
-        #     PHI1    = SIG1[i]
-        #     PHI2    = SIG2[i]
-        #     
-        #     temp1   = ttA1*np.sin(fbaz/180.*np.pi + PHI1)
-        #     temp2   = ttA2*np.sin(2*fbaz/180.*np.pi + PHI2)
-        #     temp3   = ttA + temp1 + temp2
-        #     rdata   = np.append(rdata, temp3)
-        #     tempadata   = lfadata[:,i]-temp3
-        #     drdata      = np.append(drdata, tempadata)
-        #     lfrdata1    = np.append(lfrdata1, temp1)
-        #     lfrdata2    = np.append(lfrdata2, temp2)
-        # rdata   = rdata.reshape((Lmin, Latime))
-        # drdata  = drdata.reshape((Lmin, Latime))
-        # lfrdata1= lfrdata1.reshape((Lmin, Latime))
-        # lfrdata2= lfrdata2.reshape((Lmin, Latime))
-        # 
-        # with open(outdir+"/variance_reduction.dat","w") as fVR:
-        #     for i in xrange(len(baz)):
-        #         tempbaz     = baz[i]
-        #         tempbaz1    = float(baz[i])*np.pi/180.
-        #         outname     = outdir+"/pre" + names[i]
-        #         timeCut     = time[time<=10.]
-        #         Ltimecut    = len(timeCut)
-        #         obs         = adata[i][time<=10.]
-        #         lfA0        = A0preArr(tempbaz1,zA0)[time<=10.]
-        #         lfA1        = A1preArr(tempbaz1,oA0,oA1,oSIG1)[time<=10.]
-        #         lfA1n       = A1pre1Arr(tempbaz1,oA1,oSIG1)[time<=10.]
-        #         lfA2        = A2preArr(tempbaz1,tA0,tA2,tSIG2)[time<=10.]
-        #         lfA2n       = A2pre1Arr(tempbaz1,tA2,tSIG2)[time<=10.]
-        #         lfA3        = A3preArr(tempbaz1,A0,A1,SIG1,A2,SIG2)[time<=10.]
-        #         lfA3n1      = A3pre1Arr(tempbaz1,A1,SIG1)[time<=10.]
-        #         lfA3n2      = A3pre2Arr(tempbaz1,A2,SIG2)[time<=10.]
-        #         
-        #         outpreArr   = np.append(timeCut, obs)
-        #         outpreArr   = np.append(outpreArr, lfA0)
-        #         outpreArr   = np.append(outpreArr, lfA1)
-        #         outpreArr   = np.append(outpreArr, lfA2)
-        #         outpreArr   = np.append(outpreArr, lfA3)
-        #         outpreArr   = np.append(outpreArr, lfA1n)
-        #         outpreArr   = np.append(outpreArr, lfA2n)
-        #         outpreArr   = np.append(outpreArr, lfA3n1)
-        #         outpreArr   = np.append(outpreArr, lfA3n2)
-        #         outpreArr   = outpreArr.reshape((10,Ltimecut))
-        #         outpreArr   = outpreArr.T
-        #         np.savetxt(outname, outpreArr, fmt='%g')
-        #         
-        #         vr0         = np.append(vr0, _match1(lfA0,adata[i][time<=10.]))
-        #         vr1         = np.append(vr1, _match1(lfA1,adata[i][time<=10.]))
-        #         vr2         = np.append(vr2, _match1(lfA2,adata[i][time<=10.]))
-        #         vr3         = np.append(vr3, _match1(lfA3,adata[i][time<=10.]))
-        #         tempstr = "%d %g %g %g %g %s\n" %(baz[i],vr0[i],vr1[i],vr2[i],vr3[i],names[i])
-        #         fVR.write(tempstr)
-        # with open(outdir+"/average_vr.dat","w") as favr:
-        #     tempstr = "%g %g %g %g\n" %(vr0.mean(), vr1.mean(), vr2.mean(), vr3.mean())
-        #     favr.write(tempstr)
-        #     
-        # dt      = time[1]-time[0]
-        # lfadata = lfadata.T ## (Lmin, Latime)        
-        # 
-        # for i in xrange (len(names)):
-        #     outname = outdir+"/diff" + names[i]
-        #     outArr  = np.append(time, drdata[:,i])
-        #     outArr  = outArr.reshape((2,Lmin))
-        #     outArr  = outArr.T
-        #     np.savetxt(outname, outArr, fmt='%g')
-        # 
-        # for i in np.arange (len(names)):
-        #     outname = outdir+"/rep" + names[i]
-        #     outArr  = np.append(time, rdata[:,i])
-        #     outArr  = outArr.reshape((2,Lmin))
-        #     outArr  = outArr.T
-        #     np.savetxt(outname, outArr, fmt='%g')
-        # 
-        # for i in np.arange (len(names)):
-        #     outname = outdir+"/0rep" + names[i]
-        #     outArr  = np.append(time, A0)
-        #     outArr  = outArr.reshape((2,Lmin))
-        #     outArr  = outArr.T
-        #     np.savetxt(outname, outArr, fmt='%g')
-        # 
-        # for i in np.arange (len(names)):
-        #     outname = outdir+"/1rep" + names[i]
-        #     outArr  = np.append(time, lfrdata1[:,i])
-        #     outArr  = outArr.reshape((2,Lmin))
-        #     outArr  = outArr.T
-        #     np.savetxt(outname, outArr, fmt='%g')
-        #     
-        # for i in np.arange (len(names)):
-        #     outname = outdir+"/2rep" + names[i]
-        #     outArr  = np.append(time, lfrdata2[:,i])
-        #     outArr  = outArr.reshape((2,Lmin))
-        #     outArr  = outArr.T
-        #     np.savetxt(outname, outArr, fmt='%g')
-        #     
-        # for i in np.arange (len(names)):
-        #     outname = outdir+"/obs" + names[i]
-        #     outArr  = np.append(time, lfadata[:,i])
-        #     outArr  = outArr.reshape((2,Lmin))
-        #     outArr  = outArr.T
-        #     np.savetxt(outname, outArr, fmt='%g')
+        #-----------------------------------------
+        # Output grouped data
+        #-----------------------------------------
+        if savetxt:
+            # save binned ref data
+            for i in range(Nbin): #baz
+                binfname    = outdir+"/bin_%g_rf.dat" % (gbaz[0, i])
+                outbinArr   = np.append(atime[0, :], gdata[:, i])
+                outbinArr   = np.append(outbinArr, gun[:, i])
+                outbinArr   = outbinArr.reshape((3, Lmin ))
+                outbinArr   = outbinArr.T
+                np.savetxt(binfname, outbinArr, fmt='%g')
+            # save A0 amplitude from A0 inversion
+            time        = atime[0, :]
+            timeA0      = time[(A0_0>-2.)*(A0_0<2.)]
+            A0_out      = A0_0[(A0_0>-2.)*(A0_0<2.)]
+            LA0         = timeA0.size
+            outArrf0    = np.append(timeA0,A0_out)
+            outArrf0    = outArrf0.reshape((2, LA0))
+            outArrf0    = outArrf0.T
+            np.savetxt(outdir+"/A0.dat", outArrf0, fmt='%g', header='time A0; A0 inversion')
+            # save A0, A1 and phi1 from A1 inversion
+            timeA1      = time[(A0_1>-2.)*(A0_1<2.)]
+            A0_out      = A0_1[(A0_1>-2.)*(A0_1<2.)]
+            A1_out      = A1_1[(A0_1>-2.)*(A0_1<2.)]
+            phi1_out    = phi1_1[(A0_1>-2.)*(A0_1<2.)]
+            phi1_out    = phi1_out + (phi1_out<0.)*np.pi
+            LA1         = timeA1.size
+            outArrf1    = np.append(timeA1, A0_out)
+            outArrf1    = np.append(outArrf1, A1_out)
+            outArrf1    = np.append(outArrf1, phi1_out)
+            outArrf1    = outArrf1.reshape((4, LA1))
+            outArrf1    = outArrf1.T
+            np.savetxt(outdir+"/A1.dat", outArrf1, fmt='%g', header='time A0 A1 phi1; A1 inversion')
+            # save A0, A2 and phi2 from A2 inversion
+            timeA2      = time[(A0_2>-2.)*(A0_2<2.)]
+            A0_out      = A0_2[(A0_2>-2.)*(A0_2<2.)]
+            A2_out      = A2_2[(A0_2>-2.)*(A0_2<2.)]
+            phi2_out    = phi2_2[(A0_2>-2.)*(A0_2<2.)]
+            phi2_out    = phi2_out + (phi2_out<0.)*np.pi
+            LA2         = timeA2.size
+            outArrf2    = np.append(timeA2, A0_out)
+            outArrf2    = np.append(outArrf2, A2_out)
+            outArrf2    = np.append(outArrf2, phi2_out)
+            outArrf2    = outArrf2.reshape((4,LA2))
+            outArrf2    = outArrf2.T
+            np.savetxt(outdir+"/A2.dat", outArrf2, fmt='%g', header='time A0 A2 phi2; A2 inversion')
+            # save A0, A1, phi1, A2, phi2 and misfit arrays from A0_A1_A2 inversion
+            timeA3      = time[(A0>-200.)*(A0<200.)]
+            A0_out      = A0[(A0>-200.)*(A0<200.)]
+            A1_out      = A1[(A0>-200.)*(A0<200.)]
+            phi1_out    = phi1[(A0>-200.)*(A0<200.)]*180./np.pi
+            A2_out      = A2[(A0>-200.)*(A0<200.)]
+            phi2_out    = phi2[(A0>-200.)*(A0<200.)]*180./np.pi
+            mf0_out     = mfArr0[(A0>-200.)*(A0<200.)]
+            mf1_out     = mfArr1[(A0>-200.)*(A0<200.)]
+            mf2_out     = mfArr2[(A0>-200.)*(A0<200.)]
+            mf3_out     = mfArr3[(A0>-200.)*(A0<200.)]
+            Aavg_out    = Aavg[(A0>-200.)*(A0<200.)]
+            Astd_out    = Astd[(A0>-200.)*(A0<200.)]
+            LA3         = timeA3.size
+            outArrf3    = np.append(timeA3, A0_out)
+            outArrf3    = np.append(outArrf3, A1_out)
+            outArrf3    = np.append(outArrf3, phi1_out)
+            outArrf3    = np.append(outArrf3, A2_out)
+            outArrf3    = np.append(outArrf3, phi2_out)
+            outArrf3    = np.append(outArrf3, mf0_out)
+            outArrf3    = np.append(outArrf3, mf1_out)
+            outArrf3    = np.append(outArrf3, mf2_out)
+            outArrf3    = np.append(outArrf3, mf3_out)
+            outArrf3    = np.append(outArrf3, Aavg_out)
+            outArrf3    = np.append(outArrf3, Astd_out)
+            outArrf3    = outArrf3.reshape((12, LA3))
+            outArrf3    = outArrf3.T
+            np.savetxt(outdir+"/A0_A1_A2.dat", outArrf3, fmt='%g', \
+                header='time A0 A1 phi1 A2 phi2 misfit(A0-rawdata) misfit(A3-rawdata) \
+                    misfit(A3-bindata) weighted_misfit(A3-bindata) Aavg Astd; A3 inversion')
+        #---------------------------------------
+        # save predicted data
+        #---------------------------------------
+            # broadcasting baz to 2d array of shape ( Lmin, NLst )
+            baz2d       = np.repeat(baz, Lmin)
+            baz2d       = baz2d.reshape(NLst, Lmin)
+            baz2d       = baz2d.T
+            # broadcasting inverted arrays to 2d array of shape ( Lmin, NLst )
+            
+            phi12d      = np.repeat(phi1, NLst)
+            phi12d      = phi12d.reshape(Lmin, NLst)
+            phi22d      = np.repeat(phi2, NLst)
+            phi22d      = phi22d.reshape(Lmin, NLst)
+            A12d        = np.repeat(A1, NLst)
+            A12d        = A12d.reshape(Lmin, NLst)
+            A22d        = np.repeat(A2, NLst)
+            A22d        = A22d.reshape(Lmin, NLst)
+            
+            A0data      = np.repeat(A0, NLst)
+            A0data      = A0data.reshape(Lmin, NLst)
+            A1data      = A12d*np.sin(baz2d/180.*np.pi + phi12d)
+            A2data      = A22d*np.sin(2.*baz2d/180.*np.pi + phi22d)
+            # continue here
+            
+            #################################################################
+            if NLst==1:
+                fbaz    = np.array([np.float_(baz)])
+            else:
+                fbaz    = np.float_(baz)
+            fbaz        = fbaz[:Latime]
+            lfadata     = np.array([])
+            # ##################################################################
+            rdata   = np.array([])
+            drdata  = np.array([]) # this is raw - 0 - 1 - 2
+            rdata0  = np.array([]) # only 0
+            lfrdata1= np.array([]) # 0+1
+            lfrdata2= np.array([]) # 0+2
+            vr0     = np.array([])
+            vr1     = np.array([])
+            vr2     = np.array([])
+            vr3     = np.array([])
+            for j in xrange(Latime):
+                lfadata = np.append(lfadata, adata[j][:Lmin])
+            lfadata = lfadata.reshape((Latime, Lmin))
+            
+            
+            for i in xrange(Lmin):
+                ttA     = A0[i]
+                ttA1    = A1[i]
+                ttA2    = A2[i]
+                PHI1    = SIG1[i]
+                PHI2    = SIG2[i]
+                
+                temp1   = ttA1*np.sin(fbaz/180.*np.pi + PHI1)
+                temp2   = ttA2*np.sin(2*fbaz/180.*np.pi + PHI2)
+                temp3   = ttA + temp1 + temp2
+                rdata   = np.append(rdata, temp3)
+                tempadata   = lfadata[:,i]-temp3
+                drdata      = np.append(drdata, tempadata)
+                lfrdata1    = np.append(lfrdata1, temp1)
+                lfrdata2    = np.append(lfrdata2, temp2)
+            rdata   = rdata.reshape((Lmin, Latime))
+            drdata  = drdata.reshape((Lmin, Latime))
+            lfrdata1= lfrdata1.reshape((Lmin, Latime))
+            lfrdata2= lfrdata2.reshape((Lmin, Latime))
+            
+            with open(outdir+"/variance_reduction.dat","w") as fVR:
+                for i in range(NLst):
+                    tempbaz     = baz[i]
+                    tempbaz1    = float(baz[i])*np.pi/180.
+                    outname     = outdir+"/pre" + names[i]
+                    timeCut     = time[time<=10.]
+                    Ltimecut    = len(timeCut)
+                    obs         = adata[i][time<=10.]
+                    lfA0        = A0preArr(tempbaz1,zA0)[time<=10.]
+                    lfA1        = A1preArr(tempbaz1,oA0,oA1,oSIG1)[time<=10.]
+                    lfA1n       = A1pre1Arr(tempbaz1,oA1,oSIG1)[time<=10.]
+                    lfA2        = A2preArr(tempbaz1,tA0,tA2,tSIG2)[time<=10.]
+                    lfA2n       = A2pre1Arr(tempbaz1,tA2,tSIG2)[time<=10.]
+                    lfA3        = A3preArr(tempbaz1,A0,A1,SIG1,A2,SIG2)[time<=10.]
+                    lfA3n1      = A3pre1Arr(tempbaz1,A1,SIG1)[time<=10.]
+                    lfA3n2      = A3pre2Arr(tempbaz1,A2,SIG2)[time<=10.]
+                    
+                    outpreArr   = np.append(timeCut, obs)
+                    outpreArr   = np.append(outpreArr, lfA0)
+                    outpreArr   = np.append(outpreArr, lfA1)
+                    outpreArr   = np.append(outpreArr, lfA2)
+                    outpreArr   = np.append(outpreArr, lfA3)
+                    outpreArr   = np.append(outpreArr, lfA1n)
+                    outpreArr   = np.append(outpreArr, lfA2n)
+                    outpreArr   = np.append(outpreArr, lfA3n1)
+                    outpreArr   = np.append(outpreArr, lfA3n2)
+                    outpreArr   = outpreArr.reshape((10,Ltimecut))
+                    outpreArr   = outpreArr.T
+                    np.savetxt(outname, outpreArr, fmt='%g')
+                    
+                    vr0         = np.append(vr0, _match(lfA0,adata[i][time<=10.]))
+                    vr1         = np.append(vr1, _match(lfA1,adata[i][time<=10.]))
+                    vr2         = np.append(vr2, _match(lfA2,adata[i][time<=10.]))
+                    vr3         = np.append(vr3, _match(lfA3,adata[i][time<=10.]))
+                    tempstr = "%d %g %g %g %g %s\n" %(baz[i],vr0[i],vr1[i],vr2[i],vr3[i],names[i])
+                    fVR.write(tempstr)
+            # with open(outdir+"/average_vr.dat","w") as favr:
+            #     tempstr = "%g %g %g %g\n" %(vr0.mean(), vr1.mean(), vr2.mean(), vr3.mean())
+            #     favr.write(tempstr)
+            #     
+            # dt      = time[1]-time[0]
+            # lfadata = lfadata.T ## (Lmin, Latime)        
+            # 
+            # for i in xrange (len(names)):
+            #     outname = outdir+"/diff" + names[i]
+            #     outArr  = np.append(time, drdata[:,i])
+            #     outArr  = outArr.reshape((2,Lmin))
+            #     outArr  = outArr.T
+            #     np.savetxt(outname, outArr, fmt='%g')
+            # 
+            # for i in np.arange (len(names)):
+            #     outname = outdir+"/rep" + names[i]
+            #     outArr  = np.append(time, rdata[:,i])
+            #     outArr  = outArr.reshape((2,Lmin))
+            #     outArr  = outArr.T
+            #     np.savetxt(outname, outArr, fmt='%g')
+            # 
+            # for i in np.arange (len(names)):
+            #     outname = outdir+"/0rep" + names[i]
+            #     outArr  = np.append(time, A0)
+            #     outArr  = outArr.reshape((2,Lmin))
+            #     outArr  = outArr.T
+            #     np.savetxt(outname, outArr, fmt='%g')
+            # 
+            # for i in np.arange (len(names)):
+            #     outname = outdir+"/1rep" + names[i]
+            #     outArr  = np.append(time, lfrdata1[:,i])
+            #     outArr  = outArr.reshape((2,Lmin))
+            #     outArr  = outArr.T
+            #     np.savetxt(outname, outArr, fmt='%g')
+            #     
+            # for i in np.arange (len(names)):
+            #     outname = outdir+"/2rep" + names[i]
+            #     outArr  = np.append(time, lfrdata2[:,i])
+            #     outArr  = outArr.reshape((2,Lmin))
+            #     outArr  = outArr.T
+            #     np.savetxt(outname, outArr, fmt='%g')
+            #     
+            # for i in np.arange (len(names)):
+            #     outname = outdir+"/obs" + names[i]
+            #     outArr  = np.append(time, lfadata[:,i])
+            #     outArr  = outArr.reshape((2,Lmin))
+            #     outArr  = outArr.T
+            #     np.savetxt(outname, outArr, fmt='%g')
         return
     
 

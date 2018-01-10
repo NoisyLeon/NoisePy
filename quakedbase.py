@@ -1557,13 +1557,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print(str(Ndata)+' receiver function traces ')
             qcLst               = postLst.remove_bad(outsta)
             qcLst               = qcLst.thresh_tdiff(tdiff=tdiff)
-            # return qcLst
-            # qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             return
             staid_aux           = netcode+'_'+stacode+'_'+phase
             # wmean.txt
-            wmeanArr            = np.loadtxt(outsta+'/wmean.txt'); os.remove(outsta+'/wmean.txt')
+            wmeanArr            = np.loadtxt(outsta+'/wmean.txt')
+            os.remove(outsta+'/wmean.txt')
             self.add_auxiliary_data(data=wmeanArr, data_type='Ref'+reftype+'HS',
                     path=staid_aux+'/wmean', parameters={})
             # bin_%d_txt
@@ -1598,7 +1597,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.add_auxiliary_data(data=A0A1A2Arr, data_type='Ref'+reftype+'HS',
                     path=staid_aux+'/A0_A1_A2', parameters={})
             evnumb              = 0
-            for event in self.events:
+            for event in self.cat:
                 evnumb          +=1
                 evid            = 'E%05d' %evnumb
                 try:
