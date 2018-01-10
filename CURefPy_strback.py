@@ -1440,7 +1440,9 @@ class RFTrace(obspy.Trace):
         #----------------------------------------
         # Step 3: Stretch Data
         #----------------------------------------
-        tarr2, data2= _stretch (tarr1, data, tslow, refslow=refslow)
+        # tarr2, data2= _stretch (tarr1, data, tslow, refslow=refslow)
+        # tslow = 0.03
+        tarr2, data2= _stretch_old (tarr1, data, tslow)
         #--------------------------------------------------------
         # Step 4: Discard data with negative value at zero time
         #--------------------------------------------------------

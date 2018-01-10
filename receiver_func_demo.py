@@ -24,7 +24,7 @@ dset=quakedbase.quakeASDF('../ref_R11A.h5')
 # 
 # # Harmonic analysis
 # dset.read_quakeml('U15A_cat.ml')
-out = dset.harmonic_stripping(outdir='../test_ref_working')
+dset.harmonic_stripping(outdir='../test_ref_working')
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
 # dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')

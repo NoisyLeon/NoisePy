@@ -384,37 +384,6 @@ def _invert_A0 ( inbaz, indat, inun ):   #only invert for A0 part
     predat  = predat*inun
     return A0, predat
 
-def _invert_A2 ( inbaz, indat, inun ):
-    """invert by assuming only A0 and A2, private function for harmonic stripping
-        indat   = A0 + A2*sin(2*theta + phi2)
-                = A0 + A1*cos(phi1)*sin(theta) + A1*sin(phi1)*cos(theta)
-    """
-    Nbaz    = inbaz.size 
-    U       = np.zeros((Nbaz, Nbaz), dtype=np.float64)
-    np.fill_diagonal(U, 1./inun)
-    # construct forward operator matrix
-    tG      = np.ones((Nbaz, 1), dtype=np.float64)
-    tbaz    = np.pi*inbaz/180.
-    tGsin   = np.sin(tbaz*2.)
-    tGcos   = np.cos(tbaz*2.)
-    G       = np.append(tG, tGsin)
-    G       = np.append(G, tGcos)
-    G       = G.reshape((3, Nbaz))
-    G       = G.T
-    G       = np.dot(U, G)
-    # data
-    d       = indat.T
-    d       = np.dot(U,d)
-    # least square inversion
-    model   = np.linalg.lstsq(G,d)[0]
-    A0      = model[0]
-    A2      = np.sqrt(model[1]**2 + model[2]**2)
-    phi2    = np.arctan2(model[2],model[1])
-    predat  = np.dot(G, model)
-    predat  = predat*inun
-    return A0, A2, phi2, predat
-
-
 def _invert_A1 ( inbaz, indat, inun ):
     """invert by assuming only A0 and A1, private function for harmonic stripping
         indat   = A0 + A1*sin(theta + phi1)
@@ -445,64 +414,94 @@ def _invert_A1 ( inbaz, indat, inun ):
     predat  = predat*inun
     return A0, A1, phi1, predat
 
-def _invert_1 ( inbaz, indat, inun):
-    """Invert for A0, A1, A2, private function for harmonic stripping
+def _invert_A2 ( inbaz, indat, inun ):
+    """invert by assuming only A0 and A2, private function for harmonic stripping
+        indat   = A0 + A2*sin(2*theta + phi2)
+                = A0 + A1*cos(phi1)*sin(theta) + A1*sin(phi1)*cos(theta)
     """
-    m       = len(inbaz)# data space;
-    n       = 5 # model space;
-    #	print m,len(inun);
-    U       = np.zeros((m,m))
+    Nbaz    = inbaz.size 
+    U       = np.zeros((Nbaz, Nbaz), dtype=np.float64)
     np.fill_diagonal(U, 1./inun)
-    tG1     = np.ones((m,1))
+    # construct forward operator matrix
+    tG      = np.ones((Nbaz, 1), dtype=np.float64)
+    tbaz    = np.pi*inbaz/180.
+    tGsin   = np.sin(tbaz*2.)
+    tGcos   = np.cos(tbaz*2.)
+    G       = np.append(tG, tGsin)
+    G       = np.append(G, tGcos)
+    G       = G.reshape((3, Nbaz))
+    G       = G.T
+    G       = np.dot(U, G)
+    # data
+    d       = indat.T
+    d       = np.dot(U,d)
+    # least square inversion
+    model   = np.linalg.lstsq(G,d)[0]
+    A0      = model[0]
+    A2      = np.sqrt(model[1]**2 + model[2]**2)
+    phi2    = np.arctan2(model[2],model[1])
+    predat  = np.dot(G, model)
+    predat  = predat*inun
+    return A0, A2, phi2, predat
+
+def _invert_A0_A1_A2( inbaz, indat, inun):
+    """invert for A0, A1, A2, private function for harmonic stripping
+    """
+    Nbaz    = inbaz.size 
+    U       = np.zeros((Nbaz, Nbaz), dtype=np.float64)
+    np.fill_diagonal(U, 1./inun)
+    # construct forward operator matrix
+    tG      = np.ones((Nbaz, 1), dtype=np.float64)
     tbaz    = np.pi*inbaz/180
     tGsin   = np.sin(tbaz)
     tGcos   = np.cos(tbaz)
     tGsin2  = np.sin(tbaz*2)
     tGcos2  = np.cos(tbaz*2)
-    G       = np.append(tG1, tGsin)
+    G       = np.append(tG, tGsin)
     G       = np.append(G, tGcos)
     G       = np.append(G, tGsin2)
     G       = np.append(G, tGcos2)
-    G       = G.reshape((5,m))
-    G1      = G.T
-    G1      = np.dot(U,G1)
+    G       = G.reshape((5, Nbaz))
+    G       = G.T
+    G       = np.dot(U, G)
+    # data
     d       = indat.T
     d       = np.dot(U,d)
-    model   = np.linalg.lstsq(G1,d)[0]
-    resid   = np.linalg.lstsq(G1,d)[1]
+    # least square inversion
+    model   = np.linalg.lstsq(G, d)[0]
     A0      = model[0]
     A1      = np.sqrt(model[1]**2 + model[2]**2)
-    fi1     = np.arctan2(model[2],model[1])                                           
+    phi1    = np.arctan2(model[2],model[1])                                           
     A2      = np.sqrt(model[3]**2 + model[4]**2)
-    fi2     = np.arctan2(model[4],model[3])
-    # compute forward:
-    ccdat   = np.dot(G1,model)
-    odat    = ccdat*inun
-    return A0,A1,fi1,A2,fi2,odat
+    phi2    = np.arctan2(model[4], model[3])
+    # compute forward
+    predat  = np.dot(G, model)
+    predat  = predat*inun
+    return A0, A1, phi1, A2, phi2, predat
 
-##############################################
+#------------------------------------------------
 # Function for computing predictions
-##############################################
+#------------------------------------------------
 
-def A0preArr ( inbaz, A0 ): return A0
+def A0pre ( inbaz, A0 ): return A0
 
-def A1preArr ( inbaz, A0, A1, SIG1): return A0 + A1*np.sin(inbaz+SIG1)
+def A1pre ( inbaz, A0, A1, SIG1): return A0 + A1*np.sin(inbaz+SIG1)
 
-def A1pre1Arr ( inbaz, A1, SIG1): return A1*np.sin(inbaz+SIG1)
+def A1pre1 ( inbaz, A1, SIG1): return A1*np.sin(inbaz+SIG1)
 
-def A2preArr ( inbaz, A0, A2, SIG2): return A0 + A2*np.sin(2*inbaz+SIG2)
+def A2pre ( inbaz, A0, A2, SIG2): return A0 + A2*np.sin(2*inbaz+SIG2)
 
-def A2pre1Arr ( inbaz, A2, SIG2): return A2*np.sin(2*inbaz+SIG2)
+def A2pre1 ( inbaz, A2, SIG2): return A2*np.sin(2*inbaz+SIG2)
 
-def A3preArr ( inbaz, A0, A1, SIG1, A2, SIG2): return A0 + A1*np.sin(inbaz + SIG1) + A2*np.sin(2*inbaz + SIG2)
+def A3pre1 ( inbaz, A1, SIG1): return A1*np.sin(inbaz + SIG1)
 
-def A3pre1Arr ( inbaz, A1, SIG1): return A1*np.sin(inbaz + SIG1)
+def A3pre2 ( inbaz, A2, SIG2): return A2*np.sin(2*inbaz + SIG2)
 
-def A3pre2Arr ( inbaz, A2, SIG2): return A2*np.sin(2*inbaz + SIG2)
+def A3pre3 ( inbaz, A1, phi1, A2, phi2 ):
+    return A1*np.sin(inbaz + phi1) + A2*np.sin(2*inbaz + phi2)
 
-def A3pre3Arr ( inbaz, A1, SIG1, A2, SIG2 ): return A1*np.sin(inbaz + SIG1) + A2*np.sin(2*inbaz + SIG2)
-
-def A3pre ( inbaz, A0, A1, SIG1, A2, SIG2): return A0 + A1*np.sin(inbaz + SIG1) + A2*np.sin(2*inbaz + SIG2)
+def A3pre ( inbaz, A0, A1, phi1, A2, phi2):
+    return A0 + A1*np.sin(inbaz + phi1) + A2*np.sin(2*inbaz + phi2)
 
 def _match1 ( data1, data2 ):
     """Compute matching of two input data
@@ -918,24 +917,32 @@ class PostRefLst(object):
         NLst    = len(self.PostDatas)
         baz     = np.zeros(NLst, dtype=np.float64)
         lens    = np.zeros(NLst, dtype=np.float64)
-        atime   = []
-        adata   = []
+        # # # atime   = []
+        # # # adata   = []
         names   = []
         eventT  = []
         for i in range(NLst):
             PostData= self.PostDatas[i]
             time    = PostData.ampTC[:,0]
-            data    = PostData.ampTC[:,1]
-            adata.append(data)
-            atime.append(time)
+            # # # data    = PostData.ampTC[:,1]
+            # # # adata.append(data)
+            # # # atime.append(time)
             lens[i] = time.size
             baz[i]  = np.floor(PostData.header['baz'])
             name    = 'moveout_'+str(int(PostData.header['baz']))+'_'+stacode+'_'+str(PostData.header['otime'])
             names.append(name)
             eventT.append(PostData.header['otime'])
-        
-        # parameters in 3 different inversion
+        # store all time and data arrays
         Lmin    = int(lens.min())
+        atime   = np.zeros((NLst, Lmin), dtype=np.float64)
+        adata   = np.zeros((NLst, Lmin), dtype=np.float64)
+        for i in range(NLst):
+            PostData        = self.PostDatas[i]
+            time            = PostData.ampTC[:,0]
+            data            = PostData.ampTC[:,1]
+            adata[i, :]     = data[:Lmin]
+            atime[i, :]     = time[:Lmin]
+        # parameters in 3 different inversion
         # best fitting A0
         A0_0    = np.zeros(Lmin, dtype=np.float64)
         # best fitting A0 , A1 and phi1
@@ -946,34 +953,36 @@ class PostRefLst(object):
         A0_2    = np.zeros(Lmin, dtype=np.float64)
         A2_2    = np.zeros(Lmin, dtype=np.float64)
         phi2_2  = np.zeros(Lmin, dtype=np.float64)
+        # best fitting A0, A1 and A2 
+        A0      = np.zeros(Lmin, dtype=np.float64)
+        A1      = np.zeros(Lmin, dtype=np.float64)
+        A2      = np.zeros(Lmin, dtype=np.float64)
+        phi1    = np.zeros(Lmin, dtype=np.float64)
+        phi2    = np.zeros(Lmin, dtype=np.float64)
         
-        A0      = np.array([])
-        A1      = np.array([])
-        A2      = np.array([])
-        SIG1    = np.array([])
-        SIG2    = np.array([])
-        A0123   = np.array([])
-        MF0     = np.array([])  # misfit between A0 and R[i]
-        MF1     = np.array([])  # misfit between A0+A1+A2 and R[i]
-        MF2     = np.array([]) # misfit between A0+A1+A2 and binned data
-        MF3     = np.array([]) # weighted misfit between A0+A1+A2 and binned data
-        A_A     = np.array([])  # average amplitude
-        A_A_un  = np.array([])
+        mfArr0  = np.zeros(Lmin, dtype=np.float64)  # misfit between A0 and R[i]
+        mfArr1  = np.zeros(Lmin, dtype=np.float64)  # misfit between A0+A1+A2 and R[i]
+        mfArr2  = np.zeros(Lmin, dtype=np.float64)  # misfit between A0+A1+A2 and binned data
+        mfArr3  = np.zeros(Lmin, dtype=np.float64)  # weighted misfit between A0+A1+A2 and binned data
+        Aavg    = np.zeros(Lmin, dtype=np.float64)  # average amplitude
+        Astd    = np.zeros(Lmin, dtype=np.float64)
         # grouped data
-        gbaz    = np.array([])
-        gdata   = np.array([])
-        gun     = np.array([])
+        gbaz    = np.array([], dtype=np.float64)
+        gdata   = np.array([], dtype=np.float64)
+        gun     = np.array([], dtype=np.float64)
         tdat    = np.zeros(NLst, dtype=np.float64)
         for i in range (Lmin):
             for j in range(NLst):
                 tdat[j]         = self.PostDatas[j].ampTC[i, 1]
-            datmean             = tdat.mean()
-            datstd              = tdat.std()
+            # # datmean             = tdat.mean()
+            # # datstd              = tdat.std()
             baz1,tdat1,udat1    = _group(baz, tdat)
             gbaz                = np.append(gbaz, baz1)
             gdata               = np.append(gdata, tdat1)
             gun                 = np.append(gun, udat1)
-            # now do inversions
+            #------------------------------------------------------
+            # inversions
+            #------------------------------------------------------
             # invert for best-fitting A0
             (tempA0, predat0)                   = _invert_A0(baz1, tdat1, udat1)
             A0_0[i]                             = tempA0
@@ -987,46 +996,70 @@ class PostRefLst(object):
             A0_2[i]                             = tempA0
             A2_2[i]                             = tempA2
             phi2_2[i]                           = tempphi2
-        # continue here
-            (tempv0,tempv1, tempv2,tempv3,tempv4,odat1) = _invert_1 (baz1,tdat1,udat1)
-            A0      = np.append(A0, tempv0)
-            A1      = np.append(A1, tempv1)
-            SIG1    = np.append(SIG1, tempv2)
-            A2      = np.append(A2, tempv3)
-            SIG2    = np.append(SIG2, tempv4)
-            A_A     = np.append(A_A,aa)
-            A_A_un  = np.append(A_A_un,naa)
-        #     
-        #     mf  = 0.
-        #     mf1 = 0.
-        #     for j in xrange (len(baz)):
-        #         mf  = mf + (tempv0 - adata[j][i])**2
-        #         vv  = A3pre(baz[j]*np.pi/180.,tempv0,tempv1,tempv2,tempv3,tempv4)
-        #         mf1 = mf1 + (vv - adata[j][i])**2
-        #     mf  = np.sqrt(mf/len(baz))
-        #     mf1 = np.sqrt(mf1/len(baz))
-        #     if (mf<0.005): mf = 0.005
-        #     if (mf1<0.005): mf1 = 0.005
-        #     MF0 = np.append(MF0, mf-0.)
-        #     MF1 = np.append(MF1, mf1-0.)
-        #     mf2 = 0.
-        #     mf3 = 0.
-        #     V1  = 0.
-        #     for j in np.arange (len(baz1)):
-        #         vv  = A3pre(baz1[j]*np.pi/180.,tempv0,tempv1,tempv2,tempv3,tempv4)
-        #         mf2 = mf2 + (vv - tdat1[j])**2;
-        #         mf3 = mf3 + (vv - tdat1[j])**2/udat1[j]**2
-        #         V1  = V1 + 1./(udat1[j]**2)
-        #     mf2 = np.sqrt(mf2/len(baz1))
-        #     mf3 = np.sqrt(mf3/V1)
-        #     MF2 = np.append(MF2, mf2-0.)
-        #     MF3 = np.append(MF3, mf3-0.)
-        # 
-        # 
-        # lengthbaz   = len(baz1)
-        # gbaz        = gbaz.reshape((Lmin, lengthbaz))
-        # gdata       = gdata.reshape((Lmin, lengthbaz))
-        # gun         = gun.reshape((Lmin, lengthbaz))
+            # invert for best-fitting A0, A1 and A2
+            (tempA0, tempA1, tempphi1, tempA2, tempphi2, predat) \
+                                                = _invert_A0_A1_A2 (baz1,tdat1,udat1)
+            A0[i]                               = tempA0
+            A1[i]                               = tempA1
+            phi1[i]                             = tempphi1
+            A2[i]                               = tempA2
+            phi2[i]                             = tempphi2
+            # 
+            Aavg                                = tdat.mean()
+            Astd                                = tdat.std()
+            # compute misfit for raw baz array
+            misfit0         = np.sqrt(np.sum((A0[i] - adata[:, i])**2)/NLst)
+            predatraw       = A3pre( baz*np.pi/180., A0=A0[i], A1=A1[i], phi1=phi1[i], A2=A2[i], phi2=phi2[i])
+            misfit1         = np.sqrt(np.sum((predatraw - adata[:, i])**2)/NLst)
+            if misfit0 < 0.005:
+                misfit0     = 0.005
+            if misfit1 < 0.005:
+                misfit1     = 0.005
+            mfArr0[i]       = misfit0
+            mfArr1[i]       = misfit1
+            # compute misfit for binned baz array
+            Nbin            = baz1.size
+            predatbin       = A3pre( baz1*np.pi/180., A0=A0[i], A1=A1[i], phi1=phi1[i], A2=A2[i], phi2=phi2[i])
+            misfit2         = np.sqrt(np.sum((predatbin - tdat1)**2)/Nbin)
+            wNbin           = np.sum(1./(udat1**2))
+            misfit3         = np.sqrt(np.sum((predatbin - tdat1)**2 /(udat1**2))/wNbin)
+            mfArr2[i]       = misfit2
+            mfArr3[i]       = misfit3
+            
+            # # 
+            # # 
+            # # mf  = 0.
+            # # mf1 = 0.
+            # # for j in range (NLst):
+            # #     mf  = mf + (A0[i] - adata[j][i])**2
+            # #     vv  = A3pre(baz[j]*np.pi/180., tempv0, tempv1, tempv2, tempv3, tempv4)
+            # #     mf1 = mf1 + (vv - adata[j][i])**2
+            # # mf  = np.sqrt(mf/len(baz))
+            # # mf1 = np.sqrt(mf1/len(baz))
+            # # if (mf<0.005):
+            # #     mf = 0.005
+            # # if (mf1<0.005):
+            # #     mf1 = 0.005
+            # # MF0 = np.append(MF0, mf-0.)
+            # # MF1 = np.append(MF1, mf1-0.)
+            
+            # # mf2 = 0.
+            # # mf3 = 0.
+            # # V1  = 0.
+            # # for j in np.arange (len(baz1)):
+            # #     vv  = A3pre(baz1[j]*np.pi/180.,tempv0,tempv1,tempv2,tempv3,tempv4)
+            # #     mf2 = mf2 + (vv - tdat1[j])**2;
+            # #     mf3 = mf3 + (vv - tdat1[j])**2/udat1[j]**2
+            # #     V1  = V1 + 1./(udat1[j]**2)
+            # # 
+            # # mf2 = np.sqrt(mf2/len(baz1))
+            # # mf3 = np.sqrt(mf3/V1)
+            # # MF2 = np.append(MF2, mf2-0.)
+            # # MF3 = np.append(MF3, mf3-0.)
+        Nbin        = baz1.size
+        gbaz        = gbaz.reshape((Lmin, Nbin))
+        gdata       = gdata.reshape((Lmin, Nbin))
+        gun         = gun.reshape((Lmin, Nbin))
         # #Output grouped data
         # for i in xrange (len(gbaz[0])): #baz
         #     tname       = outdir+"/bin_%g_rf.dat" % (gbaz[0][i])
