@@ -1559,6 +1559,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             qcLst               = qcLst.thresh_tdiff(tdiff=tdiff)
             qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             return
+        
+        
             staid_aux           = netcode+'_'+stacode+'_'+phase
             # wmean.txt
             wmeanArr            = np.loadtxt(outsta+'/wmean.txt')
