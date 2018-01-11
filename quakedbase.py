@@ -1222,7 +1222,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             tr.stats.sac['stla']    = stla    
         return st
     
-    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), refslow=0.06, saveampc=True, verbose=False, startdate=None, enddate=None):
+    def compute_ref(self, inrefparam=CURefPy.InputRefparam(), refslow=0.06, saveampc=True, verbose=False,
+                    startdate=None, enddate=None, fs=40.):
         """Compute receiver function and post processed data(moveout)
         ====================================================================================================================
         ::: input parameters :::
@@ -1242,6 +1243,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             etime4ref   = obspy.core.utcdatetime.UTCDateTime(enddate)
         except:
             etime4ref   = obspy.UTCDateTime()
+        delta           = 1./fs
         print '================================== Receiver Function Analysis ======================================'
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
@@ -1270,12 +1272,14 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if otime < stime4ref or otime > etime4ref:
                     continue
                 for tr in st:
-                    tr.stats.sac        = obspy.core.util.attribdict.AttribDict()
-                    tr.stats.sac['evlo']= evlo
-                    tr.stats.sac['evla']= evla
-                    tr.stats.sac['evdp']= evdp
-                    tr.stats.sac['stlo']= stlo
-                    tr.stats.sac['stla']= stla
+                    tr.stats.sac            = obspy.core.util.attribdict.AttribDict()
+                    tr.stats.sac['evlo']    = evlo
+                    tr.stats.sac['evla']    = evla
+                    tr.stats.sac['evdp']    = evdp
+                    tr.stats.sac['stlo']    = stlo
+                    tr.stats.sac['stla']    = stla
+                    tr.stats.sac['kuser0']  = evid
+                    tr.stats.sac['kuser1']  = phase
                 if verbose:
                     pmag            = event.preferred_magnitude()
                     magnitude       = pmag.mag
@@ -1287,6 +1291,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
                         tbeg=inrefparam.tbeg, tend=inrefparam.tend)
                 refTr.IterDeconv( tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
                         minderr=inrefparam.minderr, phase=phase )
+                if refTr.stats.delta != delta:
+                    print ('WARNING: '+staid+' resampling fs = '+str(1./refTr.stats.delta) + ' --> '+str(fs))
+                    refTr.resample(sampling_rate=fs)
                 ref_header              = ref_header_default.copy()
                 ref_header['otime']     = str(otime)
                 ref_header['network']   = netcode
@@ -1310,6 +1317,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 ref_header['hslowness'] = refTr.stats.sac['user4']
                 ref_header['ghw']       = inrefparam.f0
                 ref_header['VR']        = refTr.stats.sac['user2']
+                ref_header['evid']      = refTr.stats.sac['kuser0']
                 staid_aux               = netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
                 # move out to reference slowness receiver function
@@ -1325,7 +1333,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return
     
     def compute_ref_mp(self, outdir, inrefparam=CURefPy.InputRefparam(), saveampc=True, verbose=False, \
-            subsize=1000, nprocess=6, startdate=None, enddate=None, readdata=True, deleteref=True, deletepost=True):
+            subsize=1000, nprocess=6, startdate=None, enddate=None, readdata=True, deleteref=True, deletepost=True, fs=40.):
         """Compute receiver function and post processed data(moveout) with multiprocessing
         ====================================================================================================================
         ::: input parameters :::
@@ -1431,10 +1439,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
             pool.join() #tell it to wait until all threads are done before going on
         print('End of multiprocessing receiver function analysis !')
         if readdata:
-            self.read_ref_data(datadir=outdir, saveampc=saveampc, inrefparam=inrefparam, deleteref=deleteref, deletepost=deletepost)
+            self.read_ref_data(datadir=outdir, saveampc=saveampc, inrefparam=inrefparam, deleteref=deleteref, deletepost=deletepost, fs=fs)
         return
     
-    def read_ref_data(self, datadir, saveampc=True, inrefparam=CURefPy.InputRefparam(), deleteref=True, deletepost=True):
+    def read_ref_data(self, datadir, saveampc=True, inrefparam=CURefPy.InputRefparam(), deleteref=True, deletepost=True, fs=40.):
         """read receiver function data
         ====================================================================================================================
         ::: input parameters :::
@@ -1446,6 +1454,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         =====================================================================================================================
         """
         print('Start reading receiver function data !')
+        delta                   = 1./fs
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
             print('Station: '+staid)
@@ -1465,6 +1474,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 evdp                    = event.origins[0].depth
                 otime                   = event.origins[0].time
                 refTr                   = obspy.read(sacfname)[0]
+                if refTr.stats.delta != delta:
+                    print ('WARNING: '+staid+' resampling fs = '+str(1./refTr.stats.delta) + ' --> '+str(fs))
+                    refTr.resample(sampling_rate=fs)
                 ref_header              = ref_header_default.copy()
                 ref_header['otime']     = str(otime)
                 ref_header['network']   = netcode
@@ -1488,6 +1500,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 ref_header['hslowness'] = refTr.stats.sac['user4']
                 ref_header['ghw']       = inrefparam.f0
                 ref_header['VR']        = refTr.stats.sac['user2']
+                ref_header['evid']      = refTr.stats.sac['kuser0']
                 phase                   = inrefparam.phase
                 staid_aux               = netcode+'_'+stacode+'_'+phase+'/'+evid
                 self.add_auxiliary_data(data=refTr.data, data_type='Ref'+inrefparam.reftype, path=staid_aux, parameters=ref_header)
@@ -1512,7 +1525,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return
         
     
-    def harmonic_stripping(self, outdir, data_type='RefRmoveout', VR=80., tdiff=0.08, phase='P', reftype='R'):
+    def harmonic_stripping(self, outdir=None, data_type='RefRmoveout', VR=80., tdiff=0.08, phase='P', reftype='R', fs=40., endtime=10., \
+                savetxt=False, savepredat=True):
         """Harmonic stripping analysis
         ====================================================================================================================
         ::: input parameters :::
@@ -1528,6 +1542,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print self.cat
         except AttributeError:
             self.copy_catalog()
+        if outdir is None:
+            savetxt     = False
+        if not savetxt:
+            outsta      = None
         print('================================== Harmonic Stripping Analysis ======================================')
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
@@ -1535,9 +1553,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
             evnumb              = 0
             postLst             = CURefPy.PostRefLst()
-            outsta              = outdir+'/'+staid
-            if not os.path.isdir(outsta):
-                os.makedirs(outsta)
+            if savetxt:
+                outsta          = outdir+'/'+staid
+                if not os.path.isdir(outsta):
+                    os.makedirs(outsta)
             Ndata               = 0
             for event in self.cat:
                 evnumb          +=1
@@ -1547,6 +1566,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 except KeyError:
                     continue
                 ref_header      = subdset.parameters
+                # quality control
                 if ref_header['moveout'] <0 or ref_header['VR'] < VR:
                     continue
                 pdbase          = CURefPy.PostDatabase()
@@ -1555,96 +1575,121 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 postLst.append(pdbase)
                 Ndata           += 1
             print(str(Ndata)+' receiver function traces ')
-            qcLst               = postLst.remove_bad(outsta)
+            #------------------------------------------
+            # harmonic stripping
+            #------------------------------------------
+            qcLst               = postLst.remove_bad(outdir=outsta, fs=fs, endtime=endtime, savetxt=savetxt)
             qcLst               = qcLst.thresh_tdiff(tdiff=tdiff)
-            qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
-            return
-        
-        
+            A0_0, A0_1, A1_1, phi1_1, A0_2, A2_2, phi2_2, \
+                A0, A1, A2, phi1, phi2, mfArr0, mfArr1, mfArr2, mfArr3,\
+                    Aavg, Astd, gbaz, gdat, gun = qcLst.harmonic_stripping(outdir=outsta, stacode=staid, savetxt=savetxt, endtime=endtime)
+            #------------------------------------------
+            # store data
+            #------------------------------------------
             staid_aux           = netcode+'_'+stacode+'_'+phase
-            # wmean.txt
-            wmeanArr            = np.loadtxt(outsta+'/wmean.txt')
-            os.remove(outsta+'/wmean.txt')
-            self.add_auxiliary_data(data=wmeanArr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/wmean', parameters={})
-            # bin_%d_txt
-            for binfname in glob.glob(outsta+'/bin_*_txt'):
-                binArr          = np.loadtxt(binfname); os.remove(binfname)
-                temp            = binfname.split('/')[-1]
-                self.add_auxiliary_data(data=binArr, data_type='Ref'+reftype+'HS',
-                        path=staid_aux+'/bin/'+temp.split('_')[0]+'_'+temp.split('_')[1], parameters={})
-            for binfname in glob.glob(outsta+'/bin_*_rf.dat'):
-                binArr          = np.loadtxt(binfname); os.remove(binfname)
-                temp            = binfname.split('/')[-1]
-                self.add_auxiliary_data(data=binArr, data_type='Ref'+reftype+'HS',
-                        path=staid_aux+'/bin_rf/'+temp.split('_')[0]+'_'+temp.split('_')[1], parameters={})
-            # A0.dat
-            A0Arr               = np.loadtxt(outsta+'/A0.dat')
-            os.remove(outsta+'/A0.dat')
-            self.add_auxiliary_data(data=A0Arr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/A0', parameters={})
-            # A1.dat
-            A1Arr               = np.loadtxt(outsta+'/A1.dat')
-            os.remove(outsta+'/A1.dat')
-            self.add_auxiliary_data(data=A1Arr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/A1', parameters={})
-            # A2.dat
-            A2Arr               = np.loadtxt(outsta+'/A2.dat')
-            os.remove(outsta+'/A2.dat')
-            self.add_auxiliary_data(data=A2Arr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/A2', parameters={})
-            # A0_A1_A2.dat
-            A0A1A2Arr           = np.loadtxt(outsta+'/A0_A1_A2.dat')
-            os.remove(outsta+'/A0_A1_A2.dat')
-            self.add_auxiliary_data(data=A0A1A2Arr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/A0_A1_A2', parameters={})
-            evnumb              = 0
-            for event in self.cat:
-                evnumb          +=1
-                evid            = 'E%05d' %evnumb
-                try:
-                    subdset     = self.auxiliary_data[data_type][netcode+'_'+stacode+'_'+phase][evid]
-                except KeyError:
-                    continue
-                ref_header      = subdset.parameters
-                if ref_header['moveout'] <0 or ref_header['VR'] < VR:
-                    continue
-                otime           = ref_header['otime']; baz=ref_header['baz']
-                fsfx            = str(int(baz))+'_'+staid+'_'+otime+'.out.back'
-                diff_fname      = outsta+'/diffstre_'+fsfx
-                obsfname        = outsta+'/obsstre_'+fsfx
-                repfname        = outsta+'/repstre_'+fsfx
-                rep0fname       = outsta+'/0repstre_'+fsfx
-                rep1fname       = outsta+'/1repstre_'+fsfx
-                rep2fname       = outsta+'/2repstre_'+fsfx
-                prefname        = outsta+'/prestre_'+fsfx
-                if not (os.path.isfile(diff_fname) and os.path.isfile(obsfname) and os.path.isfile(repfname) and \
-                        os.path.isfile(rep0fname) and os.path.isfile(rep1fname) and os.path.isfile(rep2fname) and os.path.isfile(prefname) ):
-                    continue
-                diffArr         = np.loadtxt(diff_fname);   os.remove(diff_fname)
-                obsArr          = np.loadtxt(obsfname);     os.remove(obsfname)
-                repArr          = np.loadtxt(repfname);     os.remove(repfname)
-                rep0Arr         = np.loadtxt(rep0fname);    os.remove(rep0fname)
-                rep1Arr         = np.loadtxt(rep1fname);    os.remove(rep1fname)
-                rep2Arr         = np.loadtxt(rep2fname);    os.remove(rep2fname)
-                preArr          = np.loadtxt(prefname);     os.remove(prefname)
-                self.add_auxiliary_data(data=obsArr, data_type='Ref'+reftype+'HS',
+            # raw quality controlled data
+            time                = qcLst[0].ampTC[:,0]
+            ind                 = time<endtime
+            delta               = 1./fs
+            for pdbase in qcLst:
+                ref_header      = pdbase.header
+                time            = pdbase.ampTC[:,0]
+                obsdata         = pdbase.ampTC[:,1]
+                time            = time[ind]
+                obsdata         = obsdata[ind]
+                evid            = ref_header['evid']
+                self.add_auxiliary_data(data=obsdata, data_type='Ref'+reftype+'HSdata',
                     path=staid_aux+'/obs/'+evid, parameters=ref_header)
-                self.add_auxiliary_data(data=diffArr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/diff/'+evid, parameters=ref_header)
-                self.add_auxiliary_data(data=repArr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/rep/'+evid, parameters=ref_header)
-                self.add_auxiliary_data(data=rep0Arr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/rep0/'+evid, parameters=ref_header)
-                self.add_auxiliary_data(data=rep1Arr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/rep1/'+evid, parameters=ref_header)
-                self.add_auxiliary_data(data=rep2Arr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/rep2/'+evid, parameters=ref_header)
-                self.add_auxiliary_data(data=preArr, data_type='Ref'+reftype+'HS',
-                    path=staid_aux+'/pre/'+evid, parameters=ref_header)
+            # binned data
+            gdat                = gdat[ind, :]
+            gbaz                = gbaz[ind, :]
+            gun                 = gun[ind, :]
+            npts, Nbin          = gdat.shape
+            binheader           = {'Nbin': Nbin, 'npts': npts, 'delta': delta}
+            self.add_auxiliary_data(data=gdat, data_type='Ref'+reftype+'HSbindata',
+                    path=staid_aux+'/data', parameters=binheader)
+            self.add_auxiliary_data(data=gbaz, data_type='Ref'+reftype+'HSbindata',
+                    path=staid_aux+'/baz', parameters=binheader)
+            self.add_auxiliary_data(data=gun, data_type='Ref'+reftype+'HSbindata',
+                    path=staid_aux+'/std', parameters=binheader)
+            # average data
+            avgheader           = {'npts': npts, 'delta': delta}
+            self.add_auxiliary_data(data=Aavg[ind], data_type='Ref'+reftype+'HSavgdata',
+                    path=staid_aux+'/data', parameters=avgheader)
+            self.add_auxiliary_data(data=Astd[ind], data_type='Ref'+reftype+'HSavgdata',
+                    path=staid_aux+'/std', parameters=avgheader)
+            if savepredat:
+                for pdbase in qcLst:
+                    ref_header      = pdbase.header
+                    time            = pdbase.ampTC[:,0]
+                    obsdata         = pdbase.ampTC[:,1]
+                    time            = time[ind]
+                    obsdata         = obsdata[ind]
+                    evid            = ref_header['evid']
+                    # compute predicted data
+                    baz             = pdbase.header['baz']/180.*np.pi
+                    A012data        = CURefPy.A012_3pre(baz, A0, A1, phi1, A2, phi2)[ind]
+                    A1data          = CURefPy.A1_3pre(baz, A1, phi1)[ind]
+                    A2data          = CURefPy.A2_3pre(baz, A2, phi2)[ind]
+                    A0data          = A0[ind]
+                    diffdata        = A012data-obsdata
+                    # store data
+                    self.add_auxiliary_data(data=diffdata, data_type='Ref'+reftype+'HSdata',
+                        path=staid_aux+'/diff/'+evid, parameters={})
+                    self.add_auxiliary_data(data=A012data, data_type='Ref'+reftype+'HSdata',
+                        path=staid_aux+'/rep/'+evid, parameters={})
+                    self.add_auxiliary_data(data=A0data, data_type='Ref'+reftype+'HSdata',
+                        path=staid_aux+'/rep0/'+evid, parameters={})
+                    self.add_auxiliary_data(data=A1data, data_type='Ref'+reftype+'HSdata',
+                        path=staid_aux+'/rep1/'+evid, parameters={})
+                    self.add_auxiliary_data(data=A2data, data_type='Ref'+reftype+'HSdata',
+                        path=staid_aux+'/rep2/'+evid, parameters={})
+            #-------------------------------------
+            # store harmonic stripping results
+            #-------------------------------------
+            # A0 inversion
+            self.add_auxiliary_data(data=A0_0[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0/A0', parameters={})
+            # A1 inversion
+            self.add_auxiliary_data(data=A0_1[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A1/A0', parameters={})
+            self.add_auxiliary_data(data=A1_1[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A1/A1', parameters={})
+            self.add_auxiliary_data(data=phi1_1[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A1/phi1', parameters={})
+            # A2 inversion
+            self.add_auxiliary_data(data=A0_2[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A2/A0', parameters={})
+            self.add_auxiliary_data(data=A2_2[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A2/A2', parameters={})
+            self.add_auxiliary_data(data=phi2_2[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A2/phi2', parameters={})
+            # A0_A1_A2 inversion
+            self.add_auxiliary_data(data=A0[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/A0', parameters={})
+            self.add_auxiliary_data(data=A1[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/A1', parameters={})
+            self.add_auxiliary_data(data=A2[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/A2', parameters={})
+            self.add_auxiliary_data(data=phi1[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/phi1', parameters={})
+            self.add_auxiliary_data(data=phi2[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/phi2', parameters={})
+            # misfit between A0 and R[i]
+            self.add_auxiliary_data(data=mfArr0[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/mf_A0_obs', parameters={})
+            # misfit between A0+A1+A2 and R[i]
+            self.add_auxiliary_data(data=mfArr1[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/mf_A0_A1_A2_obs', parameters={})
+            # misfit between A0+A1+A2 and binned data
+            self.add_auxiliary_data(data=mfArr2[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/mf_A0_A1_A2_bin', parameters={})
+            # weighted misfit between A0+A1+A2 and binned data
+            self.add_auxiliary_data(data=mfArr3[ind], data_type='Ref'+reftype+'HSmodel',
+                    path=staid_aux+'/A0_A1_A2/wmf_A0_A1_A2_bin', parameters={})
         return
     
-    def plot_ref(self, network, station, phase='P', datatype='RefRHS'):
+    def plot_ref(self, network, station, phase='P', datatype='RefRHSdata'):
         """plot receiver function
         ====================================================================================================================
         ::: input parameters :::
@@ -1653,38 +1698,45 @@ class quakeASDF(pyasdf.ASDFDataSet):
         datatype            - datatype, default = 'RefRHS', harmonic striped radial receiver function
         =====================================================================================================================
         """
-        obsHSstream = CURefPy.HStripStream()
-        diffHSstream= CURefPy.HStripStream()
-        repHSstream = CURefPy.HStripStream()
-        rep0HSstream= CURefPy.HStripStream()
-        rep1HSstream= CURefPy.HStripStream()
-        rep2HSstream= CURefPy.HStripStream()
-        subgroup=self.auxiliary_data[datatype][network+'_'+station+'_'+phase]
-        stla, elev, stlo=self.waveforms[network+'.'+station].coordinates.values()
+        obsHSst         = CURefPy.hsStream()
+        diffHSst        = CURefPy.hsStream()
+        repHSst         = CURefPy.hsStream()
+        rep0HSst        = CURefPy.hsStream()
+        rep1HSst        = CURefPy.hsStream()
+        rep2HSst        = CURefPy.hsStream()
+        subgroup        = self.auxiliary_data[datatype][network+'_'+station+'_'+phase]
+        stla, elev, stlo= self.waveforms[network+'.'+station].coordinates.values()
         for evid in subgroup.obs.list():
-            ref_header=subgroup['obs'][evid].parameters
-            dt=ref_header['delta']; baz=ref_header['baz']; eventT=ref_header['otime']
-            obsArr=subgroup['obs'][evid].data.value
-            starttime=obspy.core.utcdatetime.UTCDateTime(eventT)+ref_header['arrival']-ref_header['tbeg']+30.
-            obsHSstream.get_trace(network=network, station=station, indata=obsArr[:, 1], baz=baz, dt=dt, starttime=starttime)
             
-            diffArr=subgroup['diff'][evid].data.value
-            diffHSstream.get_trace(network=network, station=station, indata=diffArr[:, 1], baz=baz, dt=dt, starttime=starttime)
+            ref_header  = subgroup['obs'][evid].parameters
+            dt          = ref_header['delta']
+            baz         = ref_header['baz']
+            eventT      = ref_header['otime']
+            obsArr      = subgroup['obs'][evid].data.value
             
-            repArr=subgroup['rep'][evid].data.value
-            repHSstream.get_trace(network=network, station=station, indata=repArr[:, 1], baz=baz, dt=dt, starttime=starttime)
-            
-            rep0Arr=subgroup['rep0'][evid].data.value
-            rep0HSstream.get_trace(network=network, station=station, indata=rep0Arr[:, 1], baz=baz, dt=dt, starttime=starttime)
-            
-            rep1Arr=subgroup['rep1'][evid].data.value
-            rep1HSstream.get_trace(network=network, station=station, indata=rep1Arr[:, 1], baz=baz, dt=dt, starttime=starttime)
-            
-            rep2Arr=subgroup['rep2'][evid].data.value
-            rep2HSstream.get_trace(network=network, station=station, indata=rep2Arr[:, 1], baz=baz, dt=dt, starttime=starttime)
-        self.HSDataBase=CURefPy.HarmonicStrippingDataBase(obsST=obsHSstream, diffST=diffHSstream, repST=repHSstream,\
-            repST0=rep0HSstream, repST1=rep1HSstream, repST2=rep2HSstream)
-        self.HSDataBase.PlotHSStreams(stacode=network+'.'+station, longitude=stlo, latitude=stla)
+            starttime   = obspy.core.utcdatetime.UTCDateTime(eventT)+ref_header['arrival']-ref_header['tbeg']+30.
+            obsHSst.get_trace(network=network, station=station, indata=obsArr, baz=baz, dt=dt, starttime=starttime)
+            try:
+                diffArr     = subgroup['diff'][evid].data.value
+                diffHSst.get_trace(network=network, station=station, indata=diffArr, baz=baz, dt=dt, starttime=starttime)
+                
+                repArr      = subgroup['rep'][evid].data.value
+                repHSst.get_trace(network=network, station=station, indata=repArr, baz=baz, dt=dt, starttime=starttime)
+                
+                rep0Arr     = subgroup['rep0'][evid].data.value
+                rep0HSst.get_trace(network=network, station=station, indata=rep0Arr, baz=baz, dt=dt, starttime=starttime)
+                
+                rep1Arr     =subgroup['rep1'][evid].data.value
+                rep1HSst.get_trace(network=network, station=station, indata=rep1Arr, baz=baz, dt=dt, starttime=starttime)
+                
+                rep2Arr     = subgroup['rep2'][evid].data.value
+                rep2HSst.get_trace(network=network, station=station, indata=rep2Arr, baz=baz, dt=dt, starttime=starttime)
+            except KeyError:
+                print('No predicted data for plotting')
+                return
+        self.hsdbase=CURefPy.hsdatabase(obsST=obsHSst, diffST=diffHSst, repST=repHSst,\
+            repST0=rep0HSst, repST1=rep1HSst, repST2=rep2HSst)
+        self.hsdbase.plot(stacode=network+'.'+station, longitude=stlo, latitude=stla)
         return
 
     def array_processing(self, evnumb=1, win_len=20., win_frac=0.2, sll_x=-3.0, slm_x=3.0, sll_y=-3.0, slm_y=3.0, sl_s=0.03,

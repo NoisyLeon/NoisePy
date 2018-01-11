@@ -5,15 +5,13 @@ Classes and functions for receiver function analysis.
 
 References:
 
-For iterative deconvolution algorithmn:
+Iterative deconvolution algorithmn:
 Ligorría, Juan Pablo, and Charles J. Ammon. "Iterative deconvolution and receiver-function estimation."
     Bulletin of the seismological Society of America 89.5 (1999): 1395-1400.
     
-For harmonic stripping and related quality control details:
+Harmonic stripping and related quality control details:
 Shen, Weisen, et al. "Joint inversion of surface wave dispersion and receiver functions: A Bayesian Monte-Carlo approach."
     Geophysical Journal International (2012): ggs050.
-    
-Please consider citing them if you use this code for your research.
     
 :Copyright:
     Author: Lili Feng
@@ -330,6 +328,9 @@ def _stretch_old(t1, nd1, slow):
         d2      = np.append(d2, tempd)
     return t2, d2
 
+#------------------------------------------------
+# functions for harmonic stripping
+#------------------------------------------------
 
 def _group ( inbaz, indat):
     """Group data according to back-azimuth, private function for harmonic stripping
@@ -548,21 +549,24 @@ class InputRefparam(object):
         return
 
 
-class HStripStream(obspy.core.stream.Stream):
-    """Harmonic stripping stream, derived from obspy.Stream
+class hsStream(obspy.core.stream.Stream):
+    """harmonic stripping stream, derived from obspy.Stream
     """
     def get_trace(self, network, station, indata, baz, dt, starttime):
         """Get trace
         """
-        tr=obspy.Trace(); tr.stats.network=network; tr.stats.station=station
-        tr.stats.channel=str(int(baz)); tr.stats.delta=dt
-        tr.data=indata
-        tr.stats.starttime=starttime
+        tr                  = obspy.Trace()
+        tr.stats.network    = network
+        tr.stats.station    = station
+        tr.stats.channel    = str(int(baz))
+        tr.stats.delta      = dt
+        tr.data             = indata
+        tr.stats.starttime  = starttime
         self.append(tr)
         return
     
             
-    def PlotStreams(self, ampfactor=40, title='', ax=plt.subplot(), targetDT=0.02):
+    def ploths(self, ampfactor=40, title='', ax=plt.subplot(), delta=0.025):
         """Plot harmonic stripping stream accoring to back-azimuth
         ===============================================================================================================
         ::: input parameters :::
@@ -572,53 +576,43 @@ class HStripStream(obspy.core.stream.Stream):
         targetDT    - target dt for decimation
         ===============================================================================================================
         """
-        ymax=361.
-        ymin=-1.
+        ymax    = 361.
+        ymin    = -1.
         for trace in self.traces:
-            downsamplefactor=int(targetDT/trace.stats.delta)
-            if downsamplefactor!=1: trace.decimate(factor=downsamplefactor, no_filter=True)
-            dt=trace.stats.delta
-            time=dt*np.arange(trace.stats.npts)
-            yvalue=trace.data*ampfactor
-            backazi=float(trace.stats.channel)
+            downsamplefactor    = int(delta/trace.stats.delta)
+            if downsamplefactor!=1:
+                trace.decimate(factor=downsamplefactor, no_filter=True)
+            dt      = trace.stats.delta
+            time    = dt*np.arange(trace.stats.npts)
+            yvalue  = trace.data*ampfactor
+            backazi = float(trace.stats.channel)
             ax.plot(time, yvalue+backazi, '-k', lw=0.3)
-            
             ax.fill_between(time, y2=backazi, y1=yvalue+backazi, where=yvalue>0, color='red', lw=0.01, interpolate=True)
             ax.fill_between(time, y2=backazi, y1=yvalue+backazi, where=yvalue<0, color='blue', lw=0.01, interpolate=True)
-            
-            
-            # tfill=time[yvalue>0]
-            # yfill=(yvalue+backazi)[yvalue>0]
-            # ax.fill_between(tfill, backazi, yfill, color='blue', linestyle='--', lw=0.)
-            # tfill=time[yvalue<0]
-            # yfill=(yvalue+backazi)[yvalue<0]
-            # ax.fill_between(tfill, backazi, yfill, color='red', linestyle='--', lw=0.)
-            
-            
         plt.axis([0., 10., ymin, ymax])
         plt.xlabel('Time(sec)')
         plt.title(title)
         return
     
-    def SaveHSStream(self, outdir, prefix):
+    def SaveHSst(self, outdir, prefix):
         """Save harmonic stripping stream to MiniSEED
         """
-        outfname=outdir+'/'+prefix+'.mseed'
+        outfname    = outdir+'/'+prefix+'.mseed'
         self.write(outfname, format='mseed')
         return
     
-    def LoadHSStream(self, datadir, prefix):
+    def LoadHSst(self, datadir, prefix):
         """Load harmonic stripping stream from MiniSEED
         """
-        infname=datadir+'/'+prefix+'.mseed'
-        self.traces=obspy.read(infname)
+        infname     = datadir+'/'+prefix+'.mseed'
+        self.traces = obspy.read(infname)
         return
     
-class HarmonicStrippingDataBase(object):
-    """Harmonic stripping database, include 6 harmonic stripping streams
+class hsdatabase(object):
+    """harmonic stripping database, include 6 harmonic stripping streams
     """
-    def __init__(self, obsST=HStripStream(), diffST=HStripStream(), repST=HStripStream(),\
-        repST0=HStripStream(), repST1=HStripStream(), repST2=HStripStream()):
+    def __init__(self, obsST=hsStream(), diffST=hsStream(), repST=hsStream(),\
+        repST0=hsStream(), repST1=hsStream(), repST2=hsStream()):
         self.obsST  = obsST
         self.diffST = diffST
         self.repST  = repST
@@ -627,8 +621,8 @@ class HarmonicStrippingDataBase(object):
         self.repST2 = repST2
         return
     
-    def PlotHSStreams(self, outdir='', stacode='', ampfactor=40, targetDT=0.025, longitude='', latitude='', browseflag=False, saveflag=True,\
-            obsflag=1, diffflag=0, repflag=1, rep0flag=1, rep1flag=1, rep2flag=1):
+    def plot(self, outdir='', stacode='', ampfactor=40, delta=0.025, longitude='', latitude='', browseflag=False, saveflag=True,\
+            obsflag=True, diffflag=False, repflag=True, rep0flag=True, rep1flag=True, rep2flag=True):
         """Plot harmonic stripping streams accoring to back-azimuth
         ===============================================================================================================
         ::: input parameters :::
@@ -647,45 +641,45 @@ class HarmonicStrippingDataBase(object):
         rep2flag            - plot A2 of receiver function or not
         ===============================================================================================================
         """
-        totalpn = obsflag+diffflag+repflag+rep0flag+rep1flag+rep2flag
-        cpn=1
+        totalpn     = obsflag+diffflag+repflag+rep0flag+rep1flag+rep2flag
+        cpn         = 1
         plt.close('all')
-        fig=plb.figure(num=1, figsize=(12.,8.), facecolor='w', edgecolor='k')
-        ylabelflag=False
-        if obsflag==1:
-            ax=plt.subplot(1, totalpn,cpn)
-            cpn=cpn+1
-            self.obsST.PlotStreams(ampfactor=ampfactor, targetDT=targetDT, title='Observed Refs', ax=ax)
+        fig         = plb.figure(num=1, figsize=(12.,8.), facecolor='w', edgecolor='k')
+        ylabelflag  = False
+        if obsflag:
+            ax          = plt.subplot(1, totalpn,cpn)
+            cpn         = cpn+1
+            self.obsST.ploths(ampfactor=ampfactor, delta=delta, title='Observed Refs', ax=ax)
             plt.ylabel('Backazimuth(deg)')
-            ylabelflag=True
-        if diffflag==1:
-            ax=plt.subplot(1, totalpn,cpn)
-            cpn=cpn+1
-            self.diffST.PlotStreams(ampfactor=ampfactor, targetDT=targetDT, title='Residual Refs', ax=ax)
-            if ylabelflag==False:
+            ylabelflag  = True
+        if diffflag:
+            ax          = plt.subplot(1, totalpn,cpn)
+            cpn         = cpn+1
+            self.diffST.ploths(ampfactor=ampfactor, delta=delta, title='Residual Refs', ax=ax)
+            if not ylabelflag:
                 plt.ylabel('Backazimuth(deg)')
-        if repflag==1:
-            ax=plt.subplot(1, totalpn,cpn)
-            cpn=cpn+1
-            self.repST.PlotStreams(ampfactor=ampfactor, targetDT=targetDT, title='Predicted Refs', ax=ax)
-            if ylabelflag==False:
+        if repflag:
+            ax  = plt.subplot(1, totalpn,cpn)
+            cpn = cpn+1
+            self.repST.ploths(ampfactor=ampfactor, delta=delta, title='Predicted Refs', ax=ax)
+            if not ylabelflag:
                 plt.ylabel('Backazimuth(deg)')
-        if rep0flag==1:
-            ax=plt.subplot(1, totalpn,cpn)
-            cpn=cpn+1
-            self.repST0.PlotStreams(ampfactor=ampfactor, targetDT=targetDT, title='A0 Refs', ax=ax)
-            if ylabelflag==False:
+        if rep0flag:
+            ax  = plt.subplot(1, totalpn,cpn)
+            cpn = cpn+1
+            self.repST0.ploths(ampfactor=ampfactor, delta=delta, title='A0 Refs', ax=ax)
+            if not ylabelflag:
                 plt.ylabel('Backazimuth(deg)')
-        if rep1flag==1:
-            ax=plt.subplot(1, totalpn,cpn)
-            cpn=cpn+1
-            self.repST1.PlotStreams(ampfactor=ampfactor, targetDT=targetDT, title='A1 Refs', ax=ax)
-            if ylabelflag==False:
+        if rep1flag:
+            ax  = plt.subplot(1, totalpn,cpn)
+            cpn = cpn+1
+            self.repST1.ploths(ampfactor=ampfactor, delta=delta, title='A1 Refs', ax=ax)
+            if not ylabelflag:
                 plt.ylabel('Backazimuth(deg)')
-        if rep2flag==1:
-            ax=plt.subplot(1, totalpn,cpn)
-            self.repST2.PlotStreams(ampfactor=ampfactor, targetDT=targetDT, title='A2 Refs', ax=ax)
-            if ylabelflag==False:
+        if rep2flag:
+            ax  = plt.subplot(1, totalpn,cpn)
+            self.repST2.ploths(ampfactor=ampfactor, delta=delta, title='A2 Refs', ax=ax)
+            if not ylabelflag:
                 plt.ylabel('Backazimuth(deg)')
         fig.suptitle(stacode+' Longitude:'+str(longitude)+' Latitude:'+str(latitude), fontsize=15)
         if browseflag:
@@ -695,40 +689,42 @@ class HarmonicStrippingDataBase(object):
                 plt.close('all')
         if saveflag and outdir!='':
             fig.savefig(outdir+'/'+stacode+'_COM.ps', orientation='landscape', format='ps')
+        return
             
-    def SaveHSDatabase(self, outdir, stacode=''):
+    def save(self, outdir, stacode=''):
         """Save harmonic stripping streams to MiniSEED
         """
-        prefix=stacode+'_obs'
-        self.obsST.SaveHSStream(outdir, prefix)
-        prefix=stacode+'_diff'
-        self.diffST.SaveHSStream(outdir, prefix)
-        prefix=stacode+'_rep'
-        self.repST.SaveHSStream(outdir, prefix)
-        prefix=stacode+'_rep0'
-        self.repST0.SaveHSStream(outdir, prefix)
-        prefix=stacode+'_rep1'
-        self.repST1.SaveHSStream(outdir, prefix)
-        prefix=stacode+'_rep2'
-        self.repST2.SaveHSStream(outdir, prefix)
+        prefix  = stacode+'_obs'
+        self.obsST.SaveHSst(outdir, prefix)
+        prefix  = stacode+'_diff'
+        self.diffST.SaveHSst(outdir, prefix)
+        prefix  = stacode+'_rep'
+        self.repST.SaveHSst(outdir, prefix)
+        prefix  = stacode+'_rep0'
+        self.repST0.SaveHSst(outdir, prefix)
+        prefix  = stacode+'_rep1'
+        self.repST1.SaveHSst(outdir, prefix)
+        prefix  = stacode+'_rep2'
+        self.repST2.SaveHSst(outdir, prefix)
         return
     
-    def LoadHSDatabase(self, datadir, stacode=''):
+    def load(self, datadir, stacode=''):
         """Load harmonic stripping streams from MiniSEED
         """
-        prefix=stacode+'_obs'
-        self.obsST.LoadHSStream(datadir, prefix)
-        prefix=stacode+'_diff'
-        self.diffST.LoadHSStream(datadir, prefix)
-        prefix=stacode+'_rep'
-        self.repST.LoadHSStream(datadir, prefix)
-        prefix=stacode+'_rep0'
-        self.repST0.LoadHSStream(datadir, prefix)
-        prefix=stacode+'_rep1'
-        self.repST1.LoadHSStream(datadir, prefix)
-        prefix=stacode+'_rep2'
-        self.repST2.LoadHSStream(datadir, prefix)
+        prefix  = stacode+'_obs'
+        self.obsST.LoadHSst(datadir, prefix)
+        prefix  = stacode+'_diff'
+        self.diffST.LoadHSst(datadir, prefix)
+        prefix  = stacode+'_rep'
+        self.repST.LoadHSst(datadir, prefix)
+        prefix  = stacode+'_rep0'
+        self.repST0.LoadHSst(datadir, prefix)
+        prefix  = stacode+'_rep1'
+        self.repST1.LoadHSst(datadir, prefix)
+        prefix  = stacode+'_rep2'
+        self.repST2.LoadHSst(datadir, prefix)
         return
+
 
 class PostDatabase(object):
     """
@@ -748,10 +744,10 @@ class PostDatabase(object):
     """
     def __init__(self):
         self.MoveOutFlag    = None
-        self.ampC           = np.array([]) # 0.06...out
-        self.ampTC          = np.array([]) # stre...out
+        self.ampC           = np.array([]) 
+        self.ampTC          = np.array([]) 
         self.header         = {}
-        self.tdiff          = None
+        self.tdiff          = 10.
         
         
 class PostRefLst(object):
@@ -809,7 +805,7 @@ class PostRefLst(object):
         """
         return self.PostDatas.__delitem__(index)
     
-    def remove_bad(self, outdir):
+    def remove_bad(self, outdir=None, fs=40., endtime=10., savetxt=True):
         """Remove bad measurements and group data
         ===============================================================================================================
         ::: input parameters :::
@@ -818,28 +814,36 @@ class PostRefLst(object):
         outdir/wmean.txt, outdir/bin_%d_txt
         ===============================================================================================================
         """
+        if outdir == None:
+            savetxt = False
         outlst      = PostRefLst()
         lens        = np.array([]) # array to store length for each moveout trace
         bazArr      = np.array([]) # array to store baz for each moveout trace
+        delta       = 1./fs
         for PostData in self.PostDatas:
             time    = PostData.ampTC[:,0]
             data    = PostData.ampTC[:,1]
             L       = time.size
-            flag    = True
+            # quality control
+            if PostData.header['delta'] != delta:
+                continue
             if abs(data).max()>1:
-                flag    = False
+                continue
             if data[abs(time)<0.1].min()<0.02:
-                flag    = False
-            if flag:
-                PostData.Len= L
-                lens        = np.append(lens, L)
-                outlst.append(PostData)
-                bazArr      = np.append( bazArr, np.floor(PostData.header['baz']))
-        #Group data array
+                continue
+            if time[-1] < endtime:
+                continue
+            PostData.Len= L
+            lens        = np.append(lens, L)
+            outlst.append(PostData)
+            bazArr      = np.append( bazArr, np.floor(PostData.header['baz']))
+        #------------------------------------------------------
+        # group the data
+        #------------------------------------------------------
+        # grouped data array
         gbaz        = np.array([])
         gdata       = np.array([])
         gun         = np.array([])
-        ## store the stacked RF#
         Lmin        = int(lens.min())
         dat_avg     = np.zeros(Lmin, dtype=np.float64)
         weight_avg  = np.zeros(Lmin, dtype=np.float64)
@@ -868,28 +872,29 @@ class PostRefLst(object):
         gbaz        = gbaz.reshape((Lmin, Ngbaz))
         gdata       = gdata.reshape((Lmin, Ngbaz))
         gun         = gun.reshape((Lmin, Ngbaz))
-        # Save average data
-        outname     = outdir+"/wmean.txt"
-        outwmeanArr = np.append(time1, dat_avg)
-        outwmeanArr = np.append(outwmeanArr, weight_avg)
-        outwmeanArr = outwmeanArr.reshape((3, Lmin))
-        outwmeanArr = outwmeanArr.T
-        np.savetxt(outname, outwmeanArr, fmt='%g')
-        # Save baz bin data
-        for i in range (Ngbaz): # back -azimuth
-            outname     = outdir+"/bin_%d_txt" % (int(gbaz[0][i]))
-            outbinArr   = np.append(time1[:Lmin], gdata[:, i])
-            outbinArr   = np.append(outbinArr, gun[:, i])
-            outbinArr   = outbinArr.reshape((3, Lmin ))
-            outbinArr   = outbinArr.T
-            np.savetxt(outname, outbinArr, fmt='%g')
-        # compute and store trace difference
+        # compute and store trace difference, tdiff for quality control
         for i in range(len(outlst)):
             time            = outlst[i].ampTC[:,0]
             data            = outlst[i].ampTC[:,1]
             Lmin            = min( len(time) , len(time1) )
             tdiff           = _difference ( data[:Lmin], dat_avg[:Lmin], 0)
             outlst[i].tdiff = tdiff
+        # Save data
+        if savetxt:
+            outname     = outdir+"/wmean.txt"
+            outwmeanArr = np.append(time1, dat_avg)
+            outwmeanArr = np.append(outwmeanArr, weight_avg)
+            outwmeanArr = outwmeanArr.reshape((3, Lmin))
+            outwmeanArr = outwmeanArr.T
+            np.savetxt(outname, outwmeanArr, fmt='%g')
+            # Save baz bin data
+            for i in range (Ngbaz): # back -azimuth
+                outname     = outdir+"/bin_%d_txt" % (int(gbaz[0][i]))
+                outbinArr   = np.append(time1[:Lmin], gdata[:, i])
+                outbinArr   = np.append(outbinArr, gun[:, i])
+                outbinArr   = outbinArr.reshape((3, Lmin ))
+                outbinArr   = outbinArr.T
+                np.savetxt(outname, outbinArr, fmt='%g')
         return outlst
     
     def thresh_tdiff(self, tdiff=0.08):
@@ -902,7 +907,7 @@ class PostRefLst(object):
         return outlst
     
     
-    def harmonic_stripping(self, stacode, outdir, savetxt=True):
+    def harmonic_stripping(self, stacode, outdir=None, savetxt=False, endtime=10.):
         """
         Harmonic stripping analysis for quality controlled data.
         ===============================================================================================================
@@ -917,6 +922,8 @@ class PostRefLst(object):
         outdir/0repstre_*, outdir/1repstre_*, outdir/2repstre_*, outdir/diffstre_*
         ===============================================================================================================
         """
+        if outdir == None:
+            savetxt = False
         NLst    = len(self.PostDatas)
         baz     = np.zeros(NLst, dtype=np.float64)
         lens    = np.zeros(NLst, dtype=np.float64)
@@ -931,6 +938,7 @@ class PostRefLst(object):
             names.append(name)
             eventT.append(PostData.header['otime'])
         # store all time and data arrays
+        # # Lmin    = int(min(lens.min(), (time[time<=endtime]).size))
         Lmin    = int(lens.min())
         atime   = np.zeros((Lmin, NLst), dtype=np.float64)
         adata   = np.zeros((Lmin, NLst), dtype=np.float64)
@@ -951,7 +959,7 @@ class PostRefLst(object):
         A0_2    = np.zeros(Lmin, dtype=np.float64)
         A2_2    = np.zeros(Lmin, dtype=np.float64)
         phi2_2  = np.zeros(Lmin, dtype=np.float64)
-        # best fitting A0, A1 and A2 
+        # best fitting A0, A1, phi1, A2 and phi2 
         A0      = np.zeros(Lmin, dtype=np.float64)
         A1      = np.zeros(Lmin, dtype=np.float64)
         A2      = np.zeros(Lmin, dtype=np.float64)
@@ -1042,7 +1050,7 @@ class PostRefLst(object):
             timeA0      = time[(A0_0>-2.)*(A0_0<2.)]
             A0_out      = A0_0[(A0_0>-2.)*(A0_0<2.)]
             LA0         = timeA0.size
-            outArrf0    = np.append(timeA0,A0_out)
+            outArrf0    = np.append(timeA0, A0_out)
             outArrf0    = outArrf0.reshape((2, LA0))
             outArrf0    = outArrf0.T
             np.savetxt(outdir+"/A0.dat", outArrf0, fmt='%g', header='time A0; A0 inversion')
@@ -1101,9 +1109,9 @@ class PostRefLst(object):
             outArrf3    = outArrf3.T
             np.savetxt(outdir+"/A0_A1_A2.dat", outArrf3, fmt='%g', \
             header='time A0 A1 phi1 A2 phi2 misfit(A0-rawdata) misfit(A3-rawdata) misfit(A3-bindata) weighted_misfit(A3-bindata) Aavg Astd; A3 inversion')
-        #---------------------------------------
-        # save predicted data
-        #---------------------------------------
+            #---------------------------------------
+            # save predicted data
+            #---------------------------------------
             # broadcasting baz to 2d array of shape ( Lmin, NLst )
             baz2d       = np.repeat(baz, Lmin)
             baz2d       = baz2d.reshape(NLst, Lmin)
@@ -1126,11 +1134,11 @@ class PostRefLst(object):
             diffdata    = adata - A3data
             
             indtime     = time<=10.
-            vr0         = np.zeros(NLst, dtype=np.float64)
-            vr1         = np.zeros(NLst, dtype=np.float64)
-            vr2         = np.zeros(NLst, dtype=np.float64)
-            vr3         = np.zeros(NLst, dtype=np.float64)
-            with open(outdir+"/variance_reduction.dat","w") as fidvr:
+            mf0         = np.zeros(NLst, dtype=np.float64)
+            mf1         = np.zeros(NLst, dtype=np.float64)
+            mf2         = np.zeros(NLst, dtype=np.float64)
+            mf3         = np.zeros(NLst, dtype=np.float64)
+            with open(outdir+"/misfit.dat","w") as fidmf:
                 for i in range(NLst):
                     tempbaz     = baz[i]
                     tempbaz1    = float(baz[i])*np.pi/180.
@@ -1164,60 +1172,59 @@ class PostRefLst(object):
                     outpreArr   = outpreArr.T
                     np.savetxt(outname, outpreArr, fmt='%g')
                     # variance reduction arrays
-                    vr0[i]      = _match(A0_0_out, adata[indtime, i])
-                    vr1[i]      = _match(A01_1_out, adata[indtime, i])
-                    vr2[i]      = _match(A02_2_out, adata[indtime, i])
-                    vr3[i]      = _match(A012_3_out, adata[indtime, i])
+                    mf0[i]      = _match(A0_0_out, adata[indtime, i])
+                    mf1[i]      = _match(A01_1_out, adata[indtime, i])
+                    mf2[i]      = _match(A02_2_out, adata[indtime, i])
+                    mf3[i]      = _match(A012_3_out, adata[indtime, i])
                     # write to variance reduction file
-                    tempstr = "%d %g %g %g %g %s\n" %(baz[i], vr0[i], vr1[i], vr2[i], vr3[i], names[i])
-                    fidvr.write(tempstr)
-            with open(outdir+"/average_vr.dat","w") as favr:
-                tempstr = "%g %g %g %g\n" %(vr0.mean(), vr1.mean(), vr2.mean(), vr3.mean())
-                favr.write(tempstr)
-            dt  = time[1]-time[0]
-            # continue here            
-            # for i in range (NLst):
-            #     outname = outdir+"/diff" + names[i]
-            #     outArr  = np.append(time, drdata[:,i])
-            #     outArr  = outArr.reshape((2,Lmin))
-            #     outArr  = outArr.T
-            #     np.savetxt(outname, outArr, fmt='%g')
-            # 
-            # for i in np.arange (len(names)):
-            #     outname = outdir+"/rep" + names[i]
-            #     outArr  = np.append(time, rdata[:,i])
-            #     outArr  = outArr.reshape((2,Lmin))
-            #     outArr  = outArr.T
-            #     np.savetxt(outname, outArr, fmt='%g')
-            # 
-            # for i in np.arange (len(names)):
-            #     outname = outdir+"/0rep" + names[i]
-            #     outArr  = np.append(time, A0)
-            #     outArr  = outArr.reshape((2,Lmin))
-            #     outArr  = outArr.T
-            #     np.savetxt(outname, outArr, fmt='%g')
-            # 
-            # for i in np.arange (len(names)):
-            #     outname = outdir+"/1rep" + names[i]
-            #     outArr  = np.append(time, lfrdata1[:,i])
-            #     outArr  = outArr.reshape((2,Lmin))
-            #     outArr  = outArr.T
-            #     np.savetxt(outname, outArr, fmt='%g')
-            #     
-            # for i in np.arange (len(names)):
-            #     outname = outdir+"/2rep" + names[i]
-            #     outArr  = np.append(time, lfrdata2[:,i])
-            #     outArr  = outArr.reshape((2,Lmin))
-            #     outArr  = outArr.T
-            #     np.savetxt(outname, outArr, fmt='%g')
-            #     
-            # for i in np.arange (len(names)):
-            #     outname = outdir+"/obs" + names[i]
-            #     outArr  = np.append(time, lfadata[:,i])
-            #     outArr  = outArr.reshape((2,Lmin))
-            #     outArr  = outArr.T
-            #     np.savetxt(outname, outArr, fmt='%g')
-        return
+                    tempstr = "%d %g %g %g %g %s\n" %(baz[i], mf0[i], mf1[i], mf2[i], mf3[i], names[i])
+                    fidmf.write(tempstr)
+            with open(outdir+"/average_misfit.dat","w") as famf:
+                tempstr = "%g %g %g %g\n" %(mf0.mean(), mf1.mean(), mf2.mean(), mf3.mean())
+                famf.write(tempstr) 
+            for i in range (NLst):
+                outname = outdir+"/diff" + names[i]
+                outArr  = np.append(time, diffdata[:,i])
+                outArr  = outArr.reshape((2, Lmin))
+                outArr  = outArr.T
+                np.savetxt(outname, outArr, fmt='%g', header='time diffdata(A3-obs); A3 inversion')
+            
+            for i in range (NLst):
+                outname = outdir+"/rep" + names[i]
+                outArr  = np.append(time, A3data[:,i])
+                outArr  = outArr.reshape((2,Lmin))
+                outArr  = outArr.T
+                np.savetxt(outname, outArr, fmt='%g', header='time A3; A3 inversion')
+            
+            for i in range (NLst):
+                outname = outdir+"/0rep" + names[i]
+                outArr  = np.append(time, A0)
+                outArr  = outArr.reshape((2, Lmin))
+                outArr  = outArr.T
+                np.savetxt(outname, outArr, fmt='%g', header='time A0; A3 inversion')
+            
+            for i in range (NLst):
+                outname = outdir+"/1rep" + names[i]
+                outArr  = np.append(time, A1data[:,i])
+                outArr  = outArr.reshape((2,Lmin))
+                outArr  = outArr.T
+                np.savetxt(outname, outArr, fmt='%g', header='time A1; A3 inversion')
+                
+            for i in range (NLst):
+                outname = outdir+"/2rep" + names[i]
+                outArr  = np.append(time, A2data[:,i])
+                outArr  = outArr.reshape((2,Lmin))
+                outArr  = outArr.T
+                np.savetxt(outname, outArr, fmt='%g', header='time A2; A3 inversion')
+                
+            for i in range (NLst):
+                outname = outdir+"/obs" + names[i]
+                outArr  = np.append(time, adata[:,i])
+                outArr  = outArr.reshape((2,Lmin))
+                outArr  = outArr.T
+                np.savetxt(outname, outArr, fmt='%g', header='time obs')
+        return A0_0, A0_1, A1_1, phi1_1, A0_2, A2_2, phi2_2, A0, A1, A2, phi1, phi2, mfArr0, mfArr1, mfArr2, mfArr3, Aavg, Astd,\
+                gbaz, gdata, gun
     
 
 class RFTrace(obspy.Trace):
