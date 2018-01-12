@@ -629,7 +629,7 @@ class hsdatabase(object):
         outdir              - output directory for saving figure
         stacode             - station code
         ampfactor           - amplication factor for visulization
-        targetDT            - target dt for decimation
+        delta               - target dt for decimation
         longitude/latitude  - station location
         browseflag          - browse figure or not
         saveflag            - save figure or not
@@ -683,10 +683,10 @@ class hsdatabase(object):
                 plt.ylabel('Backazimuth(deg)')
         fig.suptitle(stacode+' Longitude:'+str(longitude)+' Latitude:'+str(latitude), fontsize=15)
         if browseflag:
-                plt.draw()
-                plt.pause(1) # <-------
-                raw_input("<Hit Enter To Close>")
-                plt.close('all')
+            plt.draw()
+            plt.pause(1) # <-------
+            raw_input("<Hit Enter To Close>")
+            plt.close('all')
         if saveflag and outdir!='':
             fig.savefig(outdir+'/'+stacode+'_COM.ps', orientation='landscape', format='ps')
         return
@@ -805,11 +805,14 @@ class PostRefLst(object):
         """
         return self.PostDatas.__delitem__(index)
     
-    def remove_bad(self, outdir=None, fs=40., endtime=10., savetxt=True):
+    def remove_bad(self, outdir=None, fs=40., endtime=10., savetxt=False):
         """Remove bad measurements and group data
         ===============================================================================================================
         ::: input parameters :::
         outdir      - output directory
+        fs          - sampling rate
+        endtime     - required endtime
+        savetxt     - output txt results or not
         ::: output :::
         outdir/wmean.txt, outdir/bin_%d_txt
         ===============================================================================================================
@@ -898,7 +901,7 @@ class PostRefLst(object):
         return outlst
     
     def thresh_tdiff(self, tdiff=0.08):
-        """Remove data given threshold trace difference value
+        """remove data given threshold trace difference value
         """
         outlst      = PostRefLst()
         for PostData in self.PostDatas:
@@ -907,13 +910,14 @@ class PostRefLst(object):
         return outlst
     
     
-    def harmonic_stripping(self, stacode, outdir=None, savetxt=False, endtime=10.):
+    def harmonic_stripping(self, stacode, outdir=None, savetxt=False):
         """
         Harmonic stripping analysis for quality controlled data.
         ===============================================================================================================
         ::: input parameters :::
         stacode     - station code( e.g. TA.R11A )
         outdir      - output directory
+        savetxt     - output txt results or not
         
         ::: output :::
         outdir/bin_%d_rf.dat, outdir/A0.dat, outdir/A1.dat, outdir/A2.dat, outdir/A0_A1_A2.dat
@@ -1223,6 +1227,7 @@ class PostRefLst(object):
                 outArr  = outArr.reshape((2,Lmin))
                 outArr  = outArr.T
                 np.savetxt(outname, outArr, fmt='%g', header='time obs')
+                
         return A0_0, A0_1, A1_1, phi1_1, A0_2, A2_2, phi2_2, A0, A1, A2, phi1, phi2, mfArr0, mfArr1, mfArr2, mfArr3, Aavg, Astd,\
                 gbaz, gdata, gun
     

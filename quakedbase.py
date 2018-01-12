@@ -1244,10 +1244,13 @@ class quakeASDF(pyasdf.ASDFDataSet):
         except:
             etime4ref   = obspy.UTCDateTime()
         delta           = 1./fs
+        Nsta            = len(self.waveforms.list())
+        ista            = 0
         print '================================== Receiver Function Analysis ======================================'
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
-            print('Station: '+staid)
+            ista                += 1
+            print('Station: '+staid+' '+str(ista)+'/'+Nsta)
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
             evnumb              = 0
             Ndata               = 0              
@@ -1525,7 +1528,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return
         
     
-    def harmonic_stripping(self, outdir=None, data_type='RefRmoveout', VR=80., tdiff=0.08, phase='P', reftype='R', fs=40., endtime=10., \
+    def harmonic_stripping(self, outdir=None, data_type='RefRmoveout', VR=80., tdiff=0.08, phase='P', reftype='R', fs=40., endtime=10.,\
                 savetxt=False, savepredat=True):
         """Harmonic stripping analysis
         ====================================================================================================================
@@ -1582,7 +1585,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             qcLst               = qcLst.thresh_tdiff(tdiff=tdiff)
             A0_0, A0_1, A1_1, phi1_1, A0_2, A2_2, phi2_2, \
                 A0, A1, A2, phi1, phi2, mfArr0, mfArr1, mfArr2, mfArr3,\
-                    Aavg, Astd, gbaz, gdat, gun = qcLst.harmonic_stripping(outdir=outsta, stacode=staid, savetxt=savetxt, endtime=endtime)
+                    Aavg, Astd, gbaz, gdat, gun = qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             #------------------------------------------
             # store data
             #------------------------------------------
@@ -1707,13 +1710,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
         subgroup        = self.auxiliary_data[datatype][network+'_'+station+'_'+phase]
         stla, elev, stlo= self.waveforms[network+'.'+station].coordinates.values()
         for evid in subgroup.obs.list():
-            
             ref_header  = subgroup['obs'][evid].parameters
             dt          = ref_header['delta']
             baz         = ref_header['baz']
             eventT      = ref_header['otime']
             obsArr      = subgroup['obs'][evid].data.value
-            
             starttime   = obspy.core.utcdatetime.UTCDateTime(eventT)+ref_header['arrival']-ref_header['tbeg']+30.
             obsHSst.get_trace(network=network, station=station, indata=obsArr, baz=baz, dt=dt, starttime=starttime)
             try:
@@ -1734,8 +1735,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             except KeyError:
                 print('No predicted data for plotting')
                 return
-        self.hsdbase=CURefPy.hsdatabase(obsST=obsHSst, diffST=diffHSst, repST=repHSst,\
-            repST0=rep0HSst, repST1=rep1HSst, repST2=rep2HSst)
+        self.hsdbase    = CURefPy.hsdatabase(obsST=obsHSst, diffST=diffHSst, repST=repHSst,\
+                            repST0=rep0HSst, repST1=rep1HSst, repST2=rep2HSst)
         self.hsdbase.plot(stacode=network+'.'+station, longitude=stlo, latitude=stla)
         return
 
