@@ -68,15 +68,21 @@ class requestInfo(object):
 
 class quakeASDF(pyasdf.ASDFDataSet):
     """ An object to for earthquake data analysis based on ASDF database
+    =================================================================================================================
+    version history:
+        Dec 8th, 2016   - first version
+        Jan 12th, 2018  - second version
+                    changes:
+                    1.  correct the bug in _stretch function, improve the speed
+                    2.  no longer do stretch_back, directly stretch the function to reference slowness
+                    3.  using IASP91 model instead of a two layer model for moveout
+                    4.  changed output part for harmonic stripping
+                    5.  added more comments, changed the name of variables to improve readability
+    =================================================================================================================
     """
-    
     def print_info(self):
         """
         Print information of the dataset.
-        =================================================================================================================
-        Version History:
-            Dec 8th, 2016   - first version
-        =================================================================================================================
         """
         outstr  = '============================================================ Earthquake Database ===========================================================\n'
         outstr  += self.__str__()+'\n'

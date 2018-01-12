@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-A python module for seismic data analysis based on ASDF database
+A python module for ambient noise data analysis based on ASDF database
 
 :Methods:
     aftan analysis (use pyaftan or aftanf77)
-    C3(Correlation of coda of Cross-Correlation) computation
-    Automatic Receiver Function Analysis( Iterative Deconvolution and Harmonic Stripping )
     Preparing data for surface wave tomography (Barmin's method, Eikonal/Helmholtz tomography)
     Stacking/Rotation for Cross-Correlation Results from SEED2CORpp
-    Bayesian Monte Carlo Inversion of Surface Wave and Receiver Function datasets (To be added soon)
 
 :Dependencies:
     pyasdf and its dependencies
@@ -39,39 +36,30 @@ from obspy.clients.fdsn.client import Client
 from mpl_toolkits.basemap import Basemap, shiftgrid, cm
 import obspy.signal.array_analysis
 from obspy.imaging.cm import obspy_sequential
-from pyproj import Geod
-from obspy.taup import TauPyModel
 import glob
 
-sta_info_default={'xcorr': 1, 'isnet': 0}
-
-xcorr_header_default={'netcode1': '', 'stacode1': '', 'netcode2': '', 'stacode2': '', 'chan1': '', 'chan2': '',
+sta_info_default        = {'xcorr': 1, 'isnet': 0}
+xcorr_header_default    = {'netcode1': '', 'stacode1': '', 'netcode2': '', 'stacode2': '', 'chan1': '', 'chan2': '',
         'npts': 12345, 'b': 12345, 'e': 12345, 'delta': 12345, 'dist': 12345, 'az': 12345, 'baz': 12345, 'stackday': 0}
-
 xcorr_sacheader_default = {'knetwk': '', 'kstnm': '', 'kcmpnm': '', 'stla': 12345, 'stlo': 12345, 
             'kuser0': '', 'kevnm': '', 'evla': 12345, 'evlo': 12345, 'evdp': 0., 'dist': 0., 'az': 12345, 'baz': 12345, 
                 'delta': 12345, 'npts': 12345, 'user0': 0, 'b': 12345, 'e': 12345}
-
-monthdict={1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AUG', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DEC'}
-
-geodist = Geod(ellps='WGS84')
-taupmodel = TauPyModel(model="iasp91")
+monthdict               = {1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AUG', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DEC'}
 
 class noiseASDF(pyasdf.ASDFDataSet):
     """ An object to for ambient noise cross-correlation analysis based on ASDF database
+    =================================================================================================================
+    version history:
+        Dec 6th, 2016   - first version
+    =================================================================================================================
     """
-    
     def print_info(self):
         """
-        Print information of the dataset.
-        =================================================================================================================
-        Version History:
-            Dec 6th, 2016   - first version
-        =================================================================================================================
+        print information of the dataset.
         """
         outstr  = '================================================= Ambient Noise Cross-correlation Database =================================================\n'
-        outstr+=self.__str__()+'\n'
-        outstr += '--------------------------------------------------------------------------------------------------------------------------------------------\n'
+        outstr  += self.__str__()+'\n'
+        outstr  += '--------------------------------------------------------------------------------------------------------------------------------------------\n'
         if 'NoiseXcorr' in self.auxiliary_data.list():
             outstr      += 'NoiseXcorr              - Cross-correlation seismogram\n'
         if 'StaInfo' in self.auxiliary_data.list():
@@ -105,127 +93,138 @@ class noiseASDF(pyasdf.ASDFDataSet):
         return
     
     def write_stationxml(self, staxml, source='CIEI'):
-        """Write obspy inventory to StationXML data file
+        """write obspy inventory to StationXML data file
         """
-        inv=obspy.core.inventory.inventory.Inventory(networks=[], source=source)
-        for staid in self.waveforms.list(): inv+=self.waveforms[staid].StationXML
+        inv     = obspy.core.inventory.inventory.Inventory(networks=[], source=source)
+        for staid in self.waveforms.list():
+            inv += self.waveforms[staid].StationXML
         inv.write(staxml, format='stationxml')
         return
     
     def write_stationtxt(self, stafile):
-        """Write obspy inventory to txt station list(format used in SEED2COR)
+        """write obspy inventory to txt station list(format used in ANXcorr and Seed2Cor)
         """
         try:
-            auxiliary_info=self.auxiliary_data.StaInfo
-            isStaInfo=True
-        except: isStaInfo=False
+            auxiliary_info      = self.auxiliary_data.StaInfo
+            isStaInfo           = True
+        except:
+            isStaInfo           = False
         with open(stafile, 'w') as f:
             for staid in self.waveforms.list():
-                stainv=self.waveforms[staid].StationXML
-                netcode=stainv.networks[0].code
-                stacode=stainv.networks[0].stations[0].code
-                lon=stainv.networks[0].stations[0].longitude
-                lat=stainv.networks[0].stations[0].latitude
+                stainv          = self.waveforms[staid].StationXML
+                netcode         = stainv.networks[0].code
+                stacode         = stainv.networks[0].stations[0].code
+                lon             = stainv.networks[0].stations[0].longitude
+                lat             = stainv.networks[0].stations[0].latitude
                 if isStaInfo:
-                    staid_aux=netcode+'/'+stacode
-                    ccflag=auxiliary_info[staid_aux].parameters['xcorr']
-                    f.writelines('%s %3.4f %3.4f %d %s\n' %(stacode, lon, lat, ccflag, netcode) )
+                    staid_aux   = netcode+'/'+stacode
+                    xcorrflag   = auxiliary_info[staid_aux].parameters['xcorr']
+                    f.writelines('%s %3.4f %3.4f %d %s\n' %(stacode, lon, lat, xcorrflag, netcode) )
                 else:
                     f.writelines('%s %3.4f %3.4f %s\n' %(stacode, lon, lat, netcode) )        
         return
     
-    def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN'], dnetcode='TA'):
-        """Read txt station list 
+    def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN'], dnetcode=None):
+        """read txt station list 
         """
-        sta_info=sta_info_default.copy()
+        sta_info                        = sta_info_default.copy()
         with open(stafile, 'r') as f:
-            Sta=[]
-            site=obspy.core.inventory.util.Site(name='01')
-            creation_date=obspy.core.utcdatetime.UTCDateTime(0)
-            inv=obspy.core.inventory.inventory.Inventory(networks=[], source=source)
-            total_number_of_channels=len(chans)
+            Sta                         = []
+            site                        = obspy.core.inventory.util.Site(name='01')
+            creation_date               = obspy.core.utcdatetime.UTCDateTime(0)
+            inv                         = obspy.core.inventory.inventory.Inventory(networks=[], source=source)
+            total_number_of_channels    = len(chans)
             for lines in f.readlines():
-                lines=lines.split()
-                stacode=lines[0]
-                lon=float(lines[1])
-                lat=float(lines[2])
-                netcode=dnetcode
-                ccflag=None
+                lines       = lines.split()
+                stacode     = lines[0]
+                lon         = float(lines[1])
+                lat         = float(lines[2])
+                netcode     = dnetcode
+                xcorrflag   = None
                 if len(lines)==5:
                     try:
-                        ccflag=int(lines[3])
-                        netcode=lines[4]
+                        xcorrflag   = int(lines[3])
+                        netcode     = lines[4]
                     except ValueError:
-                        ccflag=int(lines[4])
-                        netcode=lines[3]
+                        xcorrflag   = int(lines[4])
+                        netcode     = lines[3]
                 if len(lines)==4:
                     try:
-                        ccflag=int(lines[3])
+                        xcorrflag   = int(lines[3])
                     except ValueError:
-                        netcode=lines[3]
-                netsta=netcode+'.'+stacode
+                        netcode     = lines[3]
+                if netcode is None:
+                    netsta      = stacode
+                else:
+                    netsta      = netcode+'.'+stacode
                 if Sta.__contains__(netsta):
-                    index=Sta.index(netsta)
+                    index   = Sta.index(netsta)
                     if abs(self[index].lon-lon) >0.01 and abs(self[index].lat-lat) >0.01:
                         raise ValueError('Incompatible Station Location:' + netsta+' in Station List!')
                     else:
                         print 'Warning: Repeated Station:' +netsta+' in Station List!'
                         continue
-                channels=[]
-                if lon>180.: lon-=360.
+                channels    = []
+                if lon>180.:
+                    lon-=360.
                 for chan in chans:
-                    channel=obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
-                            elevation=0.0, depth=0.0)
+                    channel = obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
+                                elevation=0.0, depth=0.0)
                     channels.append(channel)
-                station=obspy.core.inventory.station.Station(code=stacode, latitude=lat, longitude=lon, elevation=0.0,
-                        site=site, channels=channels, total_number_of_channels = total_number_of_channels, creation_date = creation_date)
-                network=obspy.core.inventory.network.Network(code=netcode, stations=[station])
-                networks=[network]
-                inv+=obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
-                staid_aux=netcode+'/'+stacode
-                if ccflag!=None: sta_info['xcorr']=ccflag
+                station     = obspy.core.inventory.station.Station(code=stacode, latitude=lat, longitude=lon, elevation=0.0,
+                                site=site, channels=channels, total_number_of_channels = total_number_of_channels, creation_date = creation_date)
+                network     = obspy.core.inventory.network.Network(code=netcode, stations=[station])
+                networks    = [network]
+                inv         += obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
+                if netcode is None:
+                    staid_aux   = stacode
+                else:
+                    staid_aux   = netcode+'/'+stacode
+                if xcorrflag != None:
+                    sta_info['xcorr']   = xcorrflag
                 self.add_auxiliary_data(data=np.array([]), data_type='StaInfo', path=staid_aux, parameters=sta_info)
         print 'Writing obspy inventory to ASDF dataset'
         self.add_stationxml(inv)
         print 'End writing obspy inventory to ASDF dataset'
         return 
     
-    def read_stationtxt_ind(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN'], s_ind=1, lon_ind=2, lat_ind=3, n_ind=0):
-        """Read txt station list, column index can be changed
+    def read_stationtxt_ind(self, stafile, source='CIEI', chans=['LHZ', 'LHE', 'LHN'], s_ind=1, lon_ind=2, lat_ind=3, n_ind=0):
+        """read txt station list, column index can be changed
         """
-        sta_info=sta_info_default.copy()
+        sta_info                    = sta_info_default.copy()
         with open(stafile, 'r') as f:
-            Sta=[]
-            site=obspy.core.inventory.util.Site(name='01')
-            creation_date=obspy.core.utcdatetime.UTCDateTime(0)
-            inv=obspy.core.inventory.inventory.Inventory(networks=[], source=source)
-            total_number_of_channels=len(chans)
+            Sta                     = []
+            site                    = obspy.core.inventory.util.Site(name='01')
+            creation_date           = obspy.core.utcdatetime.UTCDateTime(0)
+            inv                     = obspy.core.inventory.inventory.Inventory(networks=[], source=source)
+            total_number_of_channels= len(chans)
             for lines in f.readlines():
-                lines=lines.split()
-                stacode=lines[s_ind]
-                lon=float(lines[lon_ind])
-                lat=float(lines[lat_ind])
-                netcode=lines[n_ind]
-                netsta=netcode+'.'+stacode
+                lines           = lines.split()
+                stacode         = lines[s_ind]
+                lon             = float(lines[lon_ind])
+                lat             = float(lines[lat_ind])
+                netcode         = lines[n_ind]
+                netsta          = netcode+'.'+stacode
                 if Sta.__contains__(netsta):
-                    index=Sta.index(netsta)
+                    index       = Sta.index(netsta)
                     if abs(self[index].lon-lon) >0.01 and abs(self[index].lat-lat) >0.01:
                         raise ValueError('Incompatible Station Location:' + netsta+' in Station List!')
                     else:
                         print 'Warning: Repeated Station:' +netsta+' in Station List!'
                         continue
-                channels=[]
-                if lon>180.: lon-=360.
+                channels        = []
+                if lon>180.:
+                    lon         -=360.
                 for chan in chans:
-                    channel=obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
-                            elevation=0.0, depth=0.0)
+                    channel     = obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
+                                    elevation=0.0, depth=0.0)
                     channels.append(channel)
-                station=obspy.core.inventory.station.Station(code=stacode, latitude=lat, longitude=lon, elevation=0.0,
-                        site=site, channels=channels, total_number_of_channels = total_number_of_channels, creation_date = creation_date)
-                network=obspy.core.inventory.network.Network(code=netcode, stations=[station])
-                networks=[network]
-                inv+=obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
-                staid_aux=netcode+'/'+stacode
+                station         = obspy.core.inventory.station.Station(code=stacode, latitude=lat, longitude=lon, elevation=0.0,
+                                    site=site, channels=channels, total_number_of_channels = total_number_of_channels, creation_date = creation_date)
+                network         = obspy.core.inventory.network.Network(code=netcode, stations=[station])
+                networks        = [network]
+                inv             += obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
+                staid_aux       = netcode+'/'+stacode
                 self.add_auxiliary_data(data=np.array([]), data_type='StaInfo', path=staid_aux, parameters=sta_info)
         print 'Writing obspy inventory to ASDF dataset'
         self.add_stationxml(inv)
@@ -233,22 +232,26 @@ class noiseASDF(pyasdf.ASDFDataSet):
         return 
     
     def get_limits_lonlat(self):
-        """Get the geographical limits of the stations
+        """get the geographical limits of the stations
         """
-        staLst=self.waveforms.list()
-        minlat=90.
-        maxlat=-90.
-        minlon=360.
-        maxlon=0.
+        staLst  = self.waveforms.list()
+        minlat  = 90.
+        maxlat  = -90.
+        minlon  = 360.
+        maxlon  = 0.
         for staid in staLst:
-            lat, elv, lon=self.waveforms[staid].coordinates.values()
-            if lon<0: lon+=360.
-            minlat=min(lat, minlat)
-            maxlat=max(lat, maxlat)
-            minlon=min(lon, minlon)
-            maxlon=max(lon, maxlon)
+            lat, elv, lon   = self.waveforms[staid].coordinates.values()
+            if lon<0:
+                lon         += 360.
+            minlat  = min(lat, minlat)
+            maxlat  = max(lat, maxlat)
+            minlon  = min(lon, minlon)
+            maxlon  = max(lon, maxlon)
         print 'latitude range: ', minlat, '-', maxlat, 'longitude range:', minlon, '-', maxlon
-        self.minlat=minlat; self.maxlat=maxlat; self.minlon=minlon; self.maxlon=maxlon
+        self.minlat = minlat
+        self.maxlat = maxlat
+        self.minlon = minlon
+        self.maxlon = maxlon
         return
             
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i', blon=0., blat=0.):
@@ -256,80 +259,90 @@ class noiseASDF(pyasdf.ASDFDataSet):
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
         try:
-            minlon=self.minlon-blon; maxlon=self.maxlon+blon; minlat=self.minlat-blat; maxlat=self.maxlat+blat
+            minlon  = self.minlon-blon
+            maxlon  = self.maxlon+blon
+            minlat  = self.minlat-blat
+            maxlat  = self.maxlat+blat
         except AttributeError:
             self.get_limits_lonlat()
-            minlon=self.minlon-blon; maxlon=self.maxlon+blon; minlat=self.minlat-blat; maxlat=self.maxlat+blat
-        lat_centre = (maxlat+minlat)/2.0
-        lon_centre = (maxlon+minlon)/2.0
+            minlon  = self.minlon-blon
+            maxlon  = self.maxlon+blon
+            minlat  = self.minlat-blat
+            maxlat  = self.maxlat+blat
+        lat_centre  = (maxlat+minlat)/2.0
+        lon_centre  = (maxlon+minlon)/2.0
         if projection == 'merc':
-            m=Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
-                      urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
+            m       = Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
+                        urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
             m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
             m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             m.drawstates(color='g', linewidth=2.)
         elif projection == 'global':
-            m=Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
         elif projection == 'regional_ortho':
-            m1  = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
-            m   = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
-                llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m1      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
+            m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
+                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
             distEW, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
             distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
-            m = Basemap(width = distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
-                lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
+            m               = Basemap(width = distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+                                lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
         m.drawcoastlines(linewidth=1.0)
         m.drawcountries(linewidth=1.)
         # m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         m.drawmapboundary(fill_color="white")
-        try: geopolygons.PlotPolygon(inbasemap=m)
-        except: pass
+        try:
+            geopolygons.PlotPolygon(inbasemap=m)
+        except:
+            pass
         return m
     
     def plot_stations(self, projection='lambert', geopolygons=None, showfig=True, blon=.5, blat=0.5):
-        """Plot station map
+        """plot station map
         ==============================================================================
-        Input Parameters:
+        ::: input parameters :::
         projection      - type of geographical projection
         geopolygons     - geological polygons for plotting
         blon, blat      - extending boundaries in longitude/latitude
         showfig         - show figure or not
         ==============================================================================
         """
-        # self.minlon=85; self.maxlon=125; self.minlat=25; self.maxlat=45
-        staLst=self.waveforms.list()
-        stalons=np.array([]); stalats=np.array([])
+        staLst              = self.waveforms.list()
+        stalons             = np.array([])
+        stalats             = np.array([])
         for staid in staLst:
-            stla, evz, stlo=self.waveforms[staid].coordinates.values()
-            stalons=np.append(stalons, stlo); stalats=np.append(stalats, stla)
-        m=self._get_basemap(projection=projection, geopolygons=geopolygons, blon=blon, blat=blat)
+            stla, evz, stlo = self.waveforms[staid].coordinates.values()
+            stalons         = np.append(stalons, stlo); stalats=np.append(stalats, stla)
+        m                   = self._get_basemap(projection=projection, geopolygons=geopolygons, blon=blon, blat=blat)
         m.etopo()
         # m.shadedrelief()
-        stax, stay=m(stalons, stalats)
+        stax, stay          = m(stalons, stalats)
         m.plot(stax, stay, '^', markersize=3)
         # plt.title(str(self.period)+' sec', fontsize=20)
-        if showfig: plt.show()
+        if showfig:
+            plt.show()
+        return
     
     def wsac_xcorr(self, netcode1, stacode1, netcode2, stacode2, chan1, chan2, outdir='.', pfx='COR'):
         """Write cross-correlation data from ASDF to sac file
         ==============================================================================
-        Input Parameters:
+        ::: input parameters :::
         netcode1, stacode1, chan1   - network/station/channel name for station 1
         netcode2, stacode2, chan2   - network/station/channel name for station 2
         outdir                      - output directory
         pfx                         - prefix
-        Output:
+        ::: output :::
         e.g. outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ==============================================================================
         """
-        subdset = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
-        sta1    = self.waveforms[netcode1+'.'+stacode1].StationXML.networks[0].stations[0]
-        sta2    = self.waveforms[netcode2+'.'+stacode2].StationXML.networks[0].stations[0]
+        subdset                     = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
+        sta1                        = self.waveforms[netcode1+'.'+stacode1].StationXML.networks[0].stations[0]
+        sta2                        = self.waveforms[netcode2+'.'+stacode2].StationXML.networks[0].stations[0]
         xcorr_sacheader             = xcorr_sacheader_default.copy()
         xcorr_sacheader['kuser0']   = netcode1
         xcorr_sacheader['kevnm']    = stacode1
@@ -348,22 +361,23 @@ class noiseASDF(pyasdf.ASDFDataSet):
         xcorr_sacheader['delta']    = subdset.parameters['delta']
         xcorr_sacheader['npts']     = subdset.parameters['npts']
         xcorr_sacheader['user0']    = subdset.parameters['stackday']
-        sacTr=obspy.io.sac.sactrace.SACTrace(data=subdset.data.value, **xcorr_sacheader)
-        if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1): os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
-        sacfname = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
+        sacTr                       = obspy.io.sac.sactrace.SACTrace(data=subdset.data.value, **xcorr_sacheader)
+        if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
+            os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
+        sacfname                    = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+                                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
         sacTr.write(sacfname)
         return
     
     def wsac_xcorr_all(self, netcode1, stacode1, netcode2, stacode2, outdir='.', pfx='COR'):
         """Write all components of cross-correlation data from ASDF to sac file
         ==============================================================================
-        Input Parameters:
+        ::: input parameters :::
         netcode1, stacode1  - network/station name for station 1
         netcode2, stacode2  - network/station name for station 2
         outdir              - output directory
         pfx                 - prefix
-        Output:
+        ::: output :::
         e.g. outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ==============================================================================
         """
@@ -379,16 +393,16 @@ class noiseASDF(pyasdf.ASDFDataSet):
     def get_xcorr_trace(self, netcode1, stacode1, netcode2, stacode2, chan1, chan2):
         """Get one single cross-correlation trace
         ==============================================================================
-        Input Parameters:
+        ::: input parameters :::
         netcode1, stacode1, chan1   - network/station/channel name for station 1
         netcode2, stacode2, chan2   - network/station/channel name for station 2
-        Output:
+        ::: output :::
         obspy trace
         ==============================================================================
         """
-        subdset         = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
-        evla, evz, evlo = self.waveforms[netcode1+'.'+stacode1].coordinates.values()
-        stla, stz, stlo = self.waveforms[netcode2+'.'+stacode2].coordinates.values()
+        subdset             = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
+        evla, evz, evlo     = self.waveforms[netcode1+'.'+stacode1].coordinates.values()
+        stla, stz, stlo     = self.waveforms[netcode2+'.'+stacode2].coordinates.values()
         tr                  = obspy.core.Trace()
         tr.data             = subdset.data.value
         tr.stats.sac        = {}
@@ -413,7 +427,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
     def read_xcorr(self, datadir, pfx='COR', fnametype=2, inchannels=None, verbose=True):
         """Read cross-correlation data in ASDF database
         ===========================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         datadir                 - data directory
         pfx                     - prefix
         inchannels              - input channels, if None, will read channel information from obspy inventory
@@ -422,7 +436,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                                     =2: datadir/COR/G12A/COR_G12A_R21A.SAC
                                     =3: custom sac file name type, change corresponding line
         -----------------------------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
         ===========================================================================================================
         """
@@ -503,7 +517,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
     def xcorr_stack(self, datadir, startyear, startmonth, endyear, endmonth, pfx='COR', outdir=None, inchannels=None, fnametype=1):
         """Stack cross-correlation data from monthly-stacked sac files
         ===========================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         datadir                 - data directory
         startyear, startmonth   - start date for stacking
         endyear, endmonth       - end date for stacking
@@ -515,7 +529,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                                     =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
                                     =3: custom sac file name type, change corresponding line
         -----------------------------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
@@ -657,7 +671,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     pfx='COR', inchannels=None, fnametype=1, subsize=1000, deletesac=True, nprocess=4):
         """Stack cross-correlation data from monthly-stacked sac files with multiprocessing
         ===========================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         datadir                 - data directory
         outdir                  - output directory 
         startyear, startmonth   - start date for stacking
@@ -672,7 +686,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         deletesac               - delete output sac files
         nprocess                - number of processes
         -----------------------------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
@@ -793,11 +807,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
     def xcorr_rotation(self, outdir=None, pfx='COR'):
         """Rotate cross-correlation data 
         ===========================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         outdir                  - output directory for sac files (None is not to write)
         pfx                     - prefix
         -----------------------------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
@@ -910,7 +924,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         """
         Generate predicted phase velocity dispersion curves for cross-correlation pairs
         ====================================================================================
-        Input Parameters:
+        ::: input parameters :::
         outdir  - output directory
         mapfile - phase velocity maps
         ------------------------------------------------------------------------------------
@@ -987,7 +1001,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
             pmf1=True, pmf2=True, verbose=True, prephdir=None, f77=True, pfx='DISP'):
         """ aftan analysis of cross-correlation data 
         =======================================================================================
-        Input Parameters:
+        ::: input parameters :::
         channel     - channel pair for aftan analysis(e.g. 'ZZ', 'TT', 'ZR', 'RZ'...)
         tb          - begin time (default = 0.0)
         outdir      - directory for output disp txt files (default = None, no txt output)
@@ -1000,7 +1014,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         f77         - use aftanf77 or not
         pfx         - prefix for output txt DISP files
         ---------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         self.auxiliary_data.DISPbasic1, self.auxiliary_data.DISPbasic2,
         self.auxiliary_data.DISPpmf1, self.auxiliary_data.DISPpmf2
         =======================================================================================
@@ -1072,7 +1086,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
             pmf1=True, pmf2=True, verbose=True, prephdir=None, f77=True, pfx='DISP', subsize=1000, deletedisp=True, nprocess=None):
         """ aftan analysis of cross-correlation data with multiprocessing
         =======================================================================================
-        Input Parameters:
+        ::: input parameters :::
         channel     - channel pair for aftan analysis(e.g. 'ZZ', 'TT', 'ZR', 'RZ'...)
         tb          - begin time (default = 0.0)
         outdir      - directory for output disp binary files
@@ -1088,7 +1102,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         deletedisp  - delete output dispersion files or not
         nprocess    - number of processes
         ---------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         self.auxiliary_data.DISPbasic1, self.auxiliary_data.DISPbasic2,
         self.auxiliary_data.DISPpmf1, self.auxiliary_data.DISPpmf2
         =======================================================================================
@@ -1203,11 +1217,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
     def interp_disp(self, data_type='DISPpmf2', channel='ZZ', pers=np.array([]), verbose=True):
         """ Interpolate dispersion curve for a given period array.
         =======================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         data_type   - dispersion data type (default = DISPpmf2, pmf aftan results after jump detection)
         pers        - period array
         
-        Output:
+        ::: output :::
         self.auxiliary_data.DISPbasic1interp, self.auxiliary_data.DISPbasic2interp,
         self.auxiliary_data.DISPpmf1interp, self.auxiliary_data.DISPpmf2interp
         =======================================================================================================
@@ -1252,7 +1266,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         """
         Generate Input files for Barmine's straight ray surface wave tomography code.
         =======================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         outdir      - output directory
         channel     - channel for tomography
         pers        - period array
@@ -1319,7 +1333,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         """
         Generate Input files for Barmine's straight ray surface wave tomography code.
         =======================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         outdir      - output directory
         channel     - channel for tomography
         pers        - period array
@@ -1388,12 +1402,12 @@ class noiseASDF(pyasdf.ASDFDataSet):
     def xcorr_get_field(self, outdir=None, channel='ZZ', pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
         """ Get the field data for Eikonal tomography
         ============================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         outdir      - directory for txt output (default is not to generate txt output)
         channel     - channel name
         pers        - period array
         datatype    - dispersion data type (default = DISPpmf2interp, interpolated pmf aftan results after jump detection)
-        Output:
+        ::: output :::
         self.auxiliary_data.FieldDISPpmf2interp
         ============================================================================================================================
         """

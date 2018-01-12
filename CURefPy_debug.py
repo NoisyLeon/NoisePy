@@ -78,6 +78,7 @@ def _model4stretch_iasp91(modelfname='IASP91.mod'):
 vs4stretch, vp4stretch, nz4stretch  = _model4stretch_iasp91()
 
 
+# @numba.jit( numba.float64[:](numba.float64, numba.int32, numba.float64) )
 def _gaussFilter( dt, nft, f0 ):
     """
     Compute a gaussian filter in the freq domain which is unit area in time domain
@@ -106,6 +107,7 @@ def _gaussFilter( dt, nft, f0 ):
     gauss[int(nft21):]  = np.flipud(gauss[1:int(nft21)-1])
     return gauss
 
+# @numba.jit( numba.float64[:](numba.float64[:], numba.int32, numba.float64,  numba.float64) )
 def _phaseshift( x, nfft, DT, TSHIFT ):
     """Add a shift to the data into the freq domain, private function for IterDeconv
     """
@@ -122,6 +124,7 @@ def _phaseshift( x, nfft, DT, TSHIFT ):
     # x       = np.real( np.fft.ifft(Xf) )/np.cos(2*np.pi*shift_i/nfft)
     return x
 
+# @numba.jit( numba.float64[:](numba.float64[:], numba.float64[:],  numba.float64) )
 def _FreFilter(inW, FilterW, dt ):
     """Filter input array in frequency domain, private function for IterDeconv
     """
@@ -132,6 +135,7 @@ def _FreFilter(inW, FilterW, dt ):
     FilterdW= np.real(fftpack.ifft(FinW))
     return FilterdW
 
+# @numba.jit( numba.types.UniTuple(numba.float64[:], 2) (numba.float64[:], numba.float64[:], numba.float64) )
 def _stretch(tarr, data, slow, refslow=0.06, modeltype=0):
     """Stretch data to vertically incident receiver function given slowness, private function for move_out
     """
@@ -176,6 +180,153 @@ def _stretch(tarr, data, slow, refslow=0.06, modeltype=0):
     tarr2       = np.arange(ntf, dtype=np.float64)*dt
     data2       = np.interp(tarr2, cumdifft, nseis)
     return tarr2, data2
+
+
+def _stretch_new_uncorrected(tarr, data, slow):
+    """Stretch data to vertically incident receiver function given slowness, private function for move_out
+    """
+    dt          = tarr[1] - tarr[0]
+    # depth arrays
+    dz          = 0.5
+    zmax        = 240.
+    zarr        = np.arange(int(zmax/dz), dtype=np.float64)*dz
+    nz          = zarr.size
+    # layer array
+    harr        = np.ones(nz, dtype=np.float64)*dz
+    # velocity arrays
+    vpvs        = 1.7
+    vp          = 6.4
+    vparr       = np.ones(nz, dtype=np.float64)*vp
+    vparr       = vparr + (zarr>60.)*np.ones(nz, dtype = np.float64) * 1.4
+    vsarr       = vparr/vpvs
+    # 1/vsarr**2 and 1/vparr**2
+    sv2         = vsarr**(-2)
+    pv2         = vparr**(-2)
+    # dz/vs - dz/vp, time array for vertically incident wave
+    difft       = np.zeros(nz+1, dtype=np.float64)
+    difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz
+    cumdifft    = np.cumsum(difft)
+    # # dz*(tan(a1p) - tan(a1s))*sin(a0p)/vp0 +dz / cos(a1s)/vs - dz / cos(a1p)/vp
+    # # s = sin(a1s)/vs = sin(a1p)/vp = sin(a0p) / vp0
+    # time array for wave with given slowness
+    s2          = np.ones(nz, dtype=np.float64)*slow*slow
+    # # difft2      = np.zeros(nz+1, dtype=np.float64)
+    # # difft2[1:]  = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # dz/
+    difft2      = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # originally, and data2 = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    cumdifft2   = np.cumsum(difft2)
+    # interpolate data to correspond to cumdifft2 array
+    nseis       = np.interp(cumdifft2, tarr, data)
+    # get new time array
+    tf          = cumdifft[-1]
+    ntf         = int(tf/dt)
+    tarr2       = np.arange(ntf, dtype=np.float64)*dt
+    # originally it is
+    # data2     = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    # because originally cumdifft2[0] != 0, this should be wrong !
+    data2       = np.interp(tarr2, cumdifft[:-1], nseis)
+    # data2       = np.interp(tarr2, cumdifft, nseis)
+    return tarr2, data2
+
+
+def _stretch_vera(tarr, data, slow):
+    """Stretch data to vertically incident receiver function given slowness, private function for move_out
+    """
+    dt          = tarr[1] - tarr[0]
+    # depth arrays
+    dz          = 0.5
+    zmax        = 240.
+    zarr        = np.arange(int(zmax/dz), dtype=np.float64)*dz
+    nz          = zarr.size
+    # layer array
+    harr        = np.ones(nz, dtype=np.float64)*dz
+    # velocity arrays
+    vpvs        = 1.7
+    vp          = 6.4
+    vparr       = np.ones(nz, dtype=np.float64)*vp
+    vparr       = vparr + (zarr>60.)*np.ones(nz, dtype = np.float64) * 1.4
+    vsarr       = vparr/vpvs
+    # 1/vsarr**2 and 1/vparr**2
+    sv2         = vsarr**(-2)
+    pv2         = vparr**(-2)
+    # dz/vs - dz/vp, time array for vertically incident wave
+    # # # difft       = np.zeros(nz+1, dtype=np.float64)
+    # # # difft[1:]   = (np.sqrt(sv2) - np.sqrt(pv2)) * dz
+    difft       = (np.sqrt(sv2) - np.sqrt(pv2)) * dz
+    cumdifft    = np.cumsum(difft)
+    # # dz*(tan(a1p) - tan(a1s))*sin(a0p)/vp0 +dz / cos(a1s)/vs - dz / cos(a1p)/vp
+    # # s = sin(a1s)/vs = sin(a1p)/vp = sin(a0p) / vp0
+    # time array for wave with given slowness
+    s2          = np.ones(nz, dtype=np.float64)*slow*slow
+    # # # difft2      = np.zeros(nz+1, dtype=np.float64)
+    # # # difft2[1:]  = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # dz/
+    difft2      = (np.sqrt(sv2-s2)-np.sqrt(pv2-s2))*dz # originally, and data2 = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    cumdifft2   = np.cumsum(difft2)
+    # interpolate data to correspond to cumdifft2 array
+    nseis       = np.interp(cumdifft2, tarr, data)
+    # get new time array
+    tf          = cumdifft[-1]
+    ntf         = int(tf/dt)
+    tarr2       = np.arange(ntf, dtype=np.float64)*dt
+    # originally it is
+    # data2     = np.interp(tarr2, cumdifft[:-1][indt<npts], nseis)
+    # because originally cumdifft2[0] != 0, this should be wrong !
+    # # # data2       = np.interp(tarr2, cumdifft[:-1], nseis)
+    data2       = np.interp(tarr2, cumdifft, nseis)
+    print cumdifft2[1]/cumdifft[1]
+    # data2       = np.zeros(tarr2.size, dtype=np.float64)
+    # j = 0
+    # for tempt in tarr2:
+    #     indarr  = np.where(cumdifft <= tempt)[0]
+    #     index   = indarr[-1]
+    #     data2[j]= nseis[index] + (nseis[index+1]-nseis[index])* \
+    #                     (tempt-cumdifft[index])/(cumdifft[index+1]-cumdifft[index])
+    #     j       += 1
+    return tarr2, data2
+
+def _stretch_old(t1, nd1, slow):
+    """Stretch data given slowness, private function for move_out
+    """
+    dzi         = 0.5
+    dzmax       = 240.
+    dZ          = np.arange(int(dzmax/dzi))*0.5
+    Rv          = 1.7
+    dt          = t1[1] - t1[0]
+    ndz         = dZ.size
+    zthk        = np.ones(ndz)*dzi
+    cpv         = 6.4
+    pvel        = np.ones(ndz)*cpv
+    pvel        = pvel+(dZ>60)*np.ones(ndz)*1.4
+    svel1       = pvel/Rv
+    sv2         = svel1**(-2)
+    pv2         = (svel1*Rv)**(-2)
+    cc          = (np.sqrt(sv2)-np.sqrt(pv2))*dzi
+    cc          = np.append(0., cc)
+    vtt         = np.cumsum(cc)
+    p2          = np.ones(ndz)
+    p2          = p2*slow*slow
+    cc2         = (np.sqrt(sv2-p2)-np.sqrt(pv2-p2))*dzi
+    mtt         = np.cumsum(cc2)
+    ntt         = np.round(mtt/dt)
+    ntt[0]      = 0.
+    if len(ntt)==1:
+        kk      = np.array([np.int_(ntt)])
+    else:
+        kk      = np.int_(ntt)
+    Ldatain     = nd1.size
+    kkk         = kk[kk<Ldatain]
+    nseis       = nd1[kkk]
+    time        = vtt[len(nseis)-1]
+    n1          = int(time/dt)
+    t2          = np.arange(n1)*dt
+    Lt2         = t2.size
+    d2          = np.array([])
+    for tempt in t2:
+        tempd   = 0.
+        smallTF = np.where(vtt <= tempt)[0]
+        indexj  = smallTF[-1]
+        tempd   = nseis[indexj] + (nseis[indexj+1]-nseis[indexj])*(tempt-vtt[indexj])/(vtt[indexj+1]-vtt[indexj])
+        d2      = np.append(d2, tempd)
+    return t2, d2
 
 #------------------------------------------------
 # functions for harmonic stripping
