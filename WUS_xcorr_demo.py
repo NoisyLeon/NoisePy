@@ -1,4 +1,4 @@
-import ASDFDBase
+import noisedbase
 import numpy as np
 import timeit
 
@@ -17,8 +17,8 @@ import timeit
 # dset.xcorr_get_field()
 #################################################################################
 # 
-import raytomo
-dset=raytomo.RayTomoDataSet('../ray_tomo_WUS.h5')
+# import raytomo
+# dset=raytomo.RayTomoDataSet('../ray_tomo_WUS.h5')
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_')
 # dset.run_smooth(datadir='../ray_tomo_data', outdir='../ray_tomo_working_dir')
 # dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=1, alphaAni4=1000)

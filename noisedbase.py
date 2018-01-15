@@ -4,8 +4,8 @@ A python module for ambient noise data analysis based on ASDF database
 
 :Methods:
     aftan analysis (use pyaftan or aftanf77)
-    Preparing data for surface wave tomography (Barmin's method, Eikonal/Helmholtz tomography)
-    Stacking/Rotation for Cross-Correlation Results from SEED2CORpp
+    preparing data for surface wave tomography (Barmin's method, Eikonal/Helmholtz tomography)
+    stacking/rotation for cross-correlation results from ANXCorr and Seed2Cor
 
 :Dependencies:
     pyasdf and its dependencies
@@ -124,7 +124,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     f.writelines('%s %3.4f %3.4f %s\n' %(stacode, lon, lat, netcode) )        
         return
     
-    def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN'], dnetcode=None):
+    def read_stationtxt(self, stafile, source='CIEI', chans=['LHZ', 'LHE', 'LHN'], dnetcode=None):
         """read txt station list 
         """
         sta_info                        = sta_info_default.copy()
@@ -154,19 +154,19 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     except ValueError:
                         netcode     = lines[3]
                 if netcode is None:
-                    netsta      = stacode
+                    netsta          = stacode
                 else:
-                    netsta      = netcode+'.'+stacode
+                    netsta          = netcode+'.'+stacode
                 if Sta.__contains__(netsta):
-                    index   = Sta.index(netsta)
+                    index           = Sta.index(netsta)
                     if abs(self[index].lon-lon) >0.01 and abs(self[index].lat-lat) >0.01:
-                        raise ValueError('Incompatible Station Location:' + netsta+' in Station List!')
+                        raise ValueError('incompatible station location:' + netsta+' in station list!')
                     else:
-                        print 'Warning: Repeated Station:' +netsta+' in Station List!'
+                        print 'WARNING: repeated station:' +netsta+' in station list!'
                         continue
                 channels    = []
                 if lon>180.:
-                    lon-=360.
+                    lon     -= 360.
                 for chan in chans:
                     channel = obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
                                 elevation=0.0, depth=0.0)
@@ -177,15 +177,15 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 networks    = [network]
                 inv         += obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
                 if netcode is None:
-                    staid_aux   = stacode
+                    staid_aux           = stacode
                 else:
-                    staid_aux   = netcode+'/'+stacode
+                    staid_aux           = netcode+'/'+stacode
                 if xcorrflag != None:
                     sta_info['xcorr']   = xcorrflag
                 self.add_auxiliary_data(data=np.array([]), data_type='StaInfo', path=staid_aux, parameters=sta_info)
-        print 'Writing obspy inventory to ASDF dataset'
+        print('Writing obspy inventory to ASDF dataset')
         self.add_stationxml(inv)
-        print 'End writing obspy inventory to ASDF dataset'
+        print('End writing obspy inventory to ASDF dataset')
         return 
     
     def read_stationtxt_ind(self, stafile, source='CIEI', chans=['LHZ', 'LHE', 'LHN'], s_ind=1, lon_ind=2, lat_ind=3, n_ind=0):
@@ -194,7 +194,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         sta_info                    = sta_info_default.copy()
         with open(stafile, 'r') as f:
             Sta                     = []
-            site                    = obspy.core.inventory.util.Site(name='01')
+            site                    = obspy.core.inventory.util.Site(name='')
             creation_date           = obspy.core.utcdatetime.UTCDateTime(0)
             inv                     = obspy.core.inventory.inventory.Inventory(networks=[], source=source)
             total_number_of_channels= len(chans)
@@ -208,9 +208,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 if Sta.__contains__(netsta):
                     index       = Sta.index(netsta)
                     if abs(self[index].lon-lon) >0.01 and abs(self[index].lat-lat) >0.01:
-                        raise ValueError('Incompatible Station Location:' + netsta+' in Station List!')
+                        raise ValueError('incompatible station location:' + netsta+' in station list!')
                     else:
-                        print 'Warning: Repeated Station:' +netsta+' in Station List!'
+                        print 'WARNING: repeated station:' +netsta+' in station list!'
                         continue
                 channels        = []
                 if lon>180.:
@@ -226,19 +226,19 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 inv             += obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
                 staid_aux       = netcode+'/'+stacode
                 self.add_auxiliary_data(data=np.array([]), data_type='StaInfo', path=staid_aux, parameters=sta_info)
-        print 'Writing obspy inventory to ASDF dataset'
+        print('Writing obspy inventory to ASDF dataset')
         self.add_stationxml(inv)
-        print 'End writing obspy inventory to ASDF dataset'
+        print('End writing obspy inventory to ASDF dataset')
         return 
     
     def get_limits_lonlat(self):
         """get the geographical limits of the stations
         """
-        staLst  = self.waveforms.list()
-        minlat  = 90.
-        maxlat  = -90.
-        minlon  = 360.
-        maxlon  = 0.
+        staLst      = self.waveforms.list()
+        minlat      = 90.
+        maxlat      = -90.
+        minlon      = 360.
+        maxlon      = 0.
         for staid in staLst:
             lat, elv, lon   = self.waveforms[staid].coordinates.values()
             if lon<0:
@@ -440,46 +440,50 @@ class noiseASDF(pyasdf.ASDFDataSet):
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
         ===========================================================================================================
         """
-        staLst=self.waveforms.list()
+        staLst                  = self.waveforms.list()
         # main loop for station pairs
-        if inchannels!=None:
+        if inchannels != None:
             try:
                 if not isinstance(inchannels[0], obspy.core.inventory.channel.Channel):
-                    channels=[]
+                    channels    = []
                     for inchan in inchannels:
-                        channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='01',
+                        channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='',
                                         latitude=0, longitude=0, elevation=0, depth=0) )
                 else:
-                    channels=inchannels
+                    channels    = inchannels
             except:
-                inchannels=None
+                inchannels      = None
         for staid1 in staLst:
             for staid2 in staLst:
                 netcode1, stacode1  = staid1.split('.')
                 netcode2, stacode2  = staid2.split('.')
-                if staid1 >= staid2: continue
-                if fnametype==2 and not os.path.isfile(datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'): continue
+                if staid1 >= staid2:
+                    continue
+                if fnametype==2 and not os.path.isfile(datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'):
+                    continue
                 if inchannels==None:
-                    channels1=self.waveforms[staid1].StationXML.networks[0].stations[0].channels
-                    channels2=self.waveforms[staid2].StationXML.networks[0].stations[0].channels
+                    channels1       = self.waveforms[staid1].StationXML.networks[0].stations[0].channels
+                    channels2       = self.waveforms[staid2].StationXML.networks[0].stations[0].channels
                 else:
-                    channels1=channels
-                    channels2=channels
-                skipflag=False
+                    channels1       = channels
+                    channels2       = channels
+                skipflag            = False
                 for chan1 in channels1:
-                    if skipflag: break
+                    if skipflag:
+                        break
                     for chan2 in channels2:
                         if fnametype    == 1:
-                            fname=datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'+staid2+'_'+chan2.code+'.SAC'
+                            fname   = datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'+staid2+'_'+chan2.code+'.SAC'
                         elif fnametype  == 2:
-                            fname=datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'
+                            fname   = datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'
                         ############
                         elif fnametype  == 3:
-                            fname='' # modify file name here
+                            fname   = '' # modify file name here
                         ############
-                        try: tr=obspy.core.read(fname)[0]
+                        try:
+                            tr      = obspy.core.read(fname)[0]
                         except IOError:
-                            skipflag=True
+                            skipflag= True
                             break
                         # write cross-correlation header information
                         xcorr_header            = xcorr_header_default.copy()
@@ -497,18 +501,18 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             xcorr_header['az']  = tr.stats.sac.az
                             xcorr_header['baz'] = tr.stats.sac.baz
                         except AttributeError:
-                            lon1=self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
-                            lat1=self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
-                            lon2=self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
-                            lat2=self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
-                            dist, az, baz   = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                            dist            = dist/1000.
-                            xcorr_header['dist']    = dist
-                            xcorr_header['az']      = az
-                            xcorr_header['baz']     = baz
-                        staid_aux            = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
-                        xcorr_header['chan1']= chan1.code
-                        xcorr_header['chan2']= chan2.code
+                            lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+                            lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+                            lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                            lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                            dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                            dist                = dist/1000.
+                            xcorr_header['dist']= dist
+                            xcorr_header['az']  = az
+                            xcorr_header['baz'] = baz
+                        staid_aux               = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                        xcorr_header['chan1']   = chan1.code
+                        xcorr_header['chan2']   = chan2.code
                         self.add_auxiliary_data(data=tr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                 if verbose and not skipflag:
                     print 'reading xcorr data: '+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2
@@ -534,95 +538,112 @@ class noiseASDF(pyasdf.ASDFDataSet):
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
         """
+        #----------------------------------------
         # prepare year/month list for stacking
-        utcdate=obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
-        ylst=np.array([], dtype=int)
-        mlst=np.array([], dtype=int)
+        #----------------------------------------
+        utcdate                 = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
+        ylst                    = np.array([], dtype=int)
+        mlst                    = np.array([], dtype=int)
         while (utcdate.year<endyear or (utcdate.year<=endyear and utcdate.month<=endmonth) ):
-            ylst=np.append(ylst, utcdate.year)
-            mlst=np.append(mlst, utcdate.month)
+            ylst                = np.append(ylst, utcdate.year)
+            mlst                = np.append(mlst, utcdate.month)
             try:
-                utcdate.month+=1
+                utcdate.month   +=1
             except ValueError:
-                utcdate.year+=1
-                utcdate.month=1
-        mnumb=mlst.size
+                utcdate.year    +=1
+                utcdate.month   = 1
+        mnumb                   = mlst.size
+        #--------------------------------------------------
         # determine channels if inchannels is specified
+        #--------------------------------------------------
         if inchannels!=None:
             try:
                 if not isinstance(inchannels[0], obspy.core.inventory.channel.Channel):
-                    channels=[]
+                    channels    = []
                     for inchan in inchannels:
-                        channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='01',
+                        channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='',
                                         latitude=0, longitude=0, elevation=0, depth=0) )
                 else:
-                    channels=inchannels
+                    channels    = inchannels
             except:
-                inchannels=None
-        if inchannels==None:
-            fnametype==1
-        else:
-            if len(channels)!=1:
-                fnametype==1
-        staLst=self.waveforms.list()
+                inchannels      = None
+        # # if inchannels==None:
+        # #     fnametype           = 2
+        # # else:
+        # #     if len(channels)!=1:
+        # #         fnametype       = 1
+        staLst                  = self.waveforms.list()
+        #--------------------------------------------------
         # main loop for station pairs
+        #--------------------------------------------------
+        Nsta                    = len(staLst)
+        Ntotal_traces           = Nsta*(Nsta-1)/2
+        itrstack                = 0
+        Ntr_one_percent         = int(Ntotal_traces/100.)
+        ipercent                = 0
         for staid1 in staLst:
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
                 if stacode1 >= stacode2:
                     continue
-                stackedST=[]
-                cST=[]
-                initflag=True
+                itrstack            += 1
+                if np.fmod(itrstack, Ntr_one_percent) ==0:
+                    ipercent        += 1
+                    print ('Number of traces finished stacking: '+str(itrstack)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                stackedST           = []
+                cST                 = []
+                initflag            = True
                 if inchannels==None:
-                    channels1=self.waveforms[staid1].StationXML.networks[0].stations[0].channels
-                    channels2=self.waveforms[staid2].StationXML.networks[0].stations[0].channels
+                    channels1       = self.waveforms[staid1].StationXML.networks[0].stations[0].channels
+                    channels2       = self.waveforms[staid2].StationXML.networks[0].stations[0].channels
                 else:
-                    channels1=channels
-                    channels2=channels
-                for im in xrange(mnumb):
-                    skipflag=False
+                    channels1       = channels
+                    channels2       = channels
+                for im in range(mnumb):
+                    skipflag        = False
                     for chan1 in channels1:
                         if skipflag:
                             break
                         for chan2 in channels2:
-                            month=monthdict[mlst[im]]
-                            yrmonth=str(ylst[im])+'.'+month
+                            month       = monthdict[mlst[im]]
+                            yrmonth     = str(ylst[im])+'.'+month
                             if fnametype    == 1:
-                                fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
+                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
                             elif fnametype  == 2:
-                                fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
-                            ############
+                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
+                            #----------------------------------------------------------
                             elif fnametype  == 3:
-                                fname='' # modify file name here
-                            ############
+                                fname   ='' # modify file name here
+                            #----------------------------------------------------------
+                            # # # print fname
                             if not os.path.isfile(fname):
-                                skipflag=True
+                                skipflag= True
                                 break
-                            try: tr=obspy.core.read(fname)[0]
+                            try:
+                                tr      = obspy.core.read(fname)[0]
                             except TypeError:
                                 warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                                skipflag=True
+                                skipflag= True
                             if np.isnan(tr.data).any() or abs(tr.data.max())>1e20:
                                 warnings.warn('NaN monthly SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                                skipflag=True
+                                skipflag= True
                                 break
                             cST.append(tr)
                     if len(cST)!=len(channels1)*len(channels2) or skipflag:
-                        cST=[]
+                        cST             = []
                         continue
                     if initflag:
-                        stackedST=copy.deepcopy(cST)
-                        initflag=False
+                        stackedST       = copy.deepcopy(cST)
+                        initflag        = False
                     else:
-                        for itr in xrange(len(cST)):
-                            mtr=cST[itr]
-                            stackedST[itr].data+=mtr.data
-                            stackedST[itr].stats.sac.user0+=mtr.stats.sac.user0
-                    cST=[]
+                        for itr in range(len(cST)):
+                            mtr                             = cST[itr]
+                            stackedST[itr].data             += mtr.data
+                            stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
+                    cST                                     = []
                 if len(stackedST)==len(channels1)*len(channels2):
-                    print 'Finished Stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2
+                    print('Finished stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2)
                     # create sac output directory 
                     if outdir!=None:
                         if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
@@ -643,28 +664,31 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         xcorr_header['az']  = stackedST[0].stats.sac.az
                         xcorr_header['baz'] = stackedST[0].stats.sac.baz
                     except AttributeError:
-                        lon1=self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
-                        lat1=self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
-                        lon2=self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
-                        lat2=self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
-                        dist, az, baz   = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                        dist            = dist/1000.
+                        lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+                        lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+                        lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                        lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                        dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                        dist                = dist/1000.
                         xcorr_header['dist']= dist
                         xcorr_header['az']  = az
                         xcorr_header['baz'] = baz
-                    staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
-                    i=0
+                    if staid1 > staid2:
+                        staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+                    else:
+                        staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                    itrace                  = 0
                     for chan1 in channels1:
                         for chan2 in channels2:
-                            stackedTr=stackedST[i]
+                            stackedTr       = stackedST[itrace]
                             if outdir!=None:
-                                outfname=outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                                    pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
+                                outfname            = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+                                                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
                                 stackedTr.write(outfname,format='SAC')
-                            xcorr_header['chan1']=chan1.code
-                            xcorr_header['chan2']=chan2.code
+                            xcorr_header['chan1']   = chan1.code
+                            xcorr_header['chan2']   = chan2.code
                             self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
-                            i += 1
+                            itrace                  += 1
         return
     
     def xcorr_stack_mp(self, datadir, outdir, startyear, startmonth, endyear, endmonth,
@@ -691,89 +715,108 @@ class noiseASDF(pyasdf.ASDFDataSet):
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
         """
-        utcdate = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
-        ylst    = np.array([], dtype=int)
-        mlst    = np.array([], dtype=int)
-        print 'Preparing data for stacking'
+        #----------------------------------------------------------
+        # preparing station pair list for multiprocessing stacking
+        #----------------------------------------------------------
+        utcdate                 = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
+        ylst                    = np.array([], dtype=int)
+        mlst                    = np.array([], dtype=int)
+        print('Preparing data for stacking')
         while (utcdate.year<endyear or (utcdate.year<=endyear and utcdate.month<=endmonth) ):
-            ylst=np.append(ylst, utcdate.year)
-            mlst=np.append(mlst, utcdate.month)
-            try: utcdate.month+=1
+            ylst                = np.append(ylst, utcdate.year)
+            mlst                = np.append(mlst, utcdate.month)
+            try:
+                utcdate.month   += 1
             except ValueError:
-                utcdate.year+=1
-                utcdate.month=1
-        mnumb=mlst.size
-        staLst=self.waveforms.list()
+                utcdate.year    += 1
+                utcdate.month   = 1
+        mnumb                   = mlst.size
+        staLst                  = self.waveforms.list()
         if inchannels!=None:
             try:
                 if not isinstance(inchannels[0], obspy.core.inventory.channel.Channel):
-                    channels=[]
+                    channels    = []
                     for inchan in inchannels:
-                        channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='01',
+                        channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='',
                                         latitude=0, longitude=0, elevation=0, depth=0) )
-                else: channels=inchannels
-            except: inchannels=None
-        if inchannels==None: fnametype==1
-        else:
-            if len(channels)!=1: fnametype==1
-        stapairInvLst=[]
+                else:
+                    channels    = inchannels
+            except:
+                inchannels      = None
+        # if inchannels==None:
+        #     fnametype           = 1
+        # else:
+        #     if len(channels)!=1:
+        #         fnametype       = 1
+        stapairInvLst           = []
         for staid1 in staLst:
-            if not os.path.isdir(outdir+'/'+pfx+'/'+staid1): os.makedirs(outdir+'/'+pfx+'/'+staid1)
+            if not os.path.isdir(outdir+'/'+pfx+'/'+staid1):
+                os.makedirs(outdir+'/'+pfx+'/'+staid1)
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if stacode1 >= stacode2: continue
-                inv = self.waveforms[staid1].StationXML + self.waveforms[staid2].StationXML
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if stacode1 >= stacode2:
+                    continue
+                inv                 = self.waveforms[staid1].StationXML + self.waveforms[staid2].StationXML
                 if inchannels!=None:
-                    inv.networks[0].stations[0].channels=channels
-                    inv.networks[1].stations[0].channels=channels
+                    inv.networks[0].stations[0].channels    = channels
+                    inv.networks[1].stations[0].channels    = channels
                 stapairInvLst.append(inv) 
-        print 'Start multiprocessing stacking !'
+        #------------------------------------------------------
+        # Stacking with multiprocessing
+        #------------------------------------------------------
+        print('Start multiprocessing stacking !')
         if len(stapairInvLst) > subsize:
-            Nsub = int(len(stapairInvLst)/subsize)
-            for isub in xrange(Nsub):
+            Nsub            = int(len(stapairInvLst)/subsize)
+            for isub in range(Nsub):
                 print isub,'in',Nsub
-                cstapairs=stapairInvLst[isub*subsize:(isub+1)*subsize]
-                STACKING = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
-                pool = multiprocessing.Pool(processes=nprocess)
+                cstapairs   = stapairInvLst[isub*subsize:(isub+1)*subsize]
+                STACKING    = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
+                pool        = multiprocessing.Pool(processes=nprocess)
                 pool.map(STACKING, cstapairs) #make our results with a map call
                 pool.close() #we are not adding any more processes
                 pool.join() #tell it to wait until all threads are done before going on
-            cstapairs=stapairInvLst[(isub+1)*subsize:]
-            STACKING = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
-            pool = multiprocessing.Pool(processes=nprocess)
+            cstapairs       = stapairInvLst[(isub+1)*subsize:]
+            STACKING        = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
+            pool            = multiprocessing.Pool(processes=nprocess)
             pool.map(STACKING, cstapairs) 
             pool.close() 
             pool.join() 
         else:
-            STACKING = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
-            pool = multiprocessing.Pool(processes=nprocess)
+            STACKING        = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
+            pool            = multiprocessing.Pool(processes=nprocess)
             pool.map(STACKING, stapairInvLst) 
             pool.close() 
             pool.join() 
-        print 'End of multiprocessing stacking !'
-        print 'Reading data into ASDF database'
+        print('End of multiprocessing stacking !')
+        #------------------------------------------------------
+        # read stacked data
+        #------------------------------------------------------
+        print('Reading data into ASDF database')
         for inv in stapairInvLst:
-            channels1       = inv.networks[0].stations[0].channels
-            netcode1        = inv.networks[0].code
-            stacode1        = inv.networks[0].stations[0].code
-            channels2       = inv.networks[1].stations[0].channels
-            netcode2        = inv.networks[1].code
-            stacode2        = inv.networks[1].stations[0].code
-            skipflag        = False
+            channels1               = inv.networks[0].stations[0].channels
+            netcode1                = inv.networks[0].code
+            stacode1                = inv.networks[0].stations[0].code
+            channels2               = inv.networks[1].stations[0].channels
+            netcode2                = inv.networks[1].code
+            stacode2                = inv.networks[1].stations[0].code
+            skipflag                = False
             xcorr_header            = xcorr_header_default.copy()
             xcorr_header['netcode1']= netcode1
             xcorr_header['netcode2']= netcode2
             xcorr_header['stacode1']= stacode1
             xcorr_header['stacode2']= stacode2
-            staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+            if staid1 > staid2:
+                staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+            else:
+                staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
             for chan1 in channels1:
                 if skipflag: break
                 for chan2 in channels2:
-                    sacfname=outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
+                    sacfname        = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+                                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
                     try:
-                        tr=obspy.read(sacfname)[0]
+                        tr                      = obspy.read(sacfname)[0]
                         # cross-correlation header 
                         xcorr_header['b']       = tr.stats.sac.b
                         xcorr_header['e']       = tr.stats.sac.e
@@ -785,12 +828,12 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             xcorr_header['az']  = tr.stats.sac.az
                             xcorr_header['baz'] = tr.stats.sac.baz
                         except AttributeError:
-                            lon1=inv.networks[0].stations[0].longitude
-                            lat1=inv.networks[0].stations[0].latitude
-                            lon2=inv.networks[1].stations[0].longitude
-                            lat2=inv.networks[1].stations[0].latitude
-                            dist, az, baz= obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                            dist         = dist/1000.
+                            lon1                = inv.networks[0].stations[0].longitude
+                            lat1                = inv.networks[0].stations[0].latitude
+                            lon2                = inv.networks[1].stations[0].longitude
+                            lat2                = inv.networks[1].stations[0].latitude
+                            dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                            dist                = dist/1000.
                             xcorr_header['dist']= dist
                             xcorr_header['az']  = az
                             xcorr_header['baz'] = baz
@@ -798,10 +841,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         xcorr_header['chan2']   = chan2.code
                         self.add_auxiliary_data(data=tr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                     except IOError:
-                        skipflag=True
+                        skipflag                = True
                         break
-        if deletesac: shutil.rmtree(outdir+'/'+pfx)
-        print 'End read data into ASDF database'
+        if deletesac:
+            shutil.rmtree(outdir+'/'+pfx)
+        print('End reading data into ASDF database')
         return
                     
     def xcorr_rotation(self, outdir=None, pfx='COR'):
@@ -1483,67 +1527,67 @@ class noiseASDF(pyasdf.ASDFDataSet):
         return
             
 def stack4mp(inv, datadir, outdir, ylst, mlst, pfx, fnametype):
-    stackedST=[]
-    cST=[]
-    initflag=True
-    channels1=inv.networks[0].stations[0].channels
-    channels2=inv.networks[1].stations[0].channels
-    netcode1=inv.networks[0].code
-    stacode1=inv.networks[0].stations[0].code
-    netcode2=inv.networks[1].code
-    stacode2=inv.networks[1].stations[0].code
-    mnumb=mlst.size
+    stackedST   = []
+    cST         = []
+    initflag    = True
+    channels1   = inv.networks[0].stations[0].channels
+    channels2   = inv.networks[1].stations[0].channels
+    netcode1    = inv.networks[0].code
+    stacode1    = inv.networks[0].stations[0].code
+    netcode2    = inv.networks[1].code
+    stacode2    = inv.networks[1].stations[0].code
+    mnumb       = mlst.size
     for im in xrange(mnumb):
-        skipflag=False
+        skipflag= False
         for chan1 in channels1:
             if skipflag:
                 break
             for chan2 in channels2:
-                month=monthdict[mlst[im]]
-                yrmonth=str(ylst[im])+'.'+month
+                month       = monthdict[mlst[im]]
+                yrmonth     = str(ylst[im])+'.'+month
                 if fnametype    == 1:
-                    fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
+                    fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
                 elif fnametype  == 2:
-                    fname=datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
+                    fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
                 ############
                 elif fnametype  == 3:
-                    fname='' # modify file name here
+                    fname   = '' # modify file name here
                 ############
                 if not os.path.isfile(fname):
-                    skipflag=True
+                    skipflag= True
                     break
                 try:
-                    tr=obspy.core.read(fname)[0]
+                    tr      = obspy.core.read(fname)[0]
                 except TypeError:
                     warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                    skipflag=True
+                    skipflag= True
                 if np.isnan(tr.data).any() or abs(tr.data.max())>1e20:
                     warnings.warn('NaN monthly SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                    skipflag=True
+                    skipflag= True
                     break
                 cST.append(tr)
         if len(cST)!=len(channels1)*len(channels2) or skipflag:
-            cST=[]
+            cST             = []
             continue
         if initflag:
-            stackedST=copy.deepcopy(cST)
-            initflag=False
+            stackedST       = copy.deepcopy(cST)
+            initflag        = False
         else:
             for itr in xrange(len(cST)):
-                mtr=cST[itr]
-                stackedST[itr].data+=mtr.data
-                stackedST[itr].stats.sac.user0+=mtr.stats.sac.user0
-        cST=[]
+                mtr                             = cST[itr]
+                stackedST[itr].data             += mtr.data
+                stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
+        cST                 = []
     if len(stackedST)==len(channels1)*len(channels2):
         print 'Finished Stacking for:'+stacode1+'_'+stacode2
-        i=0
+        i                   = 0
         for chan1 in channels1:
             for chan2 in channels2:
-                stackedTr=stackedST[i]
-                outfname=outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                    pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
+                stackedTr   = stackedST[i]
+                outfname    = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+                            pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
                 stackedTr.write(outfname, format='SAC')
-                i+=1
+                i           += 1
     return
 
 def aftan4mp(aTr, outdir, inftan, prephdir, f77, pfx):
