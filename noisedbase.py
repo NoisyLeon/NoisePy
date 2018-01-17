@@ -518,7 +518,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     print 'reading xcorr data: '+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2
         return
         
-    def xcorr_stack(self, datadir, startyear, startmonth, endyear, endmonth, pfx='COR', outdir=None, inchannels=None, fnametype=1):
+    def xcorr_stack(self, datadir, startyear, startmonth, endyear, endmonth, pfx='COR', outdir=None, inchannels=None, fnametype=2, verbose=False):
         """Stack cross-correlation data from monthly-stacked sac files
         ===========================================================================================================
         ::: input parameters :::
@@ -541,6 +541,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         #----------------------------------------
         # prepare year/month list for stacking
         #----------------------------------------
+        print('preparing month list for stacking')
         utcdate                 = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
         ylst                    = np.array([], dtype=int)
         mlst                    = np.array([], dtype=int)
@@ -581,6 +582,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         itrstack                = 0
         Ntr_one_percent         = int(Ntotal_traces/100.)
         ipercent                = 0
+        print('start stacking')
         for staid1 in staLst:
             for staid2 in staLst:
                 netcode1, stacode1  = staid1.split('.')
@@ -595,8 +597,51 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 cST                 = []
                 initflag            = True
                 if inchannels==None:
-                    channels1       = self.waveforms[staid1].StationXML.networks[0].stations[0].channels
-                    channels2       = self.waveforms[staid2].StationXML.networks[0].stations[0].channels
+                    channels1       = []
+                    channels2       = []
+                    tempchans1      = self.waveforms[staid1].StationXML.networks[0].stations[0].channels
+                    tempchans2      = self.waveforms[staid2].StationXML.networks[0].stations[0].channels
+                    # get non-repeated component channel list
+                    isZ             = False
+                    isN             = False
+                    isE             = False
+                    for tempchan in tempchans1:
+                        if tempchan.code[-1] == 'Z':
+                            if isZ:
+                                continue
+                            else:
+                                isZ         = True
+                        if tempchan.code[-1] == 'N':
+                            if isN:
+                                continue
+                            else:
+                                isN         = True
+                        if tempchan.code[-1] == 'E':
+                            if isE:
+                                continue
+                            else:
+                                isE         = True
+                        channels1.append(tempchan)
+                    isZ             = False
+                    isN             = False
+                    isE             = False
+                    for tempchan in tempchans2:
+                        if tempchan.code[-1] == 'Z':
+                            if isZ:
+                                continue
+                            else:
+                                isZ         = True
+                        if tempchan.code[-1] == 'N':
+                            if isN:
+                                continue
+                            else:
+                                isN         = True
+                        if tempchan.code[-1] == 'E':
+                            if isE:
+                                continue
+                            else:
+                                isE         = True
+                        channels2.append(tempchan)
                 else:
                     channels1       = channels
                     channels2       = channels
@@ -616,7 +661,6 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             elif fnametype  == 3:
                                 fname   ='' # modify file name here
                             #----------------------------------------------------------
-                            # # # print fname
                             if not os.path.isfile(fname):
                                 skipflag= True
                                 break
@@ -643,7 +687,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
                     cST                                     = []
                 if len(stackedST)==len(channels1)*len(channels2):
-                    print('Finished stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2)
+                    if verbose:
+                        print('Finished stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2)
                     # create sac output directory 
                     if outdir!=None:
                         if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
@@ -678,6 +723,12 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     else:
                         staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
                     itrace                  = 0
+                    if len(channels1)>1:
+                        print staid1
+                        return channels1
+                    if len(channels2)>1:
+                        print staid2
+                        return channels2
                     for chan1 in channels1:
                         for chan2 in channels2:
                             stackedTr       = stackedST[itrace]
@@ -687,6 +738,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                                 stackedTr.write(outfname,format='SAC')
                             xcorr_header['chan1']   = chan1.code
                             xcorr_header['chan2']   = chan2.code
+                            # print staid_aux+'/'+chan1.code+'/'+chan2.code
                             self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                             itrace                  += 1
         return
@@ -979,7 +1031,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         outdirL(outdirR)/evid.staid.pre
         ====================================================================================
         """
-        staLst=self.waveforms.list()
+        staLst                      = self.waveforms.list()
         for evid in staLst:
             evnetcode, evstacode    = evid.split('.')
             evla, evz, evlo         = self.waveforms[evid].coordinates.values()
@@ -993,38 +1045,40 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 print 'period list does not exist!'
                 return
             with open(pathfname,'w') as f:
-                ista=0
+                ista                = 0
                 for station_id in staLst:
-                    stacode=station_id.split('.')[1]
+                    stacode         = station_id.split('.')[1]
                     if evid >= station_id:
                         continue
-                    stla, stz, stlo=self.waveforms[station_id].coordinates.values()
+                    stla, stz, stlo = self.waveforms[station_id].coordinates.values()
                     if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ):
                         continue
-                    ista=ista+1
+                    ista            = ista+1
                     f.writelines('%5d%5d %15s %15s %10.5f %10.5f %10.5f %10.5f \n'
                             %(1, ista, evid, station_id, evla, evlo, stla, stlo ))
             call([prephaseEXE, pathfname, mapfile, perlst, evid])
             os.remove(pathfname)
-            outdirL=outdir+'_L'
-            outdirR=outdir+'_R'
-            if not os.path.isdir(outdirL): os.makedirs(outdirL)
-            if not os.path.isdir(outdirR): os.makedirs(outdirR)
-            fout = open(evid+'_temp','wb')
+            outdirL                 = outdir+'_L'
+            outdirR                 = outdir+'_R'
+            if not os.path.isdir(outdirL):
+                os.makedirs(outdirL)
+            if not os.path.isdir(outdirR):
+                os.makedirs(outdirR)
+            fout                    = open(evid+'_temp','wb')
             for l1 in open('PREDICTION_L'+'_'+evid):
-                l2 = l1.rstrip().split()
+                l2          = l1.rstrip().split()
                 if (len(l2)>8):
                     fout.close()
                     outname = outdirL + "/%s.%s.pre" % (l2[3],l2[4])
-                    fout = open(outname,"w")
+                    fout    = open(outname,"w")
                 elif (len(l2)>7):
                     fout.close()
                     outname = outdirL + "/%s.%s.pre" % (l2[2],l2[3])
-                    fout = open(outname,"w")                
+                    fout    = open(outname,"w")                
                 else:
                     fout.write("%g %g\n" % (float(l2[0]),float(l2[1])))
             for l1 in open('PREDICTION_R'+'_'+evid):
-                l2 = l1.rstrip().split()
+                l2          = l1.rstrip().split()
                 if (len(l2)>8):
                     fout.close()
                     outname = outdirR + "/%s.%s.pre" % (l2[3],l2[4])
@@ -1064,33 +1118,36 @@ class noiseASDF(pyasdf.ASDFDataSet):
         =======================================================================================
         """
         print 'Start aftan analysis!'
-        staLst=self.waveforms.list()
+        staLst                      = self.waveforms.list()
         for staid1 in staLst:
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if staid1 >= staid2: continue
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2:
+                    continue
                 try:
-                    channels1=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
-                    channels2=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
+                    channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
+                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
                     for chan in channels1:
-                        if chan[2]==channel[0]: chan1=chan
+                        if chan[-1]==channel[0]:
+                            chan1   = chan
                     for chan in channels2:
-                        if chan[2]==channel[1]: chan2=chan
+                        if chan[-1]==channel[1]:
+                            chan2   = chan
                 except KeyError:
                     continue
                 try:
-                    tr=self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
+                    tr              = self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
                 except NameError:
                     print netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel+' not exists!'
                     continue
-                aftanTr=pyaftan.aftantrace(tr.data, tr.stats)
+                aftanTr             = pyaftan.aftantrace(tr.data, tr.stats)
                 if abs(aftanTr.stats.sac.b+aftanTr.stats.sac.e)<aftanTr.stats.delta:
                     aftanTr.makesym()
-                if prephdir !=None:
-                    phvelname = prephdir + "/%s.%s.pre" %(netcode1+'.'+stacode1, netcode2+'.'+stacode2)
+                if prephdir != None:
+                    phvelname       = prephdir + "/%s.%s.pre" %(netcode1+'.'+stacode1, netcode2+'.'+stacode2)
                 else:
-                    phvelname =''
+                    phvelname       = ''
                 if f77:
                     aftanTr.aftanf77(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
                         tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
@@ -1102,26 +1159,26 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 if verbose:
                     print 'aftan analysis for: ' + netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
                 aftanTr.get_snr(ffact=inftan.ffact) # SNR analysis
-                staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
+                staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
                 # save aftan results to ASDF dataset
                 if basic1:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_1}
                     self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_1, data_type='DISPbasic1', path=staid_aux, parameters=parameters)
                 if basic2:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': aftanTr.ftanparam.nfout2_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': aftanTr.ftanparam.nfout2_1}
                     self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_1, data_type='DISPbasic2', path=staid_aux, parameters=parameters)
                 if inftan.pmf:
                     if pmf1:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_2}
                         self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_2, data_type='DISPpmf1', path=staid_aux, parameters=parameters)
                     if pmf2:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': aftanTr.ftanparam.nfout2_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': aftanTr.ftanparam.nfout2_2}
                         self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_2, data_type='DISPpmf2', path=staid_aux, parameters=parameters)
                 if outdir != None:
                     if not os.path.isdir(outdir+'/'+pfx+'/'+staid1):
                         os.makedirs(outdir+'/'+pfx+'/'+staid1)
-                    foutPR=outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                                    pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
+                    foutPR          = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+                                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
                     aftanTr.ftanparam.writeDISP(foutPR)
         print 'End aftan analysis!'
         return
@@ -1243,17 +1300,17 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 nfout2_2=f21['arr_1']
                 staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
                 if basic1:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_1}
+                    parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_1}
                     self.add_auxiliary_data(data=arr1_1, data_type='DISPbasic1', path=staid_aux, parameters=parameters)
                 if basic2:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': nfout2_1}
+                    parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': nfout2_1}
                     self.add_auxiliary_data(data=arr2_1, data_type='DISPbasic2', path=staid_aux, parameters=parameters)
                 if inftan.pmf:
                     if pmf1:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_2}
+                        parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_2}
                         self.add_auxiliary_data(data=arr1_2, data_type='DISPpmf1', path=staid_aux, parameters=parameters)
                     if pmf2:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': nfout2_2}
+                        parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': nfout2_2}
                         self.add_auxiliary_data(data=arr2_2, data_type='DISPpmf2', path=staid_aux, parameters=parameters)
         if deletedisp: shutil.rmtree(outdir+'/'+pfx)
         return

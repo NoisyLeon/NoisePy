@@ -40,6 +40,7 @@ from pyproj import Geod
 from obspy.taup import TauPyModel
 import CURefPy
 import glob
+import timeit
 
 sta_info_default    = {'xcorr': 1, 'isnet': 0}
 ref_header_default  = {'otime': '', 'network': '', 'station': '', 'stla': 12345, 'stlo': 12345, 'evla': 12345, 'evlo': 12345, 'evdp': 0.,
@@ -838,7 +839,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 st.detrend()
                 st.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
                 if rotation:
-                    st.rotate('NE->RT', back_azimuth=baz)
+                    try:
+                        st.rotate('NE->RT', back_azimuth=baz)
+                    except:
+                        continue
                 if verbose:
                     print 'Getting data for:', staid
                 self.add_waveforms(st, event_id=event_id, tag=tag, labels=phase)
@@ -1173,8 +1177,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print('-----------------------------------------------------------------------------------------------------------')
         print('================================== End reading downloaded body wave data ==================================')
         return
-    
-    
 
     def write2sac(self, network, station, evnumb, datatype='body'):
         """ Extract data from ASDF to SAC file
@@ -1229,7 +1231,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         return st
     
     def compute_ref(self, inrefparam=CURefPy.InputRefparam(), refslow=0.06, saveampc=True, verbose=False,
-                    startdate=None, enddate=None, fs=40.):
+                    startdate=None, enddate=None, fs=40., walltimeinhours = None, walltimetol=2000., startind=1):
         """Compute receiver function and post processed data(moveout)
         ====================================================================================================================
         ::: input parameters :::
@@ -1237,6 +1239,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
         saveampc    - save amplitude corrected post processed data
         =====================================================================================================================
         """
+        if walltimeinhours != None:
+            walltime        = walltimeinhours*3600.
+        else:
+            walltime        = 1e10
+        stime4compute       = timeit.default_timer()
         try:
             print self.cat
         except AttributeError:
@@ -1251,12 +1258,17 @@ class quakeASDF(pyasdf.ASDFDataSet):
             etime4ref   = obspy.UTCDateTime()
         delta           = 1./fs
         Nsta            = len(self.waveforms.list())
-        ista            = 0
+        ista            = startind-1
         print '================================== Receiver Function Analysis ======================================'
-        for staid in self.waveforms.list():
+        for staid in self.waveforms.list()[(startind-1):]:
+            etime4compute       = timeit.default_timer()
+            if etime4compute - stime4compute > walltime - walltimetol:
+                print '================================== End computation due to walltime ======================================'
+                print 'start from '+str(ista+1)+' next run!'
+                break
             netcode, stacode    = staid.split('.')
             ista                += 1
-            print('Station: '+staid+' '+str(ista)+'/'+Nsta)
+            print('Station: '+staid+' '+str(ista)+'/'+str(Nsta))
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
             evnumb              = 0
             Ndata               = 0              
@@ -1296,10 +1308,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
                     print('Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude))
                 refTr               = CURefPy.RFTrace()
-                refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0],
-                        tbeg=inrefparam.tbeg, tend=inrefparam.tend)
-                refTr.IterDeconv( tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
-                        minderr=inrefparam.minderr, phase=phase )
+                if not refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0],\
+                        tbeg=inrefparam.tbeg, tend=inrefparam.tend):
+                    continue
+                if not refTr.IterDeconv( tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,\
+                        minderr=inrefparam.minderr, phase=phase ):
+                    continue
                 if refTr.stats.delta != delta:
                     print ('WARNING: '+staid+' resampling fs = '+str(1./refTr.stats.delta) + ' --> '+str(fs))
                     refTr.resample(sampling_rate=fs)
@@ -1415,8 +1429,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
                     print('Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude))
                 refTr               = CURefPy.RFTrace()
-                refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0],
-                        tbeg=inrefparam.tbeg, tend=inrefparam.tend)
+                if not refTr.get_data(Ztr=st.select(component='Z')[0], RTtr=st.select(component=inrefparam.reftype)[0],\
+                        tbeg=inrefparam.tbeg, tend=inrefparam.tend):
+                    continue
                 refLst.append( refTr )
                 Ndata               += 1
             print(str(Ndata)+' data streams are prepared for ref computation')
@@ -1578,6 +1593,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 # quality control
                 if ref_header['moveout'] <0 or ref_header['VR'] < VR:
                     continue
+                if np.any(np.isnan(subdset.data.value)):
+                    continue
                 pdbase          = CURefPy.PostDatabase()
                 pdbase.ampTC    = subdset.data.value
                 pdbase.header   = subdset.parameters
@@ -1674,16 +1691,17 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.add_auxiliary_data(data=phi2_2[ind], data_type='Ref'+reftype+'HSmodel',
                     path=staid_aux+'/A2/phi2', parameters={})
             # A0_A1_A2 inversion
+            A3header        = {'npts': npts, 'delta': delta}
             self.add_auxiliary_data(data=A0[ind], data_type='Ref'+reftype+'HSmodel',
-                    path=staid_aux+'/A0_A1_A2/A0', parameters={})
+                    path=staid_aux+'/A0_A1_A2/A0', parameters=A3header)
             self.add_auxiliary_data(data=A1[ind], data_type='Ref'+reftype+'HSmodel',
-                    path=staid_aux+'/A0_A1_A2/A1', parameters={})
+                    path=staid_aux+'/A0_A1_A2/A1', parameters=A3header)
             self.add_auxiliary_data(data=A2[ind], data_type='Ref'+reftype+'HSmodel',
-                    path=staid_aux+'/A0_A1_A2/A2', parameters={})
+                    path=staid_aux+'/A0_A1_A2/A2', parameters=A3header)
             self.add_auxiliary_data(data=phi1[ind], data_type='Ref'+reftype+'HSmodel',
-                    path=staid_aux+'/A0_A1_A2/phi1', parameters={})
+                    path=staid_aux+'/A0_A1_A2/phi1', parameters=A3header)
             self.add_auxiliary_data(data=phi2[ind], data_type='Ref'+reftype+'HSmodel',
-                    path=staid_aux+'/A0_A1_A2/phi2', parameters={})
+                    path=staid_aux+'/A0_A1_A2/phi2', parameters=A3header)
             # misfit between A0 and R[i]
             self.add_auxiliary_data(data=mfArr0[ind], data_type='Ref'+reftype+'HSmodel',
                     path=staid_aux+'/A0_A1_A2/mf_A0_obs', parameters={})
@@ -2371,6 +2389,49 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     - 0.66*np.log10(20./period)-np.log10(fcorner) # -0.43
                 print  staid, ab, Ms, Vgr, Amp, dist, Delta
                 # if staid == 'IC.HIA':return tempTr
+    
+    def copy_asdf(self, outfname, netcode, stacode, startdate=None, enddate=None, addcatalog=False):
+        dset    = pyasdf.ASDFDataSet(outfname)
+        if addcatalog:
+            try:
+                print self.cat
+            except AttributeError:
+                self.copy_catalog()
+            try:
+                stime4copy  = obspy.core.utcdatetime.UTCDateTime(startdate)
+            except:
+                stime4copy  = obspy.UTCDateTime(0)
+            try:
+                etime4copy  = obspy.core.utcdatetime.UTCDateTime(enddate)
+            except:
+                etime4copy  = obspy.UTCDateTime()
+            dset.add_quakeml(self.cat)
+        staid               = netcode+'.'+stacode
+        dset.add_stationxml(self.waveforms[staid].StationXML)
+        evnumb              = 0
+        for event in self.cat:
+            event_id        = event.resource_id.id.split('=')[-1]
+            pmag            = event.preferred_magnitude()
+            magnitude       = pmag.mag
+            Mtype           = pmag.magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
+            porigin         = event.preferred_origin()
+            otime           = porigin.time
+            # if otime < stime4copy or otime > etime4copy:
+            #     continue
+            print('Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+            evlo            = porigin.longitude
+            evla            = porigin.latitude
+            evdp            = porigin.depth/1000.
+            tag             = 'body_ev_%05d' %evnumb
+            try:
+                st          = self.waveforms[staid][tag]
+            except KeyError:
+                continue
+            phase           = st[0].stats.asdf.labels[0]
+            dset.add_waveforms(st, event_id=event_id, tag=tag, labels=phase)
+        return
         
 def aftan4mp_quake(aTr, outdir, inftan, prephdir, f77, pfx):
     # print aTr.stats.network+'.'+aTr.stats.station
@@ -2431,8 +2492,9 @@ def get_waveforms4mp(reqinfo, outdir, client, pre_filt, verbose=True, rotation=F
     return
 
 def ref4mp(refTr, outdir, inrefparam):
-    refTr.IterDeconv(tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
-            minderr=inrefparam.minderr, phase=refTr.Ztr.stats.sac['kuser1'] )
+    if not refTr.IterDeconv(tdel=inrefparam.tdel, f0 = inrefparam.f0, niter=inrefparam.niter,
+            minderr=inrefparam.minderr, phase=refTr.Ztr.stats.sac['kuser1'] ):
+        return
     if not refTr.move_out(refslow=inrefparam.refslow):
         return
     outsta      = outdir+'/'+refTr.stats.network+'.'+refTr.stats.station

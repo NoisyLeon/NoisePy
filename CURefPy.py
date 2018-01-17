@@ -471,7 +471,7 @@ class hsdatabase(object):
         return
     
     def plot(self, outdir='', stacode='', ampfactor=40, delta=0.025, longitude='', latitude='', browseflag=False, saveflag=True,\
-            obsflag=True, diffflag=False, repflag=True, rep0flag=True, rep1flag=True, rep2flag=True):
+            obsflag=True, diffflag=True, repflag=True, rep0flag=True, rep1flag=True, rep2flag=True):
         """Plot harmonic stripping streams accoring to back-azimuth
         ===============================================================================================================
         ::: input parameters :::
@@ -1106,9 +1106,13 @@ class RFTrace(obspy.Trace):
             raise TypeError('Unexpecetd type for RTtr!')
         stime           = self.Ztr.stats.starttime
         etime           = self.Ztr.stats.endtime
+        if stime+tbeg > etime+tend:
+            return False
         self.Ztr.trim(starttime=stime+tbeg, endtime=etime+tend)
         self.RTtr.trim(starttime=stime+tbeg, endtime=etime+tend)
-        return
+        if self.Ztr.stats.npts != self.RTtr.stats.npts:
+            return False
+        return True
     
     def IterDeconv(self, tdel=5., f0 = 2.5, niter=200, minderr=0.001, phase='P', addhs=True ):
         """
@@ -1135,10 +1139,19 @@ class RFTrace(obspy.Trace):
         user4      - horizontal slowness
         ========================================================================================================================
         """
-        Ztr         = self.Ztr
-        RTtr        = self.RTtr
-        dt          = Ztr.stats.delta
-        npts        = Ztr.stats.npts
+        Ztr                     = self.Ztr
+        RTtr                    = self.RTtr
+        dt                      = Ztr.stats.delta
+        npts                    = Ztr.stats.npts
+        self.stats              = RTtr.stats
+        # # # self.data               = RFI
+        self.stats.sac['b']     = -tdel
+        self.stats.sac['e']     = -tdel+(npts-1)*dt
+        self.stats.sac['user0'] = f0
+        if addhs:
+            if not self.addHSlowness(phase=phase):
+                return False
+        # arrays for inversion
         RMS         = np.zeros(niter, dtype=np.float64)  # RMS errors
         nfft        = 2**(npts-1).bit_length() # number points in fourier transform
         P0          = np.zeros(nfft, dtype=np.float64) # predicted spikes
@@ -1187,15 +1200,12 @@ class RFTrace(obspy.Trace):
         RFI                     = P[:npts]
         # output the rms values 
         RMS                     = RMS[:it]
-        self.stats              = RTtr.stats
+        if np.any(np.isnan(RFI)) or it == 0:
+            return False
+        # store receiver function data
         self.data               = RFI
-        self.stats.sac['b']     = -tdel
-        self.stats.sac['e']     = -tdel+(npts-1)*dt
-        self.stats.sac['user0'] = f0
         self.stats.sac['user2'] = (1.0-RMS[it-1])*100.0
-        if addhs:
-            self.addHSlowness(phase=phase)
-        return
+        return True
     
     def addHSlowness(self, phase='P'):
         """
@@ -1215,12 +1225,15 @@ class RFTrace(obspy.Trace):
         Delta                   = obspy.geodetics.kilometer2degrees(dist)
         arrivals                = taupmodel.get_travel_times(source_depth_in_km=evdp,\
                                                 distance_in_degree=Delta, phase_list=[phase])
-        arr                     = arrivals[0]
+        try:
+            arr                     = arrivals[0]
+        except IndexError:
+            return False
         rayparam                = arr.ray_param_sec_degree
         arr_time                = arr.time
         self.stats.sac['user4'] = rayparam
         self.stats.sac['user5'] = arr_time
-        return
+        return True
     
     def init_postdbase(self):
         """
@@ -1291,16 +1304,17 @@ class RFTrace(obspy.Trace):
         #--------------------------------------------------------
         # Step 5: Store the original and stretched data
         #--------------------------------------------------------
-        DATA1               = data/1.42
-        L                   = DATA1.size
-        self.postdbase.ampC = np.append(tarr1,DATA1)
-        self.postdbase.ampC = self.postdbase.ampC.reshape((2, L))
-        self.postdbase.ampC = self.postdbase.ampC.T
-        DATA2               = data2/1.42
-        L                   = DATA2.size
-        self.postdbase.ampTC= np.append(tarr2, DATA2)
-        self.postdbase.ampTC= self.postdbase.ampTC.reshape((2, L))
-        self.postdbase.ampTC= self.postdbase.ampTC.T
+        DATA1                   = data/1.42
+        L                       = DATA1.size
+        self.postdbase.ampC     = np.append(tarr1,DATA1)
+        self.postdbase.ampC     = self.postdbase.ampC.reshape((2, L))
+        self.postdbase.ampC     = self.postdbase.ampC.T
+        DATA2                   = data2/1.42
+        L                       = DATA2.size
+        self.postdbase.ampTC    = np.append(tarr2, DATA2)
+        self.postdbase.ampTC    = self.postdbase.ampTC.reshape((2, L))
+        self.postdbase.ampTC    = self.postdbase.ampTC.T
+        self.stats.sac['user6'] = self.postdbase.MoveOutFlag
         return True
     
     def save_data(self, outdir):
@@ -1308,7 +1322,7 @@ class RFTrace(obspy.Trace):
         """
         outfname                = outdir+'/'+self.stats.sac['kuser0']+'.sac'
         warnings.filterwarnings('ignore', category=UserWarning, append=True)
-        self.stats.sac['user6'] = self.postdbase.MoveOutFlag
+        # # # self.stats.sac['user6'] = self.postdbase.MoveOutFlag
         self.write(outfname, format = 'sac')
         try:
             np.savez( outdir+'/'+self.stats.sac['kuser0']+'.post', self.postdbase.ampC, self.postdbase.ampTC)
