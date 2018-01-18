@@ -322,7 +322,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         m.etopo()
         # m.shadedrelief()
         stax, stay          = m(stalons, stalats)
-        m.plot(stax, stay, '^', markersize=3)
+        m.plot(stax, stay, '^', markersize=5)
         # plt.title(str(self.period)+' sec', fontsize=20)
         if showfig:
             plt.show()
@@ -1016,6 +1016,40 @@ class noiseASDF(pyasdf.ASDFDataSet):
                                 stacode2=stacode2, chan1=chan1Z, chan2=chan2T, outdir=outdir, pfx=pfx)
         return
     
+    def count_data(self, channel='ZZ', threshstackday=0):
+        """count the number of available xcorr traces
+        """
+        staLst                      = self.waveforms.list()
+        Nsta                        = len(staLst)
+        Ntotal_traces               = Nsta*(Nsta-1)/2
+        itrace                      = 0
+        for staid1 in staLst:
+            for staid2 in staLst:
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2:
+                    continue
+                try:
+                    channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
+                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
+                    for chan in channels1:
+                        if chan[-1]==channel[0]:
+                            chan1   = chan
+                    for chan in channels2:
+                        if chan[-1]==channel[1]:
+                            chan2   = chan
+                except KeyError:
+                    continue
+                try:
+                    tr              = self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
+                    if tr.stats.sac.user0 < threshstackday:
+                        continue
+                    itrace          += 1
+                except NameError:
+                    pass
+        print('Number of available xcorr traces: '+str(itrace)+'/'+str(Ntotal_traces))
+        return
+    
     def xcorr_prephp(self, outdir, mapfile='./MAPS/smpkolya_phv'):
         """
         Generate predicted phase velocity dispersion curves for cross-correlation pairs
@@ -1096,7 +1130,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         return
     
     def xcorr_aftan(self, channel='ZZ', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True, \
-            pmf1=True, pmf2=True, verbose=True, prephdir=None, f77=True, pfx='DISP'):
+            pmf1=True, pmf2=True, verbose=False, prephdir=None, f77=True, pfx='DISP'):
         """ aftan analysis of cross-correlation data 
         =======================================================================================
         ::: input parameters :::
@@ -1119,12 +1153,21 @@ class noiseASDF(pyasdf.ASDFDataSet):
         """
         print 'Start aftan analysis!'
         staLst                      = self.waveforms.list()
+        Nsta                        = len(staLst)
+        Ntotal_traces               = Nsta*(Nsta-1)/2
+        iaftan                      = 0
+        Ntr_one_percent             = int(Ntotal_traces/100.)
+        ipercent                    = 0
         for staid1 in staLst:
             for staid2 in staLst:
                 netcode1, stacode1  = staid1.split('.')
                 netcode2, stacode2  = staid2.split('.')
                 if staid1 >= staid2:
                     continue
+                iaftan              += 1
+                if np.fmod(iaftan, Ntr_one_percent) ==0:
+                    ipercent        += 1
+                    print ('Number of traces finished aftan analysis: '+str(iaftan)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
                 try:
                     channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
                     channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
@@ -1148,6 +1191,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     phvelname       = prephdir + "/%s.%s.pre" %(netcode1+'.'+stacode1, netcode2+'.'+stacode2)
                 else:
                     phvelname       = ''
+                if not os.path.isfile(phvelname):
+                    print phvelname+' not exists!'
+                    continue
                 if f77:
                     aftanTr.aftanf77(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
                         tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
@@ -1209,53 +1255,56 @@ class noiseASDF(pyasdf.ASDFDataSet):
         =======================================================================================
         """
         print 'Preparing data for aftan analysis !'
-        staLst=self.waveforms.list()
-        inputStream=[]
+        staLst                      = self.waveforms.list()
+        inputStream                 = []
         for staid1 in staLst:
             if not os.path.isdir(outdir+'/'+pfx+'/'+staid1):
                 os.makedirs(outdir+'/'+pfx+'/'+staid1)
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if staid1 >= staid2: continue
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2:
+                    continue
                 try:
-                    channels1=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
-                    channels2=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
+                    channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
+                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
                     for chan in channels1:
-                        if chan[2]==channel[0]: chan1=chan
+                        if chan[2]==channel[0]:
+                            chan1   = chan
                     for chan in channels2:
-                        if chan[2]==channel[1]: chan2=chan
+                        if chan[2]==channel[1]:
+                            chan2   = chan
                 except KeyError:
                     continue
                 try:
-                    tr=self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
+                    tr              = self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
                 except NameError:
                     print netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel+' not exists!'
                     continue
                 if verbose:
-                    print 'Preparing aftan data: '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
-                aftanTr=pyaftan.aftantrace(tr.data, tr.stats)
+                    print 'preparing aftan data: '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
+                aftanTr             = pyaftan.aftantrace(tr.data, tr.stats)
                 inputStream.append(aftanTr)
         print 'Start multiprocessing aftan analysis !'
         if len(inputStream) > subsize:
-            Nsub = int(len(inputStream)/subsize)
-            for isub in xrange(Nsub):
+            Nsub                    = int(len(inputStream)/subsize)
+            for isub in range(Nsub):
                 print 'Subset:', isub,'in',Nsub,'sets'
-                cstream = inputStream[isub*subsize:(isub+1)*subsize]
-                AFTAN   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-                pool    = multiprocessing.Pool(processes=nprocess)
+                cstream             = inputStream[isub*subsize:(isub+1)*subsize]
+                AFTAN               = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+                pool                = multiprocessing.Pool(processes=nprocess)
                 pool.map(AFTAN, cstream) #make our results with a map call
                 pool.close() #we are not adding any more processes
                 pool.join() #tell it to wait until all threads are done before going on
-            cstream = inputStream[(isub+1)*subsize:]
-            AFTAN   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-            pool    = multiprocessing.Pool(processes=nprocess)
+            cstream                 = inputStream[(isub+1)*subsize:]
+            AFTAN                   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+            pool                    = multiprocessing.Pool(processes=nprocess)
             pool.map(AFTAN, cstream) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
-            AFTAN   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-            pool    = multiprocessing.Pool(processes=nprocess)
+            AFTAN                   = partial(aftan4mp, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+            pool                    = multiprocessing.Pool(processes=nprocess)
             pool.map(AFTAN, inputStream) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
@@ -1263,24 +1312,28 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print 'Reading aftan results into ASDF Dataset !'
         for staid1 in staLst:
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if stacode1 >= stacode2: continue
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if stacode1 >= stacode2:
+                    continue
                 try:
-                    channels1=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
-                    channels2=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
+                    channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
+                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
                     for chan in channels1:
-                        if chan[2]==channel[0]: chan1=chan
+                        if chan[2]==channel[0]:
+                            chan1   = chan
                     for chan in channels2:
-                        if chan[2]==channel[1]: chan2=chan
-                except KeyError: continue
-                finPR=pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
+                        if chan[2]==channel[1]:
+                            chan2   = chan
+                except KeyError:
+                    continue
+                finPR               = pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+                                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
                 try:
-                    f10=np.load(outdir+'/'+finPR+'_1_DISP.0.npz')
-                    f11=np.load(outdir+'/'+finPR+'_1_DISP.1.npz')
-                    f20=np.load(outdir+'/'+finPR+'_2_DISP.0.npz')
-                    f21=np.load(outdir+'/'+finPR+'_2_DISP.1.npz')
+                    f10             = np.load(outdir+'/'+finPR+'_1_DISP.0.npz')
+                    f11             = np.load(outdir+'/'+finPR+'_1_DISP.1.npz')
+                    f20             = np.load(outdir+'/'+finPR+'_2_DISP.0.npz')
+                    f21             = np.load(outdir+'/'+finPR+'_2_DISP.1.npz')
                 except IOError:
                     print 'NO aftan results: '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
                     continue
@@ -1290,32 +1343,32 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     os.remove(outdir+'/'+finPR+'_1_DISP.1.npz')
                     os.remove(outdir+'/'+finPR+'_2_DISP.0.npz')
                     os.remove(outdir+'/'+finPR+'_2_DISP.1.npz')
-                arr1_1=f10['arr_0']
-                nfout1_1=f10['arr_1']
-                arr2_1=f11['arr_0']
-                nfout2_1=f11['arr_1']
-                arr1_2=f20['arr_0']
-                nfout1_2=f20['arr_1']
-                arr2_2=f21['arr_0']
-                nfout2_2=f21['arr_1']
-                staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
+                arr1_1              = f10['arr_0']
+                nfout1_1            = f10['arr_1']
+                arr2_1              = f11['arr_0']
+                nfout2_1            = f11['arr_1']
+                arr1_2              = f20['arr_0']
+                nfout1_2            = f20['arr_1']
+                arr2_2              = f21['arr_0']
+                nfout2_2            = f21['arr_1']
+                staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
                 if basic1:
-                    parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_1}
                     self.add_auxiliary_data(data=arr1_1, data_type='DISPbasic1', path=staid_aux, parameters=parameters)
                 if basic2:
-                    parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': nfout2_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': nfout2_1}
                     self.add_auxiliary_data(data=arr2_1, data_type='DISPbasic2', path=staid_aux, parameters=parameters)
                 if inftan.pmf:
                     if pmf1:
-                        parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_2}
                         self.add_auxiliary_data(data=arr1_2, data_type='DISPpmf1', path=staid_aux, parameters=parameters)
                     if pmf2:
-                        parameters={'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': nfout2_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': nfout2_2}
                         self.add_auxiliary_data(data=arr2_2, data_type='DISPpmf2', path=staid_aux, parameters=parameters)
         if deletedisp: shutil.rmtree(outdir+'/'+pfx)
         return
     
-    def interp_disp(self, data_type='DISPpmf2', channel='ZZ', pers=np.array([]), verbose=True):
+    def interp_disp(self, data_type='DISPpmf2', channel='ZZ', pers=np.array([]), verbose=False):
         """ Interpolate dispersion curve for a given period array.
         =======================================================================================================
         ::: input parameters :::
@@ -1327,39 +1380,58 @@ class noiseASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.DISPpmf1interp, self.auxiliary_data.DISPpmf2interp
         =======================================================================================================
         """
-        if data_type=='DISPpmf2': ntype=6
-        else: ntype=5
-        if pers.size==0: pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
-        staLst=self.waveforms.list()
+        if data_type=='DISPpmf2':
+            ntype   = 6
+        else:
+            ntype   = 5
+        if pers.size==0:
+            pers    = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        staLst                      = self.waveforms.list()
+        Nsta                        = len(staLst)
+        Ntotal_traces               = Nsta*(Nsta-1)/2
+        iinterp                     = 0
+        Ntr_one_percent             = int(Ntotal_traces/100.)
+        ipercent                    = 0
         for staid1 in staLst:
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if staid1 >= staid2: continue
-                try: subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
-                except KeyError: continue
-                data=subdset.data.value
-                index=subdset.parameters
-                if verbose: print 'Interpolating dispersion curve for '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
-                outindex={ 'To': 0, 'Vgr': 1, 'Vph': 2,  'amp': 3, 'snr': 4, 'inbound': 5, 'Np': pers.size }
-                Np=int(index['Np'])
-                if Np < 5:
-                    warnings.warn('Not enough datapoints for: '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel, UserWarning, stacklevel=1)
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2:
                     continue
-                obsT    = data[index['To']][:Np]
-                Vgr     = np.interp(pers, obsT, data[index['Vgr']][:Np] )
-                Vph     = np.interp(pers, obsT, data[index['Vph']][:Np] )
-                amp     = np.interp(pers, obsT, data[index['amp']][:Np] )
-                inbound = (pers > obsT[0])*(pers < obsT[-1])*1
-                interpdata  = np.append(pers, Vgr)
-                interpdata  = np.append(interpdata, Vph)
-                interpdata  = np.append(interpdata, amp)
+                iinterp             += 1
+                if np.fmod(iinterp, Ntr_one_percent) ==0:
+                    ipercent        += 1
+                    print ('Number of traces finished interpolating dispersion curve: '+str(iinterp)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                try:
+                    subdset         = self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
+                except KeyError:
+                    continue
+                data                = subdset.data.value
+                index               = subdset.parameters
+                if verbose:
+                    print 'interpolating dispersion curve for '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel
+                outindex            = { 'To': 0, 'U': 1, 'C': 2,  'amp': 3, 'snr': 4, 'inbound': 5, 'Np': pers.size }
+                Np                  = int(index['Np'])
+                if Np < 5:
+                    if verbose:
+                        warnings.warn('Not enough datapoints for: '+ netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel, UserWarning, stacklevel=1)
+                    continue
+                # interpolation
+                obsT                = data[index['To']][:Np]
+                U                   = np.interp(pers, obsT, data[index['U']][:Np] )
+                C                   = np.interp(pers, obsT, data[index['C']][:Np] )
+                amp                 = np.interp(pers, obsT, data[index['amp']][:Np] )
+                inbound             = (pers > obsT[0])*(pers < obsT[-1])*1
+                # store interpolated data to interpdata array
+                interpdata          = np.append(pers, U)
+                interpdata          = np.append(interpdata, C)
+                interpdata          = np.append(interpdata, amp)
                 if data_type=='DISPpmf2':
-                    snr=np.interp(pers, obsT, data[index['snr']][:Np] )
-                    interpdata=np.append(interpdata, snr)
-                interpdata=np.append(interpdata, inbound)
-                interpdata=interpdata.reshape(ntype, pers.size)
-                staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
+                    snr             = np.interp(pers, obsT, data[index['snr']][:Np] )
+                    interpdata      = np.append(interpdata, snr)
+                interpdata          = np.append(interpdata, inbound)
+                interpdata          = interpdata.reshape(ntype, pers.size)
+                staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
                 self.add_auxiliary_data(data=interpdata, data_type=data_type+'interp', path=staid_aux, parameters=outindex)
         return
     
@@ -1432,72 +1504,90 @@ class noiseASDF(pyasdf.ASDFDataSet):
     
     def xcorr_raytomoinput(self, outdir, channel='ZZ', pers=np.array([]), outpfx='raytomo_in_', data_type='DISPpmf2interp', verbose=True):
         """
-        Generate Input files for Barmine's straight ray surface wave tomography code.
+        Generate input files for Barmine's straight ray surface wave tomography code.
         =======================================================================================================
         ::: input parameters :::
         outdir      - output directory
         channel     - channel for tomography
         pers        - period array
-        outpfx      - prefix for output files, default is 'MISHA_in_'
+        outpfx      - prefix for output files, default is 'raytomo_in_'
         data_type   - dispersion data type (default = DISPpmf2, pmf aftan results after jump detection)
         -------------------------------------------------------------------------------------------------------
         Output format:
         outdir/outpfx+per_channel_ph.lst
         =======================================================================================================
         """
-        if not os.path.isdir(outdir): os.makedirs(outdir)
-        if pers.size==0: pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
-        fph_lst=[]
-        fgr_lst=[]
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+        if pers.size==0:
+            pers        = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        fph_lst         = []
+        fgr_lst         = []
         for per in pers:
-            fname_ph=outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_ph.lst' %( per )
-            fname_gr=outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_gr.lst' %( per )
-            fph=open(fname_ph, 'w')
-            fgr=open(fname_gr, 'w')
+            fname_ph    = outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_ph.lst' %( per )
+            fname_gr    = outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_gr.lst' %( per )
+            fph         = open(fname_ph, 'w')
+            fgr         = open(fname_gr, 'w')
             fph_lst.append(fph)
             fgr_lst.append(fgr)
-        staLst=self.waveforms.list()
-        i=-1
+        staLst          = self.waveforms.list()
+        Nsta            = len(staLst)
+        Ntotal_traces   = Nsta*(Nsta-1)/2
+        Ntr_one_percent = int(Ntotal_traces/100.)
+        ipercent        = 0
+        iray            = -1
         for staid1 in staLst:
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if staid1 >= staid2: continue
-                i=i+1
-                try: subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
-                except: continue
-                lat1, elv1, lon1=self.waveforms[staid1].coordinates.values()
-                lat2, elv2, lon2=self.waveforms[staid2].coordinates.values()
-                dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
-                dist=dist/1000.
-                if lon1<0: lon1+=360.
-                if lon2<0: lon2+=360.
-                data=subdset.data.value
-                index=subdset.parameters
-                for iper in xrange(pers.size):
-                    per=pers[iper]
-                    if dist < 2.*per*3.5: continue
-                    ind_per=np.where(data[index['To']][:] == per)[0]
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2:
+                    continue
+                iray                += 1
+                if np.fmod(iray+1, Ntr_one_percent) ==0:
+                    ipercent        += 1
+                    print ('Number of traces finished interpolating dispersion curve: '+str(iray)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                try:
+                    subdset         = self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
+                except:
+                    continue
+                lat1, elv1, lon1    = self.waveforms[staid1].coordinates.values()
+                lat2, elv2, lon2    = self.waveforms[staid2].coordinates.values()
+                dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
+                dist                = dist/1000.
+                if lon1<0:
+                    lon1            +=360.
+                if lon2<0:
+                    lon2            +=360.
+                data                = subdset.data.value
+                index               = subdset.parameters
+                for iper in range(pers.size):
+                    per             = pers[iper]
+                    if dist < 2.*per*3.5:
+                        continue
+                    ind_per         = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
                         raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
-                    pvel=data[index['Vph']][ind_per]
-                    gvel=data[index['Vgr']][ind_per]
-                    snr=data[index['snr']][ind_per]
-                    inbound=data[index['inbound']][ind_per]
+                    pvel            = data[index['C']][ind_per]
+                    gvel            = data[index['U']][ind_per]
+                    snr             = data[index['snr']][ind_per]
+                    inbound         = data[index['inbound']][ind_per]
                     # quality control
-                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10: continue
-                    if inbound!=1.: continue
-                    if snr < 15.: continue
-                    fph=fph_lst[iper]
-                    fgr=fgr_lst[iper]
+                    if inbound!=1.:
+                        continue
+                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10:
+                        continue
+                    if snr < 15.:
+                        continue
+                    fph             = fph_lst[iper]
+                    fgr             = fgr_lst[iper]
                     fph.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(i, lat1, lon1, lat2, lon2, pvel, staid1, staid2))
                     fgr.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(i, lat1, lon1, lat2, lon2, gvel, staid1, staid2))
-        for iper in xrange(pers.size):
-            fph=fph_lst[iper]
-            fgr=fgr_lst[iper]
+        for iper in range(pers.size):
+            fph                     = fph_lst[iper]
+            fgr                     = fgr_lst[iper]
             fph.close()
             fgr.close()
-        print 'End of Generating Misha Tomography Input File!'
+        print ('End of generating Misha tomography input files!')
         return
     
     def xcorr_get_field(self, outdir=None, channel='ZZ', pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
@@ -1649,9 +1739,12 @@ def stack4mp(inv, datadir, outdir, ylst, mlst, pfx, fnametype):
 
 def aftan4mp(aTr, outdir, inftan, prephdir, f77, pfx):
     # print 'aftan analysis for: '+ aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm+'_'+chan1+'_'+aTr.stats.network+'.'+aTr.stats.station+'_'+chan2
-    if prephdir !=None: phvelname = prephdir + "/%s.%s.pre" %(aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm, aTr.stats.network+'.'+aTr.stats.station)
-    else: phvelname =''
-    if abs(aTr.stats.sac.b+aTr.stats.sac.e)< aTr.stats.delta: aTr.makesym()
+    if prephdir !=None:
+        phvelname   = prephdir + "/%s.%s.pre" %(aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm, aTr.stats.network+'.'+aTr.stats.station)
+    else:
+        phvelname   = ''
+    if abs(aTr.stats.sac.b+aTr.stats.sac.e)< aTr.stats.delta:
+        aTr.makesym()
     if f77:
         aTr.aftanf77(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
             tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
@@ -1661,10 +1754,10 @@ def aftan4mp(aTr, outdir, inftan, prephdir, f77, pfx):
             tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
                 npoints=inftan.npoints, perc=inftan.perc, phvelname=phvelname)
     aTr.get_snr(ffact=inftan.ffact) # SNR analysis
-    chan1=aTr.stats.sac.kcmpnm[:3]
-    chan2=aTr.stats.sac.kcmpnm[3:]
-    foutPR=outdir+'/'+pfx+'/'+aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm+'/'+ \
-                pfx+'_'+aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm+'_'+chan1+'_'+aTr.stats.network+'.'+aTr.stats.station+'_'+chan2+'.SAC'
+    chan1           = aTr.stats.sac.kcmpnm[:3]
+    chan2           = aTr.stats.sac.kcmpnm[3:]
+    foutPR          = outdir+'/'+pfx+'/'+aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm+'/'+ \
+                        pfx+'_'+aTr.stats.sac.kuser0+'.'+aTr.stats.sac.kevnm+'_'+chan1+'_'+aTr.stats.network+'.'+aTr.stats.station+'_'+chan2+'.SAC'
     aTr.ftanparam.writeDISPbinary(foutPR)
     return
     
