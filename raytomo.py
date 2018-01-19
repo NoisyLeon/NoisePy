@@ -369,23 +369,26 @@ class RayTomoDataSet(h5py.File):
                     f.writelines('7 \n%g %g %g \n8 \n%g %g %g \n12 \n%g \n%g \n16 \n' %(minlat, maxlat, dlat, minlon, maxlon, dlon, stepinte, lengthcell) )
                     f.writelines('v \nq \ngo \nEOF \n' )
                 else:
-                    if datatype=='ph': Dtype='P'
-                    else: Dtype='G'
+                    if datatype=='ph':
+                        Dtype   = 'P'
+                    else:
+                        Dtype   = 'G'
                     f.writelines('me \n4 \n5 \n%g %g %g \n6 \n%g %g %g \n' %( minlat, maxlat, dlat, minlon, maxlon, dlon) )
                     f.writelines('10 \n%g \n%g \n%s \n%s \n%g \n%g \n11 \n%d \n' %(stepinte, xZone, wavetype, Dtype, lengthcell, lengthcellAni, anipara) )
                     f.writelines('12 \n%g \n%g \n%g \n%g \n' %(alphaAni0, betaAni0, sigmaAni0, sigmaAni0) )
                     f.writelines('13 \n%g \n%g \n%g \n' %(alphaAni2, sigmaAni2, sigmaAni2) )
-                    if anipara==2: f.writelines('14 \n%g \n%g \n%g \n' %(alphaAni4, sigmaAni4, sigmaAni4) )
+                    if anipara==2:
+                        f.writelines('14 \n%g \n%g \n%g \n' %(alphaAni4, sigmaAni4, sigmaAni4) )
                     f.writelines('19 \n25 \n' )
                     f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
             os.remove(temprunsh)
         # save to hdf5 dataset
-        create_group=False
+        create_group        = False
         while (not create_group):
             try:
-                group=self.create_group( name = 'qc_run_'+str(runid) )
-                create_group=True
+                group       = self.create_group( name = 'qc_run_'+str(runid) )
+                create_group= True
             except:
                 runid+=1
                 continue
@@ -413,14 +416,19 @@ class RayTomoDataSet(h5py.File):
         group.attrs.create(name = 'sigmaAni4', data=sigmaAni4)
         group.attrs.create(name = 'comments', data=comments)
         group.attrs.create(name = 'smoothid', data='smooth_run_'+str(smoothid))
-        if anipara==0 or isotropic: index0={'vel_iso': 0}
-        elif anipara==1: index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
-        elif anipara==2: index0={'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}
+        if anipara==0 or isotropic:
+            index0  = {'vel_iso': 0}
+        elif anipara==1:
+            index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
+        elif anipara==2:
+            index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}
         for per in pers:
-            subgroup=group.create_group(name='%g_sec'%( per ))
-            outper=outdir+'/'+'%g'%( per ) +'_'+datatype
-            if isotropic: outpfx=outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
-            else: outpfx=outper+'/'+qcpfx+wavetype+'_'+str(alphaAni0)+'_'+str(sigmaAni0)+'_'+str(alphaAni2)+'_'+str(sigmaAni2)+'_'+str(betaAni0)
+            subgroup    = group.create_group(name='%g_sec'%( per ))
+            outper      = outdir+'/'+'%g'%( per ) +'_'+datatype
+            if isotropic:
+                outpfx  = outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
+            else:
+                outpfx  = outper+'/'+qcpfx+wavetype+'_'+str(alphaAni0)+'_'+str(sigmaAni0)+'_'+str(alphaAni2)+'_'+str(sigmaAni2)+'_'+str(betaAni0)
             v0fname     = outpfx+'_%g.1' %(per)
             dvfname     = outpfx+'_%g.1' %(per)+'_%_'
             azifname    = outpfx+'_%g.azi' %(per)
@@ -429,35 +437,39 @@ class RayTomoDataSet(h5py.File):
             resfname    = outpfx+'_%g.res' %(per)
             inArr       = np.loadtxt(v0fname); v0Arr=inArr[:,2:]
             v0dset      = subgroup.create_dataset(name='velocity', data=v0Arr)
-            if not isotropic: lonlatArr=inArr[:,:2]; lonlatdset=subgroup.create_dataset(name='lons_lats', data=lonlatArr)
-            inArr       = np.loadtxt(dvfname); dvArr=inArr[:,2]
-            dvdset      = subgroup.create_dataset(name='Dvelocity', data=dvArr)
-            inArr       = np.loadtxt(azifname); aziArr=inArr[:,2:]
-            azidset     = subgroup.create_dataset(name='azi_coverage', data=aziArr)
-            inArr       = np.loadtxt(residfname)
-            residdset   = subgroup.create_dataset(name='residual', data=inArr)
+            if not isotropic:
+                lonlatArr   = inArr[:,:2]
+                lonlatdset  = subgroup.create_dataset(name='lons_lats', data=lonlatArr)
+            inArr           = np.loadtxt(dvfname); dvArr=inArr[:,2]
+            dvdset          = subgroup.create_dataset(name='Dvelocity', data=dvArr)
+            inArr           = np.loadtxt(azifname); aziArr=inArr[:,2:]
+            azidset         = subgroup.create_dataset(name='azi_coverage', data=aziArr)
+            inArr           = np.loadtxt(residfname)
+            residdset       = subgroup.create_dataset(name='residual', data=inArr)
             if not isotropic:
                 inArr       = np.loadtxt(reafname); reaArr=inArr[:,2:]
                 readset     = subgroup.create_dataset(name='resolution', data=reaArr)
                 lonlatArr   = inArr[:,:2]; lonlatdset_rea=subgroup.create_dataset(name='lons_lats_rea', data=lonlatArr)
-            inArr       = np.loadtxt(resfname); resArr=inArr[:,2:]
-            resdset     = subgroup.create_dataset(name='path_density', data=resArr)
-            if deletetxt: shutil.rmtree(outper)
-        if deletetxt and deleteall: shutil.rmtree(outdir)
+            inArr           = np.loadtxt(resfname); resArr=inArr[:,2:]
+            resdset         = subgroup.create_dataset(name='path_density', data=resArr)
+            if deletetxt:
+                shutil.rmtree(outper)
+        if deletetxt and deleteall:
+            shutil.rmtree(outdir)
         return
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Get basemap for plotting results
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        lat_centre = (maxlat+minlat)/2.0
-        lon_centre = (maxlon+minlon)/2.0
+        minlon      = self.attrs['minlon']
+        maxlon      = self.attrs['maxlon']
+        minlat      = self.attrs['minlat']
+        maxlat      = self.attrs['maxlat']
+        lat_centre  = (maxlat+minlat)/2.0
+        lon_centre  = (maxlon+minlon)/2.0
         if projection=='merc':
-            m=Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
+            m       = Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
                       urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
             # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
@@ -465,22 +477,22 @@ class RayTomoDataSet(h5py.File):
             m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             m.drawstates(color='g', linewidth=2.)
         elif projection=='global':
-            m=Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
         elif projection=='regional_ortho':
-            m1 = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
-            m = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
-                llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m1      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
+            m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
+                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             # m.drawparallels(np.arange(-90.0,90.0,30.0),labels=[1,0,0,0], dashes=[10, 5], linewidth=2,  fontsize=20)
             # m.drawmeridians(np.arange(10,180.0,30.0), dashes=[10, 5], linewidth=2)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz=obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
-            distNS, az, baz=obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
-            m = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
-                lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
+            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=0.5, dashes=[2,2], labels=[1,0,0,0], fontsize=5)
@@ -508,7 +520,8 @@ class RayTomoDataSet(h5py.File):
         dlat        = self[dataid].attrs['dlat']
         self.lons   = np.arange((maxlon-minlon)/dlon+1)*dlon+minlon
         self.lats   = np.arange((maxlat-minlat)/dlat+1)*dlat+minlat
-        self.Nlon   = self.lons.size; self.Nlat=self.lats.size
+        self.Nlon   = self.lons.size
+        self.Nlat   = self.lats.size
         self.lonArr, self.latArr = np.meshgrid(self.lons, self.lats)
         return
     
@@ -516,33 +529,37 @@ class RayTomoDataSet(h5py.File):
         """Convert input numpy array to masked array
         """
         if reason_n==None:
-            outarray=ma.masked_array(inarray, mask=np.zeros(self.reason_n.shape) )
-            outarray.mask[self.reason_n!=0]=1
+            outarray                        = ma.masked_array(inarray, mask=np.zeros(self.reason_n.shape) )
+            outarray.mask[self.reason_n!=0] = 1
         else:
-            outarray=ma.masked_array(inarray, mask=np.zeros(reason_n.shape) )
-            outarray.mask[reason_n!=0]=1
+            outarray                        = ma.masked_array(inarray, mask=np.zeros(reason_n.shape) )
+            outarray.mask[reason_n!=0]      = 1
         return outarray
     
     def np2ma(self):
         """Convert numpy data array to masked data array
         """
-        try: reason_n=self.reason_n
-        except: raise AttrictError('No reason_n array!')
-        self.vel_iso= self._numpy2ma(self.vel_iso)
-        self.dv     = self._numpy2ma(self.dv)
-        self.pdens  = self._numpy2ma(self.pdens)
-        self.pdens1 = self._numpy2ma(self.pdens1)
-        self.pdens2 = self._numpy2ma(self.pdens2)
-        self.azicov1= self._numpy2ma(self.azicov1)
-        self.azicov2= self._numpy2ma(self.azicov2)
         try:
-            self.amp2=self._numpy2ma(self.amp2)
-            self.psi2=self._numpy2ma(self.psi2)
-        except: pass
+            reason_n    = self.reason_n
+        except:
+            raise AttrictError('No reason_n array!')
+        self.vel_iso    = self._numpy2ma(self.vel_iso)
+        self.dv         = self._numpy2ma(self.dv)
+        self.pdens      = self._numpy2ma(self.pdens)
+        self.pdens1     = self._numpy2ma(self.pdens1)
+        self.pdens2     = self._numpy2ma(self.pdens2)
+        self.azicov1    = self._numpy2ma(self.azicov1)
+        self.azicov2    = self._numpy2ma(self.azicov2)
         try:
-            self.amp4=self._numpy2ma(self.amp4)
-            self.psi4=self._numpy2ma(self.psi4)
-        except: pass
+            self.amp2   = self._numpy2ma(self.amp2)
+            self.psi2   = self._numpy2ma(self.psi2)
+        except:
+            pass
+        try:
+            self.amp4   = self._numpy2ma(self.amp4)
+            self.psi4   = self._numpy2ma(self.psi4)
+        except:
+            pass
         return
     
     def get_data4plot(self, dataid, period):
@@ -571,11 +588,13 @@ class RayTomoDataSet(h5py.File):
         =======================================================================================
         """
         self._get_lon_lat_arr(dataid)
-        subgroup        = self[dataid+'/%g_sec'%( period )]
-        self.period     = period
-        self.datatype   = self[dataid].attrs['datatype']
-        try: self.isotropic     = self[dataid].attrs['isotropic']
-        except: self.isotropic  = True
+        subgroup            = self[dataid+'/%g_sec'%( period )]
+        self.period         = period
+        self.datatype       = self[dataid].attrs['datatype']
+        try:
+            self.isotropic  = self[dataid].attrs['isotropic']
+        except:
+            self.isotropic  = True
         if self.isotropic:
             self.vel_iso    = subgroup['velocity'].value
             self.vel_iso    = self.vel_iso.reshape(self.Nlat, self.Nlon)
@@ -623,10 +642,10 @@ class RayTomoDataSet(h5py.File):
             azicov1         = (subgroup['azi_coverage'].value)[:,0]
             azicov2         = (subgroup['azi_coverage'].value)[:,1]
             # cradius=(subgroup['resolution'].value)[:,0]
-            for i in xrange(inlon.size):
-                lon     = inlon[i]
-                lat     = inlat[i]
-                index   = np.where((self.lonArr==lon)*(self.latArr==lat))
+            for i in range(inlon.size):
+                lon         = inlon[i]
+                lat         = inlat[i]
+                index       = np.where((self.lonArr==lon)*(self.latArr==lat))
                 # print index
                 self.reason_n[index[0], index[1]]   = 0
                 self.vel_iso[index[0], index[1]]    = vel_iso[i]
@@ -650,23 +669,29 @@ class RayTomoDataSet(h5py.File):
     def plot_vel_iso(self, dataid=None, period=None, projection='lambert', fastaxis=False, geopolygons=None, showfig=True, vmin=None, vmax=None):
         """Plot isotropic velocity
         """
-        if dataid !=None and period !=None: self.get_data4plot(dataid=dataid, period=period)
-        try: vel_iso=self.vel_iso
+        vdict       = {'ph': 'C', 'gr': 'U'}
+        if dataid !=None and period !=None:
+            self.get_data4plot(dataid=dataid, period=period)
+        try:
+            vel_iso = self.vel_iso
         except:
             print 'Specify dataid and period to get data for plotting!'
             return
-        m=self._get_basemap(projection=projection, geopolygons=geopolygons)
-        x, y=m(self.lonArr, self.latArr)
-        cmap = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
-            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
-        im=m.pcolormesh(x, y, vel_iso, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        cb = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.set_label('V'+self.datatype+' (km/s)', fontsize=12, rotation=0)
+        m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y        = m(self.lonArr, self.latArr)
+        cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                        0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        im          = m.pcolormesh(x, y, vel_iso, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.set_label(vdict[self.datatype]+' (km/s)', fontsize=12, rotation=0)
         plt.title(str(self.period)+' sec', fontsize=20)
         if fastaxis:
-            try: self.plot_fast_axis(inbasemap=m)
-            except: pass
-        if showfig: plt.show()
+            try:
+                self.plot_fast_axis(inbasemap=m)
+            except:
+                pass
+        if showfig:
+            plt.show()
         return
         
     def plot_fast_axis(self, projection='lambert', inbasemap=None, factor=1, showfig=False, psitype=2):
