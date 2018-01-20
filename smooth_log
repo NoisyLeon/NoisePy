@@ -1,0 +1,2092 @@
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       21645  paths; only        21645  paths left
+ Square root mean velocity=   3.029 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        21094
+ SQRT of initial residuals dispersion are:     9.290 /     9.290 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.19450 (km/sec)
+Integrals    Time:***h 37m 28s******s
+ MAXIMUM of asimutal parameter is :    135.402985    
+Gauss        Time:***h 37m 29s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    1642.26477    
+Inversion    Time:***h 37m 29s******s
+ Matrix condition =    0.522844E-01
+ SQRT of final residuals dispersion are:     7.994 /     7.994 / (sec)
+ SQ_RT of final velocities dispersion are:   0.16842 (km/sec)
+Velocities   Time:***h 37m 29s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/6_ph/N_INIT_3000_500_100_6.1_%_ =     3.02614 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       34435  paths; only        34435  paths left
+ Square root mean velocity=   3.090 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        34164
+ SQRT of initial residuals dispersion are:     8.813 /     8.813 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.16467 (km/sec)
+Integrals    Time:***h 37m 30s******s
+ MAXIMUM of asimutal parameter is :    139.828568    
+Gauss        Time:***h 37m 31s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    3078.83984    
+Inversion    Time:***h 37m 31s******s
+ Matrix condition =    0.335601E-01
+ SQRT of final residuals dispersion are:     7.362 /     7.362 / (sec)
+ SQ_RT of final velocities dispersion are:   0.13861 (km/sec)
+Velocities   Time:***h 37m 31s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/8_ph/N_INIT_3000_500_100_8.1_%_ =     3.08797 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       39688  paths; only        39688  paths left
+ Square root mean velocity=   3.155 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        39674
+ SQRT of initial residuals dispersion are:     7.724 /     7.724 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.14676 (km/sec)
+Integrals    Time:***h 37m 33s******s
+ MAXIMUM of asimutal parameter is :    131.993500    
+Gauss        Time:***h 37m 33s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    3690.50366    
+Inversion    Time:***h 37m 33s******s
+ Matrix condition =    0.301198E-01
+ SQRT of final residuals dispersion are:     6.536 /     6.536 / (sec)
+ SQ_RT of final velocities dispersion are:   0.12263 (km/sec)
+Velocities   Time:***h 37m 34s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/10_ph/N_INIT_3000_500_100_10.1_%_ =     3.15354 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       42699  paths; only        42699  paths left
+ Square root mean velocity=   3.218 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        42692
+ SQRT of initial residuals dispersion are:     7.059 /     7.059 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.13281 (km/sec)
+Integrals    Time:***h 37m 36s******s
+ MAXIMUM of asimutal parameter is :    130.382767    
+Gauss        Time:***h 37m 36s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4049.79663    
+Inversion    Time:***h 37m 36s******s
+ Matrix condition =    0.290239E-01
+ SQRT of final residuals dispersion are:     6.033 /     6.033 / (sec)
+ SQ_RT of final velocities dispersion are:   0.11173 (km/sec)
+Velocities   Time:***h 37m 37s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/12_ph/N_INIT_3000_500_100_12.1_%_ =     3.21801 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       44076  paths; only        44076  paths left
+ Square root mean velocity=   3.283 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        44071
+ SQRT of initial residuals dispersion are:     6.595 /     6.595 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.12252 (km/sec)
+Integrals    Time:***h 37m 38s******s
+ MAXIMUM of asimutal parameter is :    133.297302    
+Gauss        Time:***h 37m 39s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4228.93213    
+Inversion    Time:***h 37m 39s******s
+ Matrix condition =    0.286188E-01
+ SQRT of final residuals dispersion are:     5.730 /     5.730 / (sec)
+ SQ_RT of final velocities dispersion are:   0.10470 (km/sec)
+Velocities   Time:***h 37m 40s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/14_ph/N_INIT_3000_500_100_14.1_%_ =     3.28719 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       44478  paths; only        44478  paths left
+ Square root mean velocity=   3.351 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        44475
+ SQRT of initial residuals dispersion are:     6.155 /     6.155 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.11245 (km/sec)
+Integrals    Time:***h 37m 41s******s
+ MAXIMUM of asimutal parameter is :    137.250000    
+Gauss        Time:***h 37m 42s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4310.28467    
+Inversion    Time:***h 37m 42s******s
+ Matrix condition =    0.290433E-01
+ SQRT of final residuals dispersion are:     5.360 /     5.360 / (sec)
+ SQ_RT of final velocities dispersion are:   0.09741 (km/sec)
+Velocities   Time:***h 37m 43s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/16_ph/N_INIT_3000_500_100_16.1_%_ =     3.35844 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       44778  paths; only        44778  paths left
+ Square root mean velocity=   3.420 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        44777
+ SQRT of initial residuals dispersion are:     5.863 /     5.863 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.10816 (km/sec)
+Integrals    Time:***h 37m 44s******s
+ MAXIMUM of asimutal parameter is :    140.098160    
+Gauss        Time:***h 37m 44s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4376.75635    
+Inversion    Time:***h 37m 44s******s
+ Matrix condition =    0.293195E-01
+ SQRT of final residuals dispersion are:     5.021 /     5.021 / (sec)
+ SQ_RT of final velocities dispersion are:   0.09436 (km/sec)
+Velocities   Time:***h 37m 46s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/18_ph/N_INIT_3000_500_100_18.1_%_ =     3.43038 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       44768  paths; only        44768  paths left
+ Square root mean velocity=   3.485 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        44767
+ SQRT of initial residuals dispersion are:     5.643 /     5.643 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.10143 (km/sec)
+Integrals    Time:***h 37m 47s******s
+ MAXIMUM of asimutal parameter is :    138.545441    
+Gauss        Time:***h 37m 48s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4404.03027    
+Inversion    Time:***h 37m 48s******s
+ Matrix condition =    0.294248E-01
+ SQRT of final residuals dispersion are:     4.743 /     4.743 / (sec)
+ SQ_RT of final velocities dispersion are:   0.08727 (km/sec)
+Velocities   Time:***h 37m 49s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/20_ph/N_INIT_3000_500_100_20.1_%_ =     3.49718 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       44295  paths; only        44295  paths left
+ Square root mean velocity=   3.546 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        44294
+ SQRT of initial residuals dispersion are:     5.253 /     5.253 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.09788 (km/sec)
+Integrals    Time:***h 37m 51s******s
+ MAXIMUM of asimutal parameter is :    138.513763    
+Gauss        Time:***h 37m 52s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4371.99658    
+Inversion    Time:***h 37m 52s******s
+ Matrix condition =    0.302531E-01
+ SQRT of final residuals dispersion are:     4.292 /     4.292 / (sec)
+ SQ_RT of final velocities dispersion are:   0.08357 (km/sec)
+Velocities   Time:***h 37m 53s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/22_ph/N_INIT_3000_500_100_22.1_%_ =     3.55812 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       43488  paths; only        43488  paths left
+ Square root mean velocity=   3.599 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        43487
+ SQRT of initial residuals dispersion are:     4.883 /     4.883 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.09288 (km/sec)
+Integrals    Time:***h 37m 54s******s
+ MAXIMUM of asimutal parameter is :    139.360260    
+Gauss        Time:***h 37m 54s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4308.46143    
+Inversion    Time:***h 37m 54s******s
+ Matrix condition =    0.312453E-01
+ SQRT of final residuals dispersion are:     3.969 /     3.969 / (sec)
+ SQ_RT of final velocities dispersion are:   0.07896 (km/sec)
+Velocities   Time:***h 37m 55s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/24_ph/N_INIT_3000_500_100_24.1_%_ =     3.61118 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       42642  paths; only        42642  paths left
+ Square root mean velocity=   3.646 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        42641
+ SQRT of initial residuals dispersion are:     4.562 /     4.562 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.08819 (km/sec)
+Integrals    Time:***h 37m 57s******s
+ MAXIMUM of asimutal parameter is :    139.466949    
+Gauss        Time:***h 37m 57s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4241.76367    
+Inversion    Time:***h 37m 57s******s
+ Matrix condition =    0.319438E-01
+ SQRT of final residuals dispersion are:     3.750 /     3.750 / (sec)
+ SQ_RT of final velocities dispersion are:   0.07540 (km/sec)
+Velocities   Time:***h 37m 58s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/26_ph/N_INIT_3000_500_100_26.1_%_ =     3.65787 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       41766  paths; only        41766  paths left
+ Square root mean velocity=   3.686 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        41765
+ SQRT of initial residuals dispersion are:     4.276 /     4.276 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.08458 (km/sec)
+Integrals    Time:***h 38m  0s******s
+ MAXIMUM of asimutal parameter is :    139.026566    
+Gauss        Time:***h 38m  0s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4178.06543    
+Inversion    Time:***h 38m  0s******s
+ Matrix condition =    0.326947E-01
+ SQRT of final residuals dispersion are:     3.574 /     3.574 / (sec)
+ SQ_RT of final velocities dispersion are:   0.07340 (km/sec)
+Velocities   Time:***h 38m  1s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/28_ph/N_INIT_3000_500_100_28.1_%_ =     3.69796 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       41046  paths; only        41046  paths left
+ Square root mean velocity=   3.721 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        41046
+ SQRT of initial residuals dispersion are:     3.978 /     3.978 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.08048 (km/sec)
+Integrals    Time:***h 38m  2s******s
+ MAXIMUM of asimutal parameter is :    138.722809    
+Gauss        Time:***h 38m  2s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4126.34961    
+Inversion    Time:***h 38m  2s******s
+ Matrix condition =    0.332989E-01
+ SQRT of final residuals dispersion are:     3.381 /     3.381 / (sec)
+ SQ_RT of final velocities dispersion are:   0.07093 (km/sec)
+Velocities   Time:***h 38m  3s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/30_ph/N_INIT_3000_500_100_30.1_%_ =     3.73199 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       40350  paths; only        40350  paths left
+ Square root mean velocity=   3.751 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        40350
+ SQRT of initial residuals dispersion are:     3.849 /     3.849 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07785 (km/sec)
+Integrals    Time:***h 38m  6s******s
+ MAXIMUM of asimutal parameter is :    138.509125    
+Gauss        Time:***h 38m  6s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4078.36572    
+Inversion    Time:***h 38m  6s******s
+ Matrix condition =    0.336886E-01
+ SQRT of final residuals dispersion are:     3.361 /     3.361 / (sec)
+ SQ_RT of final velocities dispersion are:   0.06990 (km/sec)
+Velocities   Time:***h 38m  7s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/32_ph/N_INIT_3000_500_100_32.1_%_ =     3.76079 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       39640  paths; only        39640  paths left
+ Square root mean velocity=   3.776 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        39640
+ SQRT of initial residuals dispersion are:     3.656 /     3.656 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07512 (km/sec)
+Integrals    Time:***h 38m  9s******s
+ MAXIMUM of asimutal parameter is :    139.164185    
+Gauss        Time:***h 38m  9s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    4024.87842    
+Inversion    Time:***h 38m  9s******s
+ Matrix condition =    0.343422E-01
+ SQRT of final residuals dispersion are:     3.246 /     3.246 / (sec)
+ SQ_RT of final velocities dispersion are:   0.06848 (km/sec)
+Velocities   Time:***h 38m 10s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/34_ph/N_INIT_3000_500_100_34.1_%_ =     3.78524 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       38878  paths; only        38878  paths left
+ Square root mean velocity=   3.798 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        38878
+ SQRT of initial residuals dispersion are:     3.499 /     3.499 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07341 (km/sec)
+Integrals    Time:***h 38m 12s******s
+ MAXIMUM of asimutal parameter is :    139.363632    
+Gauss        Time:***h 38m 12s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    3969.77783    
+Inversion    Time:***h 38m 12s******s
+ Matrix condition =    0.346168E-01
+ SQRT of final residuals dispersion are:     3.144 /     3.144 / (sec)
+ SQ_RT of final velocities dispersion are:   0.06775 (km/sec)
+Velocities   Time:***h 38m 13s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/36_ph/N_INIT_3000_500_100_36.1_%_ =     3.80609 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       38043  paths; only        38043  paths left
+ Square root mean velocity=   3.816 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        38043
+ SQRT of initial residuals dispersion are:     3.385 /     3.385 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07185 (km/sec)
+Integrals    Time:***h 38m 15s******s
+ MAXIMUM of asimutal parameter is :    138.000000    
+Gauss        Time:***h 38m 15s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    3911.14307    
+Inversion    Time:***h 38m 15s******s
+ Matrix condition =    0.350559E-01
+ SQRT of final residuals dispersion are:     3.070 /     3.070 / (sec)
+ SQ_RT of final velocities dispersion are:   0.06678 (km/sec)
+Velocities   Time:***h 38m 16s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/38_ph/N_INIT_3000_500_100_38.1_%_ =     3.82419 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       37171  paths; only        37171  paths left
+ Square root mean velocity=   3.833 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        37171
+ SQRT of initial residuals dispersion are:     3.300 /     3.300 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07178 (km/sec)
+Integrals    Time:***h 38m 18s******s
+ MAXIMUM of asimutal parameter is :    136.800003    
+Gauss        Time:***h 38m 18s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    3846.74756    
+Inversion    Time:***h 38m 18s******s
+ Matrix condition =    0.357301E-01
+ SQRT of final residuals dispersion are:     3.006 /     3.006 / (sec)
+ SQ_RT of final velocities dispersion are:   0.06712 (km/sec)
+Velocities   Time:***h 38m 19s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/40_ph/N_INIT_3000_500_100_40.1_%_ =     3.84015 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       34785  paths; only        34785  paths left
+ Square root mean velocity=   3.866 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        34785
+ SQRT of initial residuals dispersion are:     3.230 /     3.230 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07320 (km/sec)
+Integrals    Time:***h 38m 21s******s
+ MAXIMUM of asimutal parameter is :    131.634964    
+Gauss        Time:***h 38m 21s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    3645.55981    
+Inversion    Time:***h 38m 21s******s
+ Matrix condition =    0.375485E-01
+ SQRT of final residuals dispersion are:     2.943 /     2.943 / (sec)
+ SQ_RT of final velocities dispersion are:   0.06863 (km/sec)
+Velocities   Time:***h 38m 22s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/45_ph/N_INIT_3000_500_100_45.1_%_ =     3.87224 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       31488  paths; only        31488  paths left
+ Square root mean velocity=   3.892 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        31488
+ SQRT of initial residuals dispersion are:     3.285 /     3.285 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07495 (km/sec)
+Integrals    Time:***h 38m 24s******s
+ MAXIMUM of asimutal parameter is :    141.973114    
+Gauss        Time:***h 38m 25s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    3343.37720    
+Inversion    Time:***h 38m 25s******s
+ Matrix condition =    0.399433E-01
+ SQRT of final residuals dispersion are:     2.974 /     2.974 / (sec)
+ SQ_RT of final velocities dispersion are:   0.06985 (km/sec)
+Velocities   Time:***h 38m 26s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/50_ph/N_INIT_3000_500_100_50.1_%_ =     3.89705 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       27542  paths; only        27542  paths left
+ Square root mean velocity=   3.913 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        27542
+ SQRT of initial residuals dispersion are:     3.404 /     3.404 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07739 (km/sec)
+Integrals    Time:***h 38m 28s******s
+ MAXIMUM of asimutal parameter is :    137.720001    
+Gauss        Time:***h 38m 28s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    2946.07056    
+Inversion    Time:***h 38m 28s******s
+ Matrix condition =    0.439355E-01
+ SQRT of final residuals dispersion are:     3.061 /     3.061 / (sec)
+ SQ_RT of final velocities dispersion are:   0.07179 (km/sec)
+Velocities   Time:***h 38m 29s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/55_ph/N_INIT_3000_500_100_55.1_%_ =     3.91746 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+ tomographic processing
+ optimal rejection of doubtful data
+ Setting defaults.....
+tomo >  		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           0
+  5.) regularization parameter 2 (alpha2).............    1.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 1400.000  200.  200.
+  7.) limits of the map (latitudes,step) ............    -20.00   89.00    1.00
+  8.) limits of the map (longitudes,step) ...........      0.00  359.00    1.00
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.250 2.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           0
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter regularization parameters
+ enter radius of correlation
+ enter MAX radius of correlation
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for latitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter limits for longitudes and increment
+Choice number (v to review menu; r,q, or x to return;go to run):
+ enter step of integration (degree)
+ enter length of cell (degree)
+Choice number (v to review menu; r,q, or x to return;go to run):
+Choice number (v to review menu; r,q, or x to return;go to run):
+ 		TOMO SETTINGS:
+ DATA   CHARACTERISTICS:
+  0.) model are given?..................(toggle)...           0
+  1.) weights are given?................(toggle)...           0
+  2.) number of paths < ...........................      800000
+  3.) selection of paths ...............(toggle)...           0
+ PLOT CHARACTERISTICS:
+  4.) dens.& azim. coverage is produced?(toggle)...           1
+  5.) regularization parameter 2 (alpha2).............  100.000
+  6.) reg. param.1 (alpha1),  sigma1 & sigma2......... 3000.000  500.  500.
+  7.) limits of the map (latitudes,step) ............     52.00   72.00    0.50
+  8.) limits of the map (longitudes,step) ...........    188.00  238.00    0.50
+  9.) map of deviations in %?...........(toggle)...           1
+ 10.) rejecting too strange data?.......(toggle)...           0
+ 11.) rejecting data by delta?..........(toggle)...           0
+ 12.) Step of integration, Length of CUBE cells:......  0.200 1.0000
+ 13.) Contour file name............................... contour.ctr
+ 14.) Model file name................................. model_map.ctr
+ MISCELLANEOUS CHARACTERISTICS:
+ 15.) Gaussian cutting acuracy 10**(-pow), pow:.......   8.0
+ 16.) output residuals?.................(toggle)...           1
+ 17.) apply geogr --> geoc for input....(toggle)...           1
+ 18.) apply geoc --> geogr for output...(toggle)...           1
+Choice number (v to review menu; r,q, or x to return;go to run):
+tomo >   
+ There were       21238  paths; only        21238  paths left
+ Square root mean velocity=   3.932 (km/sec)
+Input        Time:  0h  0m  0s     0s
+ Average square of cells is:     0.9980394167 (deg**2)
+ Average length of cells is:     0.9990192274 (deg)
+ Point outside contour: Lat=   0.000 Lon=    0.000
+ Normalization factor :  0.49398
+ Cells:        41336 , nm=         386  nd+1=          84
+ Number of integrals are:        21238
+ SQRT of initial residuals dispersion are:     3.508 /     3.508 / (sec)
+ SQ_RT of initial velocities dispersion are:   0.07991 (km/sec)
+Integrals    Time:***h 38m 30s******s
+ MAXIMUM of asimutal parameter is :    137.863632    
+Gauss        Time:***h 38m 30s******s
+ Matrix is calculated
+ Matrix elements:      148996  Zero are:           0
+ Maximum intersections/cell are:    2299.21533    
+Inversion    Time:***h 38m 30s******s
+ Matrix condition =    0.527754E-01
+ SQRT of final residuals dispersion are:     3.175 /     3.175 / (sec)
+ SQ_RT of final velocities dispersion are:   0.07442 (km/sec)
+Velocities   Time:***h 38m 31s******s
+ to convert velocity in % of deviation from average value
+ average velocity for %-map ../ray_tomo_working_dir/60_ph/N_INIT_3000_500_100_60.1_%_ =     3.93445 (km/sec), npoints on a grid=   4141
+ COMPUTATIONS FINISHED
+================================= Smooth run of surface wave tomography ==================================
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 6.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 8.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 10.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 12.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 14.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 16.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 18.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 20.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 22.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 24.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 26.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 28.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 30.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 32.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 34.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 36.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 38.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 40.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 45.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 50.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 55.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+------------------------------------- T = 60.0 sec -----------------------------------------------
+----------------------------------------------------------------------------------------------------------
+================================= End mooth run of surface wave tomography ===============================

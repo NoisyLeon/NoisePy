@@ -8,7 +8,6 @@ class GeoPolygon(object):
         self.latArr = np.array([])
         
     def PlotPolygon(self, inbasemap, alpha=1, hatch='x'):
-        
         x, y        = inbasemap(self.lonArr, self.latArr);
         polyArr     = np.append(x,y);
         N           = x.size

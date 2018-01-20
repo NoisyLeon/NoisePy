@@ -72,7 +72,7 @@ class RayTomoDataSet(h5py.File):
             outstr          += 'Step of integration                 - '+str(subgroup.attrs['step_of_integration'])+'\n'
             outstr          += 'Smoothing coefficient (alpha1)      - '+str(subgroup.attrs['alpha1'])+'\n'
             outstr          += 'Path density damping (alpha2)       - '+str(subgroup.attrs['alpha2'])+'\n'
-            outstr          += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma'])+'\n'
+            outstr          += 'radius of correlation (sigma)       - '+str(subgroup.attrs['sigma'])+'\n'
             outstr          += 'Comments                            - '+str(subgroup.attrs['comments'])+'\n'
         outstr  += '------------------------------------ Quality controlled run data ----------------------------------------\n'
         nid     = 0
@@ -161,12 +161,12 @@ class RayTomoDataSet(h5py.File):
         datatype            - ph: phase velocity inversion, gr: group velocity inversion
         channel             - channel for analysis (default: ZZ, xcorr ZZ component)
         dlon/dlat           - longitude/latitude interval
-        stepinte            - step of integral
+        stepinte            - step of integration (degree), works only for Gaussian method
         lengthcell          - size of main cell (degree)
         alpha1,alpha2,sigma - regularization parameters for isotropic tomography
                                 alpha1  : smoothing coefficient
                                 alpha2  : path density damping
-                                sigma   : Gaussian smoothing
+                                sigma   : Gaussian smoothing (radius of correlation)
         runid               - id number for the run
         comments            - comments for the run
         deletetxt           - delete txt output or not
@@ -199,7 +199,11 @@ class RayTomoDataSet(h5py.File):
         #-----------------------------------------
         # run the tomography code for each period
         #-----------------------------------------
+        print('================================= Smooth run of surface wave tomography ==================================')
         for per in pers:
+            print('----------------------------------------------------------------------------------------------------------')
+            print('----------------------------------------- T = '+str(per)+' sec ---------------------------------------------------')
+            print('----------------------------------------------------------------------------------------------------------')
             infname     = datadir+'/'+data_pfx+'%g'%( per ) +'_'+channel+'_'+datatype+'.lst'
             outper      = outdir+'/'+'%g'%( per ) +'_'+datatype
             if not os.path.isdir(outper):
@@ -207,7 +211,7 @@ class RayTomoDataSet(h5py.File):
             outpfx      = outper+'/'+smoothpfx+str(alpha1)+'_'+str(sigma)+'_'+str(alpha2)
             temprunsh   = 'temp_'+'%g_Smooth.sh' %(per)
             with open(temprunsh,'wb') as f:
-                f.writelines('%s %s %s %g << EOF \n' %(IsoMishaexe, infname, outpfx, per ))
+                f.writelines('%s %s %s %g <<-EOF\n' %(IsoMishaexe, infname, outpfx, per ))
                 # if paraFlag==False:
                 #     f.writelines('me \n' );
                 f.writelines('me \n4 \n5 \n%g \n6 \n%g \n%g \n%g \n' %( alpha2, alpha1, sigma, sigma) )
@@ -257,6 +261,7 @@ class RayTomoDataSet(h5py.File):
             aziArr      = inArr[:,2:4]
             azidset     = subgroup.create_dataset(name='azi_coverage', data=aziArr)
             # residual file
+            # id fi0 lam0 f1 lam1 vel_obs weight res_tomo res_mod delta
             residfname  = outpfx+'_%g.resid' %(per)
             inArr       = np.loadtxt(residfname)
             residdset   = subgroup.create_dataset(name='residual', data=inArr)
@@ -269,12 +274,14 @@ class RayTomoDataSet(h5py.File):
                 shutil.rmtree(outper)
         if deletetxt and deleteall:
             shutil.rmtree(outdir)
+        print('================================= End mooth run of surface wave tomography ===============================')
         return
     
-    def run_qc(self, outdir, runid=0, smoothid=0, isotropic=False, datatype='ph', wavetype='R', crifactor=0.5, crilimit=10., dlon=0.5, dlat=0.5, stepinte=0.1,
-            lengthcell=0.5, alpha=850, beta=1, sigma=175, lengthcellAni=1.0, anipara=1, xZone=2, alphaAni0=1200, betaAni0=1, sigmaAni0=200,
-            alphaAni2=1000, sigmaAni2=100, alphaAni4=1200, sigmaAni4=500, comments='', deletetxt=False, contourfname='./contour.ctr', 
-            IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn-.1/tomo_sp_cu_s_shn_.1'):
+    def run_qc(self, outdir, runid=0, smoothid=0, datatype='ph', wavetype='R', crifactor=0.5, crilimit=10.,
+               dlon=0.5, dlat=0.5, stepinte=0.1, lengthcell=0.5,  isotropic=False, alpha=850, beta=1, sigma=175, \
+                lengthcellAni=1.0, anipara=0, xZone=2, alphaAni0=1200, betaAni0=1, sigmaAni0=200, alphaAni2=1000, sigmaAni2=100, alphaAni4=1200, sigmaAni4=500,\
+                comments='', deletetxt=False, contourfname='./contour.ctr',  IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', \
+                AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn-.1/tomo_sp_cu_s_shn_.1'):
         """
         run Misha's tomography code with quality control based on preliminary run of run_smooth.
         This function is designed to discard outliers in aftan results (quality control), and then do tomography.
@@ -282,27 +289,46 @@ class RayTomoDataSet(h5py.File):
         ::: input parameters :::
         outdir              - output directory
         smoothid            - smooth run id number
-        isotropic           - use isotropic or anisotropic version
-        datatype            - ph: phase velocity inversion, gr: group velocity inversion
-        wavetype            - wave type(R: Rayleigh, L: Love)
+        datatype            - data type
+                                ph      : phase velocity inversion
+                                gr      : group velocity inversion
+        wavetype            - wave type
+                                R       : Rayleigh
+                                L       : Love
         crifactor/crilimit  - criteria for quality control
                                 largest residual is min( crifactor*period, crilimit)
+        isotropic           - use isotropic or anisotropic version
+        -----------------------------------------------------------------------------------------------------------------
+        :   shared input parameters :
         dlon/dlat           - longitude/latitude interval
-        stepinte            - step of integral
-        lengthcell          - size of main cell (degree)
+        stepinte            - step of integration, works only for Gaussian method
+        lengthcell          - size of isotropic cell (degree)
+        -----------------------------------------------------------------------------------------------------------------
+        :   isotropic input parameters :
         alpha,beta,sigma    - regularization parameters for isotropic tomography (isotropic==True)
-                                alpha: smoothing coefficient, beta: path density damping, sigma: Gaussian smoothing
+                                alpha   : smoothing coefficient
+                                beta    : path density damping
+                                sigma   : Gaussian smoothing (radius of correlation)
+        -----------------------------------------------------------------------------------------------------------------
+        :   anisotropic input parameters :
         lengthcellAni       - size of anisotropic cell (degree)
-        anipara             - anisotropic paramter(0: isotropic, 1: 2 psi anisotropic, 2: 2&4 psi anisotropic)
-        xZone               -
+        anipara             - anisotropic paramter
+                                0   - isotropic
+                                1   - 2 psi anisotropic
+                                2   - 2&4 psi anisotropic
+        xZone               - Fresnel zone parameter, works only for Fresnel method
         alphaAni0,betaAni0,sigmaAni0 
                             - regularization parameters for isotropic term in anisotropic tomography  (isotropic==False)
-                                alphaAni0: smoothing coefficient, betaAni0: path density damping, sigmaAni0: Gaussian smoothing
+                                alphaAni0   : smoothing coefficient
+                                betaAni0    : path density damping
+                                sigmaAni0   : Gaussian smoothing
         alphaAni2,sigmaAni2 - regularization parameters for 2 psi term in anisotropic tomography  (isotropic==False)
-                                alphaAni2: smoothing coefficient, sigmaAni2: Gaussian smoothing
-        
+                                alphaAni2   : smoothing coefficient
+                                sigmaAni2   : Gaussian smoothing
         alphaAni4,sigmaAni4 - regularization parameters for 4 psi term in anisotropic tomography  (isotropic==False)
-                                alphaAni4: smoothing coefficient, sigmaAni4: Gaussian smoothing
+                                alphaAni4   : smoothing coefficient
+                                sigmaAni4   : Gaussian smoothing                
+        -----------------------------------------------------------------------------------------------------------------
         comments            - comments for the run
         deletetxt           - delete txt output or not
         contourfname        - path to contour file (see the manual for detailed description)
@@ -342,8 +368,12 @@ class RayTomoDataSet(h5py.File):
             raise AttributeError('Contour file does not exist!')
         smoothgroup     = self['smooth_run_'+str(smoothid)]
         for per in pers:
+            #------------------------------------------------
+            # quality control based on smooth run results
+            #------------------------------------------------
             try:
                 residdset   = smoothgroup['%g_sec'%( per )+'/residual']
+                # id fi0 lam0 f1 lam1 vel_obs weight res_tomo res_mod delta
                 inArr       = residdset.value
             except:
                 raise AttributeError('Residual data: '+ str(per)+ ' sec does not exist!')
@@ -354,9 +384,12 @@ class RayTomoDataSet(h5py.File):
             outper          = outdir+'/'+'%g'%( per ) +'_'+datatype
             if not os.path.isdir(outper):
                 os.makedirs(outper)
+            # old format in defined in the manual
             QCfname         = outper+'/QC_'+'%g'%( per ) +'_'+wavetype+'_'+datatype+'.lst'
             np.savetxt(QCfname, outArr, fmt='%g')
+            #------------------------------------------------
             # start to run tomography code
+            #------------------------------------------------
             if isotropic:
                 outpfx      = outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
             else:
@@ -365,7 +398,7 @@ class RayTomoDataSet(h5py.File):
             with open(temprunsh,'wb') as f:
                 f.writelines('%s %s %s %g << EOF \n' %(mishaexe, QCfname, outpfx, per ))
                 if isotropic:
-                    f.writelines('me \n4 \n5 \n%g \n6 \n%g \n%g \n%g \n' %( beta, alpha, sigma, sigma) )
+                    f.writelines('me \n4 \n5 \n%g \n6 \n%g \n%g \n%g \n' %( beta, alpha, sigma, sigma) ) # 100 --> 1., 3000. --> 850., 500. --> 175.
                     f.writelines('7 \n%g %g %g \n8 \n%g %g %g \n12 \n%g \n%g \n16 \n' %(minlat, maxlat, dlat, minlon, maxlon, dlon, stepinte, lengthcell) )
                     f.writelines('v \nq \ngo \nEOF \n' )
                 else:
@@ -375,7 +408,7 @@ class RayTomoDataSet(h5py.File):
                         Dtype   = 'G'
                     f.writelines('me \n4 \n5 \n%g %g %g \n6 \n%g %g %g \n' %( minlat, maxlat, dlat, minlon, maxlon, dlon) )
                     f.writelines('10 \n%g \n%g \n%s \n%s \n%g \n%g \n11 \n%d \n' %(stepinte, xZone, wavetype, Dtype, lengthcell, lengthcellAni, anipara) )
-                    f.writelines('12 \n%g \n%g \n%g \n%g \n' %(alphaAni0, betaAni0, sigmaAni0, sigmaAni0) )
+                    f.writelines('12 \n%g \n%g \n%g \n%g \n' %(alphaAni0, betaAni0, sigmaAni0, sigmaAni0) ) # 100 --> 1., 3000. --> 1200., 500. --> 200.
                     f.writelines('13 \n%g \n%g \n%g \n' %(alphaAni2, sigmaAni2, sigmaAni2) )
                     if anipara==2:
                         f.writelines('14 \n%g \n%g \n%g \n' %(alphaAni4, sigmaAni4, sigmaAni4) )
@@ -383,14 +416,16 @@ class RayTomoDataSet(h5py.File):
                     f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
             os.remove(temprunsh)
+        #------------------------------------------------
         # save to hdf5 dataset
+        #------------------------------------------------
         create_group        = False
         while (not create_group):
             try:
                 group       = self.create_group( name = 'qc_run_'+str(runid) )
                 create_group= True
             except:
-                runid+=1
+                runid       += 1
                 continue
         group.attrs.create(name = 'isotropic', data=isotropic)
         group.attrs.create(name = 'datatype', data=datatype)
@@ -416,12 +451,12 @@ class RayTomoDataSet(h5py.File):
         group.attrs.create(name = 'sigmaAni4', data=sigmaAni4)
         group.attrs.create(name = 'comments', data=comments)
         group.attrs.create(name = 'smoothid', data='smooth_run_'+str(smoothid))
-        if anipara==0 or isotropic:
-            index0  = {'vel_iso': 0}
-        elif anipara==1:
-            index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
-        elif anipara==2:
-            index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}
+        # # # if anipara==0 or isotropic:
+        # # #     index0  = {'vel_iso': 0}
+        # # # elif anipara==1:
+        # # #     index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
+        # # # elif anipara==2:
+        # # #     index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}
         for per in pers:
             subgroup    = group.create_group(name='%g_sec'%( per ))
             outper      = outdir+'/'+'%g'%( per ) +'_'+datatype
@@ -429,34 +464,61 @@ class RayTomoDataSet(h5py.File):
                 outpfx  = outper+'/'+qcpfx+str(alpha)+'_'+str(sigma)+'_'+str(beta)
             else:
                 outpfx  = outper+'/'+qcpfx+wavetype+'_'+str(alphaAni0)+'_'+str(sigmaAni0)+'_'+str(alphaAni2)+'_'+str(sigmaAni2)+'_'+str(betaAni0)
+            # absolute velocity
             v0fname     = outpfx+'_%g.1' %(per)
-            dvfname     = outpfx+'_%g.1' %(per)+'_%_'
-            azifname    = outpfx+'_%g.azi' %(per)
-            residfname  = outpfx+'_%g.resid' %(per)
-            reafname    = outpfx+'_%g.rea' %(per)
-            resfname    = outpfx+'_%g.res' %(per)
-            inArr       = np.loadtxt(v0fname); v0Arr=inArr[:,2:]
+            inArr       = np.loadtxt(v0fname)
+            v0Arr       = inArr[:,2:]
             v0dset      = subgroup.create_dataset(name='velocity', data=v0Arr)
+            # longitude-latitude array
             if not isotropic:
                 lonlatArr   = inArr[:,:2]
                 lonlatdset  = subgroup.create_dataset(name='lons_lats', data=lonlatArr)
-            inArr           = np.loadtxt(dvfname); dvArr=inArr[:,2]
-            dvdset          = subgroup.create_dataset(name='Dvelocity', data=dvArr)
-            inArr           = np.loadtxt(azifname); aziArr=inArr[:,2:]
-            azidset         = subgroup.create_dataset(name='azi_coverage', data=aziArr)
-            inArr           = np.loadtxt(residfname)
-            residdset       = subgroup.create_dataset(name='residual', data=inArr)
+            # relative velocity perturbation
+            dvfname     = outpfx+'_%g.1' %(per)+'_%_'
+            inArr       = np.loadtxt(dvfname)
+            dvArr       = inArr[:,2]
+            dvdset      = subgroup.create_dataset(name='Dvelocity', data=dvArr)
+            # azimuthal coverage
+            # lon, lat, meth1, meth2
+            azifname    = outpfx+'_%g.azi' %(per)
+            inArr       = np.loadtxt(azifname)
+            aziArr      = inArr[:,2:]
+            azidset     = subgroup.create_dataset(name='azi_coverage', data=aziArr)
+            # residual file
+            # isotropic     : id fi0 lam0 f1 lam1 vel_obs weight res_tomo res_mod delta
+            # anisotropic   : id fi0 lam0 f1 lam1 vel_obs weight orb res_tomo res_mod delta
+            residfname  = outpfx+'_%g.resid' %(per)
+            inArr       = np.loadtxt(residfname)
+            residdset   = subgroup.create_dataset(name='residual', data=inArr)
+            # resoluation analysis results
+            reafname        = outpfx+'_%g.rea' %(per)
             if not isotropic:
-                inArr       = np.loadtxt(reafname); reaArr=inArr[:,2:]
-                readset     = subgroup.create_dataset(name='resolution', data=reaArr)
-                lonlatArr   = inArr[:,:2]; lonlatdset_rea=subgroup.create_dataset(name='lons_lats_rea', data=lonlatArr)
-            inArr           = np.loadtxt(resfname); resArr=inArr[:,2:]
-            resdset         = subgroup.create_dataset(name='path_density', data=resArr)
+                inArr           = np.loadtxt(reafname)
+                reaArr          = inArr[:,2:]
+                readset         = subgroup.create_dataset(name='resolution', data=reaArr)
+                lonlatArr       = inArr[:,:2]
+                lonlatdset_rea  = subgroup.create_dataset(name='lons_lats_rea', data=lonlatArr)
+            # path density file
+            # lon lat dens (dens1 dens2)
+            resfname    = outpfx+'_%g.res' %(per)
+            inArr       = np.loadtxt(resfname)
+            resArr      = inArr[:,2:]
+            resdset     = subgroup.create_dataset(name='path_density', data=resArr)
             if deletetxt:
                 shutil.rmtree(outper)
         if deletetxt and deleteall:
             shutil.rmtree(outdir)
         return
+    
+    def creat_masked_data(self, runtype=0, runid=0):
+        rundict     = {0: 'smooth_run', 1: 'qc_run'}
+        dataid      = rundict[runtype]+'_'+str(runid)
+        ingroup     = self[dataid]
+        pers        = self.attrs['period_array']
+        self._get_lon_lat_arr(dataid=dataid)
+        
+        
+
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Get basemap for plotting results
@@ -697,20 +759,25 @@ class RayTomoDataSet(h5py.File):
     def plot_fast_axis(self, projection='lambert', inbasemap=None, factor=1, showfig=False, psitype=2):
         """Plot fast axis(psi2 or psi4)
         """
-        if inbasemap==None: m=self._get_basemap(projection=projection)
-        else: m=inbasemap
-        x, y=m(self.lonArr, self.latArr)
-        if psitype==2: psi=self.psi2
-        elif psitype==4: psi=self.psi4
-        U=np.sin(psi)
-        V=np.cos(psi)
+        if inbasemap==None:
+            m   = self._get_basemap(projection=projection)
+        else:
+            m   = inbasemap
+        x, y    = m(self.lonArr, self.latArr)
+        if psitype==2:
+            psi = self.psi2
+        elif psitype==4:
+            psi = self.psi4
+        U       = np.sin(psi)
+        V       = np.cos(psi)
         if factor!=None:
-            x=x[0:self.Nlat:factor, 0:self.Nlon:factor]
-            y=y[0:self.Nlat:factor, 0:self.Nlon:factor]
-            U=U[0:self.Nlat:factor, 0:self.Nlon:factor]
-            V=V[0:self.Nlat:factor, 0:self.Nlon:factor]
-        Q = m.quiver(x, y, U, V, scale=50, width=0.001, headaxislength=0)
-        if showfig: plt.show()
+            x   = x[0:self.Nlat:factor, 0:self.Nlon:factor]
+            y   = y[0:self.Nlat:factor, 0:self.Nlon:factor]
+            U   = U[0:self.Nlat:factor, 0:self.Nlon:factor]
+            V   = V[0:self.Nlat:factor, 0:self.Nlon:factor]
+        Q       = m.quiver(x, y, U, V, scale=50, width=0.001, headaxislength=0)
+        if showfig:
+            plt.show()
         return
     
     def plot_array(self, inarray, title='', label='', projection='lambert', fastaxis=False, geopolygons=None, showfig=True, vmin=None, vmax=None):
