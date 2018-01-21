@@ -281,7 +281,7 @@ class RayTomoDataSet(h5py.File):
                dlon=0.5, dlat=0.5, stepinte=0.1, lengthcell=0.5,  isotropic=False, alpha=850, beta=1, sigma=175, \
                 lengthcellAni=1.0, anipara=0, xZone=2, alphaAni0=1200, betaAni0=1, sigmaAni0=200, alphaAni2=1000, sigmaAni2=100, alphaAni4=1200, sigmaAni4=500,\
                 comments='', deletetxt=False, contourfname='./contour.ctr',  IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', \
-                AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn-.1/tomo_sp_cu_s_shn_.1'):
+                AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn_.1'):
         """
         run Misha's tomography code with quality control based on preliminary run of run_smooth.
         This function is designed to discard outliers in aftan results (quality control), and then do tomography.
@@ -516,7 +516,72 @@ class RayTomoDataSet(h5py.File):
         ingroup     = self[dataid]
         pers        = self.attrs['period_array']
         self._get_lon_lat_arr(dataid=dataid)
-        
+        ingrp       = self[dataid]
+        outgrp      = self.create_group( name = 'masked_'+dataid)
+        if runtype == 1:
+            isotropic   = ingrp.attrs['isotropic']
+        outgrp.attrs.create(name = 'isotropic', data=isotropic)
+        if not isotropic:
+            mask1       = np.zeros((self.Nlat, self.Nlon), dtype=np.int32)
+            mask2       = np.zeros((self.Nlat, self.Nlon), dtype=np.int32)
+        for per in pers:
+            # get data
+            pergrp  = ingrp['%g_sec'%( per )]
+            try:
+                velocity    = pergrp['velocity'].value
+                dv          = pergrp['Dvelocity'].value
+                azicov      = pergrp['azi_coverage'].value
+                pathden     = pergrp['path_density'].value
+                if not isotropic:
+                    resol   = pergrp['resolution'].value
+            except:
+                raise AttributeError(str(per)+ ' sec data does not exist!')
+            # save data
+            opergrp         = outgrp.create_group(name='%g_sec'%( per ))
+            if isotropic:
+                # velocity
+                outv        = velocity.reshape(self.Nlat, self.Nlon)
+                v0dset      = opergrp.create_dataset(name='velocity', data=outv)
+                v0dset.attrs.create(name='Nlat', data=self.Nlat)
+                v0dset.attrs.create(name='Nlon', data=self.Nlon)
+                # relative velocity perturbation
+                outdv       = dv.reshape(self.Nlat, self.Nlon)
+                dvdset      = opergrp.create_dataset(name='Dvelocity', data=outdv)
+                dvdset.attrs.create(name='Nlat', data=self.Nlat)
+                dvdset.attrs.create(name='Nlon', data=self.Nlon)
+                # azimuthal coverage
+                outazicov   = azicov.reshape(self.Nlat, self.Nlon)
+                azidset     = opergrp.create_dataset(name='azi_coverage', data=outazicov)
+                azidset.attrs.create(name='Nlat', data=self.Nlat)
+                azidset.attrs.create(name='Nlon', data=self.Nlon)
+                # path density
+                outpathden  = pathden.reshape(self.Nlat, self.Nlon)
+                pddset      = opergrp.create_dataset(name='path_density', data=outpathden)
+                pddset.attrs.create(name='Nlat', data=self.Nlat)
+                pddset.attrs.create(name='Nlon', data=self.Nlon)
+            else:
+                
+                # velocity
+                outv        = velocity.reshape(self.Nlat, self.Nlon)
+                
+                # v0dset      = opergrp.create_dataset(name='velocity', data=outv)
+                # v0dset.attrs.create(name='Nlat', data=self.Nlat)
+                # v0dset.attrs.create(name='Nlon', data=self.Nlon)
+                # # relative velocity perturbation
+                # outdv       = dv.reshape(self.Nlat, self.Nlon)
+                # dvdset      = opergrp.create_dataset(name='Dvelocity', data=outdv)
+                # dvdset.attrs.create(name='Nlat', data=self.Nlat)
+                # dvdset.attrs.create(name='Nlon', data=self.Nlon)
+                # # azimuthal coverage
+                # outazicov   = azicov.reshape(self.Nlat, self.Nlon)
+                # azidset     = opergrp.create_dataset(name='azi_coverage', data=outazicov)
+                # azidset.attrs.create(name='Nlat', data=self.Nlat)
+                # azidset.attrs.create(name='Nlon', data=self.Nlon)
+                # # path density
+                # outpathden  = pathden.reshape(self.Nlat, self.Nlon)
+                # pddset      = opergrp.create_dataset(name='path_density', data=outpathden)
+                # pddset.attrs.create(name='Nlat', data=self.Nlat)
+                # pddset.attrs.create(name='Nlon', data=self.Nlon)
         
 
     
