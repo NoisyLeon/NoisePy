@@ -28,13 +28,13 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Al
 # 
 # # Computing receiver function
 # dset.compute_ref(walltimeinhours=135., startind=78)
-dset.compute_ref(walltimeinhours=140, startind=92)
+# dset.compute_ref(walltimeinhours=150, startind=92)
 # dset.compute_ref_mp(outdir='/scratch/summit/life9360/ALASKA_work/ref_working', verbose=False, nprocess=24)
 # try: del dset.auxiliary_data.RefRHS
 # except: pass
 # 
 # # Harmonic analysis
-# dset.harmonic_stripping(outdir='.')
+dset.harmonic_stripping()
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
 # dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')

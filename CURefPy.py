@@ -689,6 +689,8 @@ class PostRefLst(object):
             lens        = np.append(lens, L)
             outlst.append(PostData)
             bazArr      = np.append( bazArr, np.floor(PostData.header['baz']))
+        if len(outlst) == 0:
+            return outlst
         #------------------------------------------------------
         # group the data
         #------------------------------------------------------

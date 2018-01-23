@@ -1570,10 +1570,14 @@ class quakeASDF(pyasdf.ASDFDataSet):
             savetxt     = False
         if not savetxt:
             outsta      = None
+        Nsta            = len(self.waveforms.list())
+        ista            = 0
         print('================================== Harmonic Stripping Analysis ======================================')
         for staid in self.waveforms.list():
             netcode, stacode    = staid.split('.')
-            print('Station: '+staid)
+            # print('Station: '+staid)
+            ista                += 1
+            print('Station: '+staid+' '+str(ista)+'/'+str(Nsta))
             stla, elev, stlo    = self.waveforms[staid].coordinates.values()
             evnumb              = 0
             postLst             = CURefPy.PostRefLst()
@@ -1581,7 +1585,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 outsta          = outdir+'/'+staid
                 if not os.path.isdir(outsta):
                     os.makedirs(outsta)
-            Ndata               = 0
+            Nraw                = 0
             for event in self.cat:
                 evnumb          +=1
                 evid            = 'E%05d' %evnumb
@@ -1589,6 +1593,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     subdset     = self.auxiliary_data[data_type][netcode+'_'+stacode+'_'+phase][evid]
                 except KeyError:
                     continue
+                Nraw            += 1
                 ref_header      = subdset.parameters
                 # quality control
                 if ref_header['moveout'] <0 or ref_header['VR'] < VR:
@@ -1599,20 +1604,39 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 pdbase.ampTC    = subdset.data.value
                 pdbase.header   = subdset.parameters
                 postLst.append(pdbase)
-                Ndata           += 1
-            print(str(Ndata)+' receiver function traces ')
+            # print(str(Ndata)+' receiver function traces ')
+            # if Ndata == 0:
+            #     continue
             #------------------------------------------
             # harmonic stripping
             #------------------------------------------
             qcLst               = postLst.remove_bad(outdir=outsta, fs=fs, endtime=endtime, savetxt=savetxt)
+            staid_aux           = netcode+'_'+stacode+'_'+phase
+            if len(qcLst) == 0:
+                print('0/'+str(Nraw)+' receiver function traces ')
+                count_header    = {'Nraw': Nraw, 'Nhs': 0}
+                self.add_auxiliary_data(data=np.array([]), data_type='Ref'+reftype+'HScount',
+                    path=staid_aux, parameters=count_header)
+                continue
             qcLst               = qcLst.thresh_tdiff(tdiff=tdiff)
+            Nhs                 = len(qcLst)
+            if Nhs == 0:
+                print('0/'+str(Nraw)+' receiver function traces ')
+                count_header    = {'Nraw': Nraw, 'Nhs': 0}
+                self.add_auxiliary_data(data=np.array([]), data_type='Ref'+reftype+'HScount',
+                    path=staid_aux, parameters=count_header)
+                continue
+            else:
+                count_header    = {'Nraw': Nraw, 'Nhs': Nhs}
+                self.add_auxiliary_data(data=np.array([]), data_type='Ref'+reftype+'HScount',
+                    path=staid_aux, parameters=count_header)
+                print(str(Nhs)+'/'+str(Nraw)+' receiver function traces ')
             A0_0, A0_1, A1_1, phi1_1, A0_2, A2_2, phi2_2, \
                 A0, A1, A2, phi1, phi2, mfArr0, mfArr1, mfArr2, mfArr3,\
                     Aavg, Astd, gbaz, gdat, gun = qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             #------------------------------------------
             # store data
             #------------------------------------------
-            staid_aux           = netcode+'_'+stacode+'_'+phase
             # raw quality controlled data
             time                = qcLst[0].ampTC[:,0]
             ind                 = time<endtime
