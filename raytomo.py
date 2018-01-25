@@ -151,7 +151,7 @@ class RayTomoDataSet(h5py.File):
         return
         
     def run_smooth(self, datadir, outdir, datatype='ph', channel='ZZ', dlon=0.5, dlat=0.5, stepinte=0.2, lengthcell=1.0, alpha1=3000, alpha2=100, sigma=500,
-            runid=0, comments='', deletetxt=False, contourfname='./contour.ctr', IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn' ):
+            runid=0, comments='', deletetxt=False, contourfname='./contour.ctr', IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', reshape=True):
         """
         run Misha's tomography code with large regularization parameters.
         This function is designed to do an inital test run, the output can be used to discard outliers in aftan results.
@@ -274,6 +274,8 @@ class RayTomoDataSet(h5py.File):
                 shutil.rmtree(outper)
         if deletetxt and deleteall:
             shutil.rmtree(outdir)
+        if reshape:
+            self.creat_reshape_data(runtype=0, runid=runid)
         print('================================= End mooth run of surface wave tomography ===============================')
         return
     
@@ -281,7 +283,7 @@ class RayTomoDataSet(h5py.File):
                dlon=0.5, dlat=0.5, stepinte=0.1, lengthcell=0.5,  isotropic=False, alpha=850, beta=1, sigma=175, \
                 lengthcellAni=1.0, anipara=0, xZone=2, alphaAni0=1200, betaAni0=1, sigmaAni0=200, alphaAni2=1000, sigmaAni2=100, alphaAni4=1200, sigmaAni4=500,\
                 comments='', deletetxt=False, contourfname='./contour.ctr',  IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', \
-                AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn_.1'):
+                AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn_.1', reshape=True):
         """
         run Misha's tomography code with quality control based on preliminary run of run_smooth.
         This function is designed to discard outliers in aftan results (quality control), and then do tomography.
@@ -508,9 +510,14 @@ class RayTomoDataSet(h5py.File):
                 shutil.rmtree(outper)
         if deletetxt and deleteall:
             shutil.rmtree(outdir)
+        if reshape:
+            self.creat_reshape_data(runtype=1, runid=runid)
         return
     
-    def creat_masked_data(self, runtype=0, runid=0):
+    def creat_reshape_data(self, runtype=0, runid=0):
+        """
+        convert data to Nlat * Nlon shape and store the mask
+        """
         rundict     = {0: 'smooth_run', 1: 'qc_run'}
         dataid      = rundict[runtype]+'_'+str(runid)
         ingroup     = self[dataid]
@@ -520,13 +527,15 @@ class RayTomoDataSet(h5py.File):
         outgrp      = self.create_group( name = 'masked_'+dataid)
         if runtype == 1:
             isotropic   = ingrp.attrs['isotropic']
-        outgrp.attrs.create(name = 'isotropic', data=isotropic)
+            outgrp.attrs.create(name = 'isotropic', data=isotropic)
+        else:
+            isotropic   = True
         #-----------------
         # mask array
         #-----------------
         if not isotropic:
-            mask1       = np.zeros((self.Nlat, self.Nlon), dtype=np.bool)
-            mask2       = np.zeros((self.Nlat, self.Nlon), dtype=np.bool)
+            mask1       = np.ones((self.Nlat, self.Nlon), dtype=np.bool)
+            mask2       = np.ones((self.Nlat, self.Nlon), dtype=np.bool)
             tempgrp     = ingrp['%g_sec'%( pers[0] )]
             # get value for mask1 array
             lonlat_arr1 = tempgrp['lons_lats'].value
@@ -536,7 +545,7 @@ class RayTomoDataSet(h5py.File):
                 lon                         = inlon[i]
                 lat                         = inlat[i]
                 index                       = np.where((self.lonArr==lon)*(self.latArr==lat))
-                mask1[index[0], index[1]]   = True
+                mask1[index[0], index[1]]   = False
             # get value for mask2 array
             lonlat_arr2 = tempgrp['lons_lats_rea'].value
             inlon       = lonlat_arr2[:,0]
@@ -545,11 +554,12 @@ class RayTomoDataSet(h5py.File):
                 lon                         = inlon[i]
                 lat                         = inlat[i]
                 index                       = np.where((self.lonArr==lon)*(self.latArr==lat))
-                mask2[index[0], index[1]]   = True
+                mask2[index[0], index[1]]   = False
             outgrp.create_dataset(name='mask1', data=mask1)
             outgrp.create_dataset(name='mask2', data=mask2)
             index1      = np.logical_not(mask1)
             index2      = np.logical_not(mask2)
+            anipara     = ingroup.attrs['anipara']
             
         for per in pers:
             # get data
@@ -576,9 +586,14 @@ class RayTomoDataSet(h5py.File):
                 dvdset      = opergrp.create_dataset(name='Dvelocity', data=outdv)
                 dvdset.attrs.create(name='Nlat', data=self.Nlat)
                 dvdset.attrs.create(name='Nlon', data=self.Nlon)
-                # azimuthal coverage
-                outazicov   = azicov.reshape(self.Nlat, self.Nlon)
-                azidset     = opergrp.create_dataset(name='azi_coverage', data=outazicov)
+                # azimuthal coverage, sqared sum
+                outazicov   = (azicov[:, 0]).reshape(self.Nlat, self.Nlon)
+                azidset     = opergrp.create_dataset(name='azi_coverage1', data=outazicov)
+                azidset.attrs.create(name='Nlat', data=self.Nlat)
+                azidset.attrs.create(name='Nlon', data=self.Nlon)
+                # azimuthal coverage, max value
+                outazicov   = (azicov[:, 1]).reshape(self.Nlat, self.Nlon)
+                azidset     = opergrp.create_dataset(name='azi_coverage2', data=outazicov)
                 azidset.attrs.create(name='Nlat', data=self.Nlat)
                 azidset.attrs.create(name='Nlon', data=self.Nlon)
                 # path density
@@ -596,21 +611,96 @@ class RayTomoDataSet(h5py.File):
                 # relative velocity perturbation
                 outdv           = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
                 outdv[index1]   = dv
-                dvdset          = opergrp.create_dataset(name='Dvelocity', data=outdv)
+                dvdset          = opergrp.create_dataset(name='dv', data=outdv)
                 dvdset.attrs.create(name='Nlat', data=self.Nlat)
                 dvdset.attrs.create(name='Nlon', data=self.Nlon)
-                # azimuthal coverage
-                outazicov   = azicov.reshape(self.Nlat, self.Nlon)
-                azidset     = opergrp.create_dataset(name='azi_coverage', data=outazicov)
+                if anipara != 0:
+                    # azimuthal amplitude for 2psi
+                    outamp2         = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                    outamp2[index1] = velocity[:, 3]
+                    amp2dset        = opergrp.create_dataset(name='amp2', data=outamp2)
+                    amp2dset.attrs.create(name='Nlat', data=self.Nlat)
+                    amp2dset.attrs.create(name='Nlon', data=self.Nlon)
+                    # psi2
+                    outpsi2         = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                    outpsi2[index1] = velocity[:, 4]
+                    psi2dset        = opergrp.create_dataset(name='psi2', data=outpsi2)
+                    psi2dset.attrs.create(name='Nlat', data=self.Nlat)
+                    psi2dset.attrs.create(name='Nlon', data=self.Nlon)
+                if anipara == 2:
+                    # azimuthal amplitude for 4psi
+                    outamp4         = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                    outamp4[index1] = velocity[:, 7]
+                    amp4dset        = opergrp.create_dataset(name='amp4', data=outamp4)
+                    amp4dset.attrs.create(name='Nlat', data=self.Nlat)
+                    amp4dset.attrs.create(name='Nlon', data=self.Nlon)
+                    # psi4
+                    outpsi4         = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                    outpsi4[index1] = velocity[:, 8]
+                    psi4dset        = opergrp.create_dataset(name='psi4', data=outpsi4)
+                    psi4dset.attrs.create(name='Nlat', data=self.Nlat)
+                    psi4dset.attrs.create(name='Nlon', data=self.Nlon)
+                # azimuthal coverage, sqared sum
+                outazicov           = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outazicov[index1]   = azicov[:, 0]
+                azidset             = opergrp.create_dataset(name='azi_coverage1', data=outazicov)
                 azidset.attrs.create(name='Nlat', data=self.Nlat)
                 azidset.attrs.create(name='Nlon', data=self.Nlon)
-                # path density
-                outpathden  = pathden.reshape(self.Nlat, self.Nlon)
-                pddset      = opergrp.create_dataset(name='path_density', data=outpathden)
+                # azimuthal coverage, max value
+                outazicov           = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outazicov[index1]   = azicov[:, 1]
+                azidset             = opergrp.create_dataset(name='azi_coverage2', data=outazicov)
+                azidset.attrs.create(name='Nlat', data=self.Nlat)
+                azidset.attrs.create(name='Nlon', data=self.Nlon)
+                # path density, all orbits
+                outpathden          = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outpathden[index1]  = pathden[:, 0]
+                pddset              = opergrp.create_dataset(name='path_density', data=outpathden)
                 pddset.attrs.create(name='Nlat', data=self.Nlat)
                 pddset.attrs.create(name='Nlon', data=self.Nlon)
-                
-        
+                # path density, first orbit
+                outpathden          = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outpathden[index1]  = pathden[:, 1]
+                pddset              = opergrp.create_dataset(name='path_density1', data=outpathden)
+                pddset.attrs.create(name='Nlat', data=self.Nlat)
+                pddset.attrs.create(name='Nlon', data=self.Nlon)
+                # path density, second orbit
+                outpathden          = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outpathden[index1]  = pathden[:, 2]
+                pddset              = opergrp.create_dataset(name='path_density2', data=outpathden)
+                pddset.attrs.create(name='Nlat', data=self.Nlat)
+                pddset.attrs.create(name='Nlon', data=self.Nlon)
+                # resolution analysis, cone radius
+                outrea              = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outrea[index2]      = resol[:, 0]
+                readset             = opergrp.create_dataset(name='cone_radius', data=outrea)
+                readset.attrs.create(name='Nlat', data=self.Nlat)
+                readset.attrs.create(name='Nlon', data=self.Nlon)
+                # resolution analysis, Gaussian std
+                outrea              = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outrea[index2]      = resol[:, 1]
+                readset             = opergrp.create_dataset(name='gauss_std', data=outrea)
+                readset.attrs.create(name='Nlat', data=self.Nlat)
+                readset.attrs.create(name='Nlon', data=self.Nlon)
+                # resolution analysis, maximum response value
+                outrea              = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outrea[index2]      = resol[:, 2]
+                readset             = opergrp.create_dataset(name='max_resp', data=outrea)
+                readset.attrs.create(name='Nlat', data=self.Nlat)
+                readset.attrs.create(name='Nlon', data=self.Nlon)
+                # resolution analysis, number of cells involvec in cone base
+                outrea              = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outrea[index2]      = resol[:, 3]
+                readset             = opergrp.create_dataset(name='ncone', data=outrea)
+                readset.attrs.create(name='Nlat', data=self.Nlat)
+                readset.attrs.create(name='Nlon', data=self.Nlon)
+                # resolution analysis, number of cells involvec in Gaussian construction
+                outrea              = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outrea[index2]      = resol[:, 4]
+                readset             = opergrp.create_dataset(name='ngauss', data=outrea)
+                readset.attrs.create(name='Nlat', data=self.Nlat)
+                readset.attrs.create(name='Nlon', data=self.Nlon)
+        return
 
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
@@ -679,6 +769,16 @@ class RayTomoDataSet(h5py.File):
         self.Nlat   = self.lats.size
         self.lonArr, self.latArr = np.meshgrid(self.lons, self.lats)
         return
+    
+    def plot(self, runtype, runid, datatype, period):
+        rundict     = {0: 'smooth_run', 1: 'qc_run'}
+        dataid      = rundict[runtype]+'_'+str(runid)
+        ingroup     = self[dataid]
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingrp['%g_sec'%( period )]
+        
     
     def _numpy2ma(self, inarray, reason_n=None):
         """Convert input numpy array to masked array
