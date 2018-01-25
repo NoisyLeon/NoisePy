@@ -521,19 +521,46 @@ class RayTomoDataSet(h5py.File):
         if runtype == 1:
             isotropic   = ingrp.attrs['isotropic']
         outgrp.attrs.create(name = 'isotropic', data=isotropic)
+        #-----------------
+        # mask array
+        #-----------------
         if not isotropic:
-            mask1       = np.zeros((self.Nlat, self.Nlon), dtype=np.int32)
-            mask2       = np.zeros((self.Nlat, self.Nlon), dtype=np.int32)
+            mask1       = np.zeros((self.Nlat, self.Nlon), dtype=np.bool)
+            mask2       = np.zeros((self.Nlat, self.Nlon), dtype=np.bool)
+            tempgrp     = ingrp['%g_sec'%( pers[0] )]
+            # get value for mask1 array
+            lonlat_arr1 = tempgrp['lons_lats'].value
+            inlon       = lonlat_arr1[:,0]
+            inlat       = lonlat_arr1[:,1]
+            for i in range(inlon.size):
+                lon                         = inlon[i]
+                lat                         = inlat[i]
+                index                       = np.where((self.lonArr==lon)*(self.latArr==lat))
+                mask1[index[0], index[1]]   = True
+            # get value for mask2 array
+            lonlat_arr2 = tempgrp['lons_lats_rea'].value
+            inlon       = lonlat_arr2[:,0]
+            inlat       = lonlat_arr2[:,1]
+            for i in range(inlon.size):
+                lon                         = inlon[i]
+                lat                         = inlat[i]
+                index                       = np.where((self.lonArr==lon)*(self.latArr==lat))
+                mask2[index[0], index[1]]   = True
+            outgrp.create_dataset(name='mask1', data=mask1)
+            outgrp.create_dataset(name='mask2', data=mask2)
+            index1      = np.logical_not(mask1)
+            index2      = np.logical_not(mask2)
+            
         for per in pers:
             # get data
             pergrp  = ingrp['%g_sec'%( per )]
             try:
-                velocity    = pergrp['velocity'].value
-                dv          = pergrp['Dvelocity'].value
-                azicov      = pergrp['azi_coverage'].value
-                pathden     = pergrp['path_density'].value
+                velocity        = pergrp['velocity'].value
+                dv              = pergrp['Dvelocity'].value
+                azicov          = pergrp['azi_coverage'].value
+                pathden         = pergrp['path_density'].value
                 if not isotropic:
-                    resol   = pergrp['resolution'].value
+                    resol       = pergrp['resolution'].value
             except:
                 raise AttributeError(str(per)+ ' sec data does not exist!')
             # save data
@@ -560,28 +587,29 @@ class RayTomoDataSet(h5py.File):
                 pddset.attrs.create(name='Nlat', data=self.Nlat)
                 pddset.attrs.create(name='Nlon', data=self.Nlon)
             else:
+                # isotropic velocity
+                outv_iso        = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outv_iso[index1]= velocity[:, 0]
+                v0dset          = opergrp.create_dataset(name='vel_iso', data=outv_iso)
+                v0dset.attrs.create(name='Nlat', data=self.Nlat)
+                v0dset.attrs.create(name='Nlon', data=self.Nlon)
+                # relative velocity perturbation
+                outdv           = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
+                outdv[index1]   = dv
+                dvdset          = opergrp.create_dataset(name='Dvelocity', data=outdv)
+                dvdset.attrs.create(name='Nlat', data=self.Nlat)
+                dvdset.attrs.create(name='Nlon', data=self.Nlon)
+                # azimuthal coverage
+                outazicov   = azicov.reshape(self.Nlat, self.Nlon)
+                azidset     = opergrp.create_dataset(name='azi_coverage', data=outazicov)
+                azidset.attrs.create(name='Nlat', data=self.Nlat)
+                azidset.attrs.create(name='Nlon', data=self.Nlon)
+                # path density
+                outpathden  = pathden.reshape(self.Nlat, self.Nlon)
+                pddset      = opergrp.create_dataset(name='path_density', data=outpathden)
+                pddset.attrs.create(name='Nlat', data=self.Nlat)
+                pddset.attrs.create(name='Nlon', data=self.Nlon)
                 
-                # velocity
-                outv        = velocity.reshape(self.Nlat, self.Nlon)
-                
-                # v0dset      = opergrp.create_dataset(name='velocity', data=outv)
-                # v0dset.attrs.create(name='Nlat', data=self.Nlat)
-                # v0dset.attrs.create(name='Nlon', data=self.Nlon)
-                # # relative velocity perturbation
-                # outdv       = dv.reshape(self.Nlat, self.Nlon)
-                # dvdset      = opergrp.create_dataset(name='Dvelocity', data=outdv)
-                # dvdset.attrs.create(name='Nlat', data=self.Nlat)
-                # dvdset.attrs.create(name='Nlon', data=self.Nlon)
-                # # azimuthal coverage
-                # outazicov   = azicov.reshape(self.Nlat, self.Nlon)
-                # azidset     = opergrp.create_dataset(name='azi_coverage', data=outazicov)
-                # azidset.attrs.create(name='Nlat', data=self.Nlat)
-                # azidset.attrs.create(name='Nlon', data=self.Nlon)
-                # # path density
-                # outpathden  = pathden.reshape(self.Nlat, self.Nlon)
-                # pddset      = opergrp.create_dataset(name='path_density', data=outpathden)
-                # pddset.attrs.create(name='Nlat', data=self.Nlat)
-                # pddset.attrs.create(name='Nlon', data=self.Nlon)
         
 
     
