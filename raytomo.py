@@ -524,7 +524,7 @@ class RayTomoDataSet(h5py.File):
         pers        = self.attrs['period_array']
         self._get_lon_lat_arr(dataid=dataid)
         ingrp       = self[dataid]
-        outgrp      = self.create_group( name = 'masked_'+dataid)
+        outgrp      = self.create_group( name = 'reshaped_'+dataid)
         if runtype == 1:
             isotropic   = ingrp.attrs['isotropic']
             outgrp.attrs.create(name = 'isotropic', data=isotropic)
@@ -560,7 +560,7 @@ class RayTomoDataSet(h5py.File):
             index1      = np.logical_not(mask1)
             index2      = np.logical_not(mask2)
             anipara     = ingroup.attrs['anipara']
-            
+        # loop over periods
         for per in pers:
             # get data
             pergrp  = ingrp['%g_sec'%( per )]
@@ -586,7 +586,7 @@ class RayTomoDataSet(h5py.File):
                 dvdset      = opergrp.create_dataset(name='Dvelocity', data=outdv)
                 dvdset.attrs.create(name='Nlat', data=self.Nlat)
                 dvdset.attrs.create(name='Nlon', data=self.Nlon)
-                # azimuthal coverage, sqared sum
+                # azimuthal coverage, squared sum
                 outazicov   = (azicov[:, 0]).reshape(self.Nlat, self.Nlon)
                 azidset     = opergrp.create_dataset(name='azi_coverage1', data=outazicov)
                 azidset.attrs.create(name='Nlat', data=self.Nlat)
@@ -640,7 +640,7 @@ class RayTomoDataSet(h5py.File):
                     psi4dset        = opergrp.create_dataset(name='psi4', data=outpsi4)
                     psi4dset.attrs.create(name='Nlat', data=self.Nlat)
                     psi4dset.attrs.create(name='Nlon', data=self.Nlon)
-                # azimuthal coverage, sqared sum
+                # azimuthal coverage, squared sum
                 outazicov           = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
                 outazicov[index1]   = azicov[:, 0]
                 azidset             = opergrp.create_dataset(name='azi_coverage1', data=outazicov)
@@ -757,27 +757,94 @@ class RayTomoDataSet(h5py.File):
     def _get_lon_lat_arr(self, dataid):
         """Get longitude/latitude array
         """
-        minlon      = self.attrs['minlon']
-        maxlon      = self.attrs['maxlon']
-        minlat      = self.attrs['minlat']
-        maxlat      = self.attrs['maxlat']
-        dlon        = self[dataid].attrs['dlon']
-        dlat        = self[dataid].attrs['dlat']
-        self.lons   = np.arange((maxlon-minlon)/dlon+1)*dlon+minlon
-        self.lats   = np.arange((maxlat-minlat)/dlat+1)*dlat+minlat
-        self.Nlon   = self.lons.size
-        self.Nlat   = self.lats.size
-        self.lonArr, self.latArr = np.meshgrid(self.lons, self.lats)
+        minlon                  = self.attrs['minlon']
+        maxlon                  = self.attrs['maxlon']
+        minlat                  = self.attrs['minlat']
+        maxlat                  = self.attrs['maxlat']
+        dlon                    = self[dataid].attrs['dlon']
+        dlat                    = self[dataid].attrs['dlat']
+        self.lons               = np.arange(int((maxlon-minlon)/dlon)+1)*dlon+minlon
+        self.lats               = np.arange(int((maxlat-minlat)/dlat)+1)*dlat+minlat
+        self.Nlon               = self.lons.size
+        self.Nlat               = self.lats.size
+        self.lonArr, self.latArr= np.meshgrid(self.lons, self.lats)
         return
     
-    def plot(self, runtype, runid, datatype, period):
+    def plot(self, runtype, runid, datatype, period, clabel='', cmap='cv', projection='lambert', geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps from the tomographic inversion
+        """
+        # vdict       = {'ph': 'C', 'gr': 'U'}
+        datatype    = datatype.lower()
         rundict     = {0: 'smooth_run', 1: 'qc_run'}
         dataid      = rundict[runtype]+'_'+str(runid)
-        ingroup     = self[dataid]
+        self._get_lon_lat_arr(dataid)
+        try:
+            ingroup     = self['reshaped_'+dataid]
+        except KeyError:
+            try:
+                self.creat_reshape_data(runtype=runtype, runid=runid)
+                ingroup = self['reshaped_'+dataid]
+            except KeyError:
+                raise KeyError(dataid+ ' not exists!')
         pers        = self.attrs['period_array']
         if not period in pers:
             raise KeyError('period = '+str(period)+' not included in the database')
-        pergrp  = ingrp['%g_sec'%( period )]
+        pergrp  = ingroup['%g_sec'%( period )]
+        if runtype == 1:
+            isotropic   = ingroup.attrs['isotropic']
+        else:
+            isotropic   = True
+        if datatype == 'vel' or datatype=='velocity' or datatype == 'v':
+            if isotropic:
+                datatype    = 'velocity'
+            else:
+                datatype    = 'vel_iso'
+        try:
+            data    = pergrp[datatype].value
+        except:
+            outstr      = ''
+            for key in pergrp.keys():
+                outstr  +=key
+                outstr  +=', '
+            outstr      = outstr[:-1]
+            raise KeyError('Unexpected datatype: '+datatype+\
+                           ', available datatypes are: '+outstr)
+        if not isotropic:
+            if datatype == 'cone_radius' or datatype == 'gauss_std' or datatype == 'max_resp' or datatype == 'ncone' or \
+                         datatype == 'ngauss':
+                mask    = ingroup['mask2']
+            else:
+                mask    = ingroup['mask1']
+            mdata       = ma.masked_array(data, mask=mask )
+        else:
+            mdata       = data.copy()
+        #-----------
+        # plot data
+        #-----------
+        m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y        = m(self.lonArr, self.latArr)
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+        elif os.path.isfile(cmap):
+            import pycpt
+            cmap    = pycpt.load.gmtColormap(cmap)
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.set_label(clabel, fontsize=12, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=15)
+        # if fastaxis:
+        #     try:
+        #         self.plot_fast_axis(inbasemap=m)
+        #     except:
+        #         pass
+        if showfig:
+            plt.show()
+        return
         
     
     def _numpy2ma(self, inarray, reason_n=None):
