@@ -517,6 +517,11 @@ class RayTomoDataSet(h5py.File):
     def creat_reshape_data(self, runtype=0, runid=0):
         """
         convert data to Nlat * Nlon shape and store the mask
+        =================================================================================================================
+        ::: input parameters :::
+        runtype         - type of run (0 - smooth run, 1 - quality controlled run)
+        runid           - id of run
+        =================================================================================================================
         """
         rundict     = {0: 'smooth_run', 1: 'qc_run'}
         dataid      = rundict[runtype]+'_'+str(runid)
@@ -772,6 +777,19 @@ class RayTomoDataSet(h5py.File):
     
     def plot(self, runtype, runid, datatype, period, clabel='', cmap='cv', projection='lambert', geopolygons=None, vmin=None, vmax=None, showfig=True):
         """plot maps from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runtype         - type of run (0 - smooth run, 1 - quality controlled run)
+        runid           - id of run
+        datatype        - datatype for plotting
+        period          - period of data
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        showfig         - show figure or not
+        =================================================================================================================
         """
         # vdict       = {'ph': 'C', 'gr': 'U'}
         datatype    = datatype.lower()
@@ -837,15 +855,64 @@ class RayTomoDataSet(h5py.File):
         cb.set_label(clabel, fontsize=12, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb.ax.tick_params(labelsize=15)
-        # if fastaxis:
-        #     try:
-        #         self.plot_fast_axis(inbasemap=m)
-        #     except:
-        #         pass
         if showfig:
             plt.show()
         return
+    
+    def generate_corrected_map(self, runid, glbdir, outdir, runtype=1, pers=np.array([]), glbpfx='smpkolya_phv_R_', outpfx='smpkolya_phv_R_'):
+        """
+        Generate corrected global phave velocity map using a regional phase velocity map.
+        =================================================================================================================
+        ::: input parameters :::
+        dataid              - dataid for regional phase velocity map
+        glbdir              - location of global reference phase velocity map files
+        outdir              - output directory
+        pers                - period array for correction (default is 4)
+        glbpfx              - prefix for global reference phase velocity map files
+        outpfx              - prefix for output reference phase velocity map files
+        -----------------------------------------------------------------------------------------------------------------
+        ::: output format ::::
+        outdir/outpfx+str(int(per))
+        =================================================================================================================
+        """
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+        if pers.size == 0:
+            pers            = np.append( np.arange(7.)*10.+40., np.arange(2.)*25.+125.)
+        rundict     = {0: 'smooth_run', 1: 'qc_run'}
+        dataid      = rundict[runtype]+'_'+str(runid)
+        ingrp       = self[dataid]
+        per_arr     = self.attrs['period_array']
+        tempgrp     = ingrp['%g_sec'%( per_arr[0] )]
+        lonlat_arr  = tempgrp['lons_lats'].value
+        for per in pers:
+            inglbfname      = glbdir+'/'+glbpfx+str(int(per))
+            try:
+                pergrp      = ingrp['%g_sec'%( per )]
+            except KeyError:
+                print 'No regional data for period = '+str(per)+' sec'
+                continue
+            if not os.path.isfile(inglbfname):
+                print 'No global data for period = '+str(per)+' sec'
+                continue
+            outfname        = outdir+'/'+outpfx+'%g' %(per)
+            inglbarr        = np.loadtxt(inglbfname)
+            outArr          = inglbarr.copy()
+            velocity        = pergrp['velocity'].value
+            for ig in range(inglbarr[:,0].size):
+                glb_lon     = inglbarr[ig,0]
+                glb_lat     = inglbarr[ig,1]
+                glb_C       = inglbarr[ig,2]
+                for ir in range(lonlat_arr[:, 0].size):
+                    reg_lon = lonlat_arr[ir, 0]
+                    reg_lat = lonlat_arr[ir, 1]
+                    reg_C   = velocity[ir, 0]
+                if abs(reg_lon-glb_lon)<0.05 and abs(reg_lat-glb_lat)<0.05 and reg_C != 0 :
+                        outArr[ig, 2]     = reg_C
+            np.savetxt(outfname, outArr, fmt='%g %g %.4f')
+        return
         
+    
     
     def _numpy2ma(self, inarray, reason_n=None):
         """Convert input numpy array to masked array
@@ -1062,55 +1129,7 @@ class RayTomoDataSet(h5py.File):
             plt.show()
         return
     
-    def generate_corrected_map(self, dataid, glbdir, outdir, pers=np.array([]), glbpfx='smpkolya_phv_R_', outpfx='smpkolya_phv_R_'):
-        """
-        Generate corrected global phave velocity map using a regional phase velocity map.
-        =================================================================================================================
-        ::: input parameters :::
-        dataid              - dataid for regional phase velocity map
-        glbdir              - location of global reference phase velocity map files
-        outdir              - output directory
-        pers                - period array for correction (default is 4)
-        glbpfx              - prefix for global reference phase velocity map files
-        outpfx              - prefix for output reference phase velocity map files
-        -----------------------------------------------------------------------------------------------------------------
-        Output format:
-        outdir/outpfx+str(int(per))
-        =================================================================================================================
-        """
-        if not os.path.isdir(outdir):
-            os.makedirs(outdir)
-        if pers.size==0:
-            pers=np.append( np.arange(7.)*10.+40., np.arange(2.)*25.+125.)
-        for per in pers:
-            inglobalfname=glbdir+'/'+glbpfx+str(int(per))
-            try:
-                self.get_data4plot(dataid=dataid, period=per)
-            except:
-                print 'No regional data for period =',per,'sec'
-                continue
-            if not os.path.isfile(inglobalfname):
-                print 'No global data for period =',per,'sec'
-                continue
-            outfname=outdir+'/'+outpfx+'%g' %(per)
-            InglbArr=np.loadtxt(inglobalfname)
-            outArr=InglbArr.copy()
-            lonArr=self.lonArr.reshape(self.lonArr.size)
-            latArr=self.latArr.reshape(self.latArr.size)
-            vel_iso=ma.getdata(self.vel_iso)
-            vel_iso=vel_iso.reshape(vel_iso.size)
-            for i in xrange(InglbArr[:,0].size):
-                lonG=InglbArr[i,0]
-                latG=InglbArr[i,1]
-                phVG=InglbArr[i,2]
-                for j in xrange(lonArr.size):
-                    lonR=lonArr[j]
-                    latR=latArr[j]
-                    phVR=vel_iso[j]
-                    if abs(lonR-lonG)<0.05 and abs(latR-latG)<0.05 and phVR!=0:
-                        outArr[i,2]=phVR
-            np.savetxt(outfname, outArr, fmt='%g %g %.4f')
-        return
+    
     
     def plot_global_map(self, period, resolution='i', inglbpfx='./MAPS/smpkolya_phv_R', geopolygons=None, showfig=True, vmin=None, vmax=None):
         """
@@ -1134,18 +1153,20 @@ class RayTomoDataSet(h5py.File):
         latArr              = latArr.reshape(181, 360)
         phvArr              = inArr[:,2]
         phvArr              = phvArr.reshape(181, 360)
-        minlon=self.attrs['minlon']; maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']; maxlat=self.attrs['maxlat']
-        lat_centre  = (maxlat+minlat)/2.0
-        lon_centre  = (maxlon+minlon)/2.0
-        m           = Basemap(projection='moll',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
-        x, y        = m(lonArr, latArr)
-        cmap = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
-            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
-        im=m.pcolormesh(x, y, phvArr, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        lat_centre          = (maxlat+minlat)/2.0
+        lon_centre          = (maxlon+minlon)/2.0
+        m                   = Basemap(projection='moll',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+        x, y                = m(lonArr, latArr)
+        cmap                = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                                0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        im                  = m.pcolormesh(x, y, phvArr, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         m.drawcoastlines(linewidth=1.0)
-        cb = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.set_label('Vph'+' (km/s)', fontsize=12, rotation=0)
+        cb                  = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.set_label('C (km/s)', fontsize=12, rotation=0)
         plt.title(str(period)+' sec', fontsize=20)
         # m.readshapefile('./tectonicplates/PB2002_plates', 
         #         name='tectonic_plates', 

@@ -41,14 +41,15 @@ from numba import jit, float32, int32
 # compiled function to get weight for each event and each grid point
 @jit(float32[:,:,:](float32[:,:,:], float32[:,:,:]))
 def _get_azi_weight(aziArr, validArr):
-    Nevent, Nlon, Nlat = aziArr.shape
-    weightArr=np.zeros((Nevent, Nlon, Nlat))
+    Nevent, Nlon, Nlat  = aziArr.shape
+    weightArr           = np.zeros((Nevent, Nlon, Nlat))
     for ilon in xrange(Nlon):
         for ilat in xrange(Nlat):
             for i in xrange(Nevent):
                 for j in xrange(Nevent):
-                    delAzi = abs(aziArr[i, ilon, ilat] - aziArr[j, ilon, ilat])
-                    if delAzi < 20. or delAzi > 340.: weightArr[i, ilon, ilat] += validArr[i, ilon, ilat]    
+                    delAzi                      = abs(aziArr[i, ilon, ilat] - aziArr[j, ilon, ilat])
+                    if delAzi < 20. or delAzi > 340.:
+                        weightArr[i, ilon, ilat]+= validArr[i, ilon, ilat]    
     return weightArr
 
 class EikonalTomoDataSet(h5py.File):
