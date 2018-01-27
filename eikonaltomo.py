@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-A python module to run surface wave Eikonal/Helmholtz tomography
+A python module to run surface wave eikonal/Helmholtz tomography
 The code creates a datadbase based on hdf5 data format
 
 :Dependencies:
@@ -58,7 +58,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         Set input parameters for tomographic inversion.
         =================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         minlon, maxlon  - minimum/maximum longitude
         minlat, maxlat  - minimum/maximum latitude
         pers            - period array, default = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
@@ -67,7 +67,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         if pers.size==0:
             # pers=np.arange(13.)*2.+6.
-            pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+            pers    = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         self.attrs.create(name = 'period_array', data=pers, dtype='f')
         self.attrs.create(name = 'minlon', data=minlon, dtype='f')
         self.attrs.create(name = 'maxlon', data=maxlon, dtype='f')
@@ -75,8 +75,8 @@ class EikonalTomoDataSet(h5py.File):
         self.attrs.create(name = 'maxlat', data=maxlat, dtype='f')
         self.attrs.create(name = 'dlon', data=dlon)
         self.attrs.create(name = 'dlat', data=dlat)
-        Nlon=(maxlon-minlon)/dlon+1
-        Nlat=(maxlat-minlat)/dlat+1
+        Nlon        = (maxlon-minlon)/dlon+1
+        Nlat        = (maxlat-minlat)/dlat+1
         self.attrs.create(name = 'Nlon', data=Nlon)
         self.attrs.create(name = 'Nlat', data=Nlat)
         return
@@ -85,7 +85,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         Compute gradient of travel time for cross-correlation data
         =================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         inasdffname - input ASDF data file
         workingdir  - working directory
         fieldtype   - fieldtype (Tph or Tgr)
@@ -160,7 +160,8 @@ class EikonalTomoDataSet(h5py.File):
                 azdset       = event_group.create_dataset(name='az', data=field2d.az)
                 bazdset      = event_group.create_dataset(name='baz', data=field2d.baz)
                 Tdset        = event_group.create_dataset(name='travelT', data=field2d.Zarr)
-        if deletetxt: shutil.rmtree(workingdir)
+        if deletetxt:
+            shutil.rmtree(workingdir)
         return
     
     def xcorr_eikonal_mp(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0,
@@ -168,7 +169,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         Compute gradient of travel time for cross-correlation data with multiprocessing
         =================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         inasdffname - input ASDF data file
         workingdir  - working directory
         fieldtype   - fieldtype (Tph or Tgr)
@@ -284,7 +285,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         Compute gradient of travel time for earthquake data
         =================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         inasdffname - input ASDF data file
         workingdir  - working directory
         fieldtype   - fieldtype (Tph or Tgr)
@@ -401,7 +402,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         Compute gradient of travel time for cross-correlation data with multiprocessing
         =================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         inasdffname - input ASDF data file
         workingdir  - working directory
         fieldtype   - fieldtype (Tph or Tgr)
@@ -546,7 +547,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         Stack gradient results to perform Eikonal Tomography
         =================================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         runid           - run id
         minazi/maxazi   - min/max azimuth for anisotropic parameters determination
         N_bin           - number of bins for anisotropic parameters determination
@@ -798,7 +799,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         Get data for plotting
         =======================================================================================
-        Input Parameters:
+        ::: input parameters :::
         period              - period
         runid               - run id
         ncut                - number of cutted edge points

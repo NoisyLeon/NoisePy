@@ -1602,74 +1602,87 @@ class noiseASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.FieldDISPpmf2interp
         ============================================================================================================================
         """
-        if pers.size==0: pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
-        outindex={ 'longitude': 0, 'latitude': 1, 'Vph': 2,  'Vgr':3, 'snr': 4, 'dist': 5 }
-        staLst=self.waveforms.list()
+        if pers.size==0:
+            pers        = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        outindex        = { 'longitude': 0, 'latitude': 1, 'C': 2,  'U':3, 'snr': 4, 'dist': 5 }
+        staLst          = self.waveforms.list()
         for staid1 in staLst:
-            field_lst=[]
-            Nfplst=[]
+            field_lst   = []
+            Nfplst      = []
             for per in pers:
                 field_lst.append(np.array([]))
                 Nfplst.append(0)
-            lat1, elv1, lon1=self.waveforms[staid1].coordinates.values()
-            if verbose: print 'Getting field data for: '+staid1
+            lat1, elv1, lon1    = self.waveforms[staid1].coordinates.values()
+            if verbose:
+                print 'Getting field data for: '+staid1
             for staid2 in staLst:
-                if staid1==staid2: continue
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                try: subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
+                if staid1==staid2:
+                    continue
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                try:
+                    subdset         = self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
                 except:
-                    try: subdset=self.auxiliary_data[data_type][netcode2][stacode2][netcode1][stacode1][channel]
-                    except: continue
-                lat2, elv2, lon2=self.waveforms[staid2].coordinates.values()
-                dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
-                dist=dist/1000.
-                if lon1<0: lon1+=360.
-                if lon2<0: lon2+=360.
-                data=subdset.data.value
-                index=subdset.parameters
+                    try:
+                        subdset     = self.auxiliary_data[data_type][netcode2][stacode2][netcode1][stacode1][channel]
+                    except:
+                        continue
+                lat2, elv2, lon2    = self.waveforms[staid2].coordinates.values()
+                dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
+                dist                = dist/1000.
+                if lon1<0:
+                    lon1    += 360.
+                if lon2<0:
+                    lon2    += 360.
+                data                = subdset.data.value
+                index               = subdset.parameters
                 for iper in xrange(pers.size):
-                    per=pers[iper]
-                    if dist < 2.*per*3.5: continue
-                    ind_per=np.where(data[index['To']][:] == per)[0]
-                    if ind_per.size==0: raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
-                    pvel=data[index['Vph']][ind_per]
-                    gvel=data[index['Vgr']][ind_per]
-                    snr=data[index['snr']][ind_per]
-                    inbound=data[index['inbound']][ind_per]
+                    per     = pers[iper]
+                    if dist < 2.*per*3.5:
+                        continue
+                    ind_per = np.where(data[index['To']][:] == per)[0]
+                    if ind_per.size==0:
+                        raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
+                    pvel    = data[index['Vph']][ind_per]
+                    gvel    = data[index['Vgr']][ind_per]
+                    snr     = data[index['snr']][ind_per]
+                    inbound = data[index['inbound']][ind_per]
                     # quality control
-                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10: continue
-                    if inbound!=1.: continue
-                    if snr < 15.: continue
-                    field_lst[iper]=np.append(field_lst[iper], lon2)
-                    field_lst[iper]=np.append(field_lst[iper], lat2)
-                    field_lst[iper]=np.append(field_lst[iper], pvel)
-                    field_lst[iper]=np.append(field_lst[iper], gvel)
-                    field_lst[iper]=np.append(field_lst[iper], snr)
-                    field_lst[iper]=np.append(field_lst[iper], dist)
-                    Nfplst[iper]+=1
+                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10:
+                        continue
+                    if inbound!=1.:
+                        continue
+                    if snr < 15.:
+                        continue
+                    field_lst[iper] = np.append(field_lst[iper], lon2)
+                    field_lst[iper] = np.append(field_lst[iper], lat2)
+                    field_lst[iper] = np.append(field_lst[iper], pvel)
+                    field_lst[iper] = np.append(field_lst[iper], gvel)
+                    field_lst[iper] = np.append(field_lst[iper], snr)
+                    field_lst[iper] = np.append(field_lst[iper], dist)
+                    Nfplst[iper]    += 1
             # end of reading data from all receivers, taking staid1 as virtual source
             if outdir!=None:
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir)
-            staid_aux=netcode1+'/'+stacode1+'/'+channel
+            staid_aux   = netcode1+'/'+stacode1+'/'+channel
             for iper in xrange(pers.size):
-                per=pers[iper]
-                del_per=per-int(per)
+                per             = pers[iper]
+                del_per         = per-int(per)
                 if field_lst[iper].size==0:
                     continue
-                field_lst[iper]=field_lst[iper].reshape(Nfplst[iper], 6)
+                field_lst[iper] = field_lst[iper].reshape(Nfplst[iper], 6)
                 if del_per==0.:
                     staid_aux_per=staid_aux+'/'+str(int(per))+'sec'
                 else:
-                    dper=str(del_per)
-                    staid_aux_per=staid_aux+'/'+str(int(per))+'sec'+dper.split('.')[1]
+                    dper            = str(del_per)
+                    staid_aux_per   = staid_aux+'/'+str(int(per))+'sec'+dper.split('.')[1]
                 self.add_auxiliary_data(data=field_lst[iper], data_type='Field'+data_type, path=staid_aux_per, parameters=outindex)
-                if outdir!=None:
+                if outdir is None:
                     if not os.path.isdir(outdir+'/'+str(per)+'sec'):
                         os.makedirs(outdir+'/'+str(per)+'sec')
-                    txtfname=outdir+'/'+str(per)+'sec'+'/'+staid1+'_'+str(per)+'.txt'
-                    header = 'evlo='+str(lon1)+' evla='+str(lat1)
+                    txtfname        = outdir+'/'+str(per)+'sec'+'/'+staid1+'_'+str(per)+'.txt'
+                    header          = 'evlo='+str(lon1)+' evla='+str(lat1)
                     np.savetxt( txtfname, field_lst[iper], fmt='%g', header=header )
         return
             
