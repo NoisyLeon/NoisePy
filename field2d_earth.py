@@ -60,49 +60,50 @@ class Field2d(object):
     ===========================================================================
     """
     def __init__(self, minlon, maxlon, dlon, minlat, maxlat, dlat, period, evlo=float('inf'), evla=float('inf'), fieldtype='Tph', evid=''):
-        self.Nlon=int(round((maxlon-minlon)/dlon)+1)
-        self.Nlat=int(round((maxlat-minlat)/dlat)+1)
-        self.dlon=dlon
-        self.dlat=dlat
-        self.lon=np.arange(self.Nlon)*self.dlon+minlon
-        self.lat=np.arange(self.Nlat)*self.dlat+minlat
-        self.lonArr, self.latArr = np.meshgrid(self.lon, self.lat)
-        self.minlon=minlon
-        self.maxlon=self.lon.max()
-        self.minlat=minlat
-        self.maxlat=self.lat.max()
+        self.Nlon               = int(round((maxlon-minlon)/dlon)+1)
+        self.Nlat               = int(round((maxlat-minlat)/dlat)+1)
+        self.dlon               = dlon
+        self.dlat               = dlat
+        self.lon                = np.arange(self.Nlon)*self.dlon+minlon
+        self.lat                = np.arange(self.Nlat)*self.dlat+minlat
+        self.lonArr, self.latArr= np.meshgrid(self.lon, self.lat)
+        self.minlon             = minlon
+        self.maxlon             = self.lon.max()
+        self.minlat             = minlat
+        self.maxlat             = self.lat.max()
         self._get_dlon_dlat_km()
-        self.period=period
-        self.evid=evid
-        self.fieldtype=fieldtype
-        self.Zarr=np.zeros((self.Nlat, self.Nlon))
-        self.evlo=evlo
-        self.evla=evla
+        self.period             = period
+        self.evid               = evid
+        self.fieldtype          = fieldtype
+        self.Zarr               = np.zeros((self.Nlat, self.Nlon))
+        self.evlo               = evlo
+        self.evla               = evla
         return
     
-    def copy(self): return copy.deepcopy(self)
+    def copy(self):
+        return copy.deepcopy(self)
     
     def _get_dlon_dlat_km_slow(self):
         """Get longitude and latitude interval in km
         """
-        self.dlon_km=np.array([])
-        self.dlat_km=np.array([])
+        self.dlon_km            = np.array([])
+        self.dlat_km            = np.array([])
         for lat in self.lat:
-            dist_lon, az, baz = obspy.geodetics.gps2dist_azimuth(lat, 0., lat, self.dlon)
-            dist_lat, az, baz = obspy.geodetics.gps2dist_azimuth(lat, 0., lat+self.dlat, 0.)
-            self.dlon_km=np.append(self.dlon_km, dist_lon/1000.)
-            self.dlat_km=np.append(self.dlat_km, dist_lat/1000.)
-        self.dlon_kmArr=(np.tile(self.dlon_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
-        self.dlat_kmArr=(np.tile(self.dlat_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
+            dist_lon, az, baz   = obspy.geodetics.gps2dist_azimuth(lat, 0., lat, self.dlon)
+            dist_lat, az, baz   = obspy.geodetics.gps2dist_azimuth(lat, 0., lat+self.dlat, 0.)
+            self.dlon_km        = np.append(self.dlon_km, dist_lon/1000.)
+            self.dlat_km        = np.append(self.dlat_km, dist_lat/1000.)
+        self.dlon_kmArr         = (np.tile(self.dlon_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
+        self.dlat_kmArr         = (np.tile(self.dlat_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
         return
     
     def  _get_dlon_dlat_km(self):
-        az, baz, dist_lon = geodist.inv(np.zeros(self.lat.size), self.lat, np.ones(self.lat.size)*self.dlon, self.lat) 
-        az, baz, dist_lat = geodist.inv(np.zeros(self.lat.size), self.lat, np.zeros(self.lat.size), self.lat+self.dlat) 
-        self.dlon_km=dist_lon/1000.
-        self.dlat_km=dist_lat/1000.
-        self.dlon_kmArr=(np.tile(self.dlon_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
-        self.dlat_kmArr=(np.tile(self.dlat_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
+        az, baz, dist_lon       = geodist.inv(np.zeros(self.lat.size), self.lat, np.ones(self.lat.size)*self.dlon, self.lat) 
+        az, baz, dist_lat       = geodist.inv(np.zeros(self.lat.size), self.lat, np.zeros(self.lat.size), self.lat+self.dlat) 
+        self.dlon_km            = dist_lon/1000.
+        self.dlat_km            = dist_lat/1000.
+        self.dlon_kmArr         = (np.tile(self.dlon_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
+        self.dlat_kmArr         = (np.tile(self.dlat_km, self.Nlon).reshape(self.Nlon, self.Nlat)).T
         return
     
     def read(self, fname):
@@ -153,9 +154,9 @@ class Field2d(object):
     def read_array(self, lonArr, latArr, ZarrIn):
         """read field file
         """
-        self.lonArrIn=lonArr
-        self.latArrIn=latArr
-        self.ZarrIn=ZarrIn
+        self.lonArrIn   = lonArr
+        self.latArrIn   = latArr
+        self.ZarrIn     = ZarrIn
         return
     
     def add_noise(self, sigma=0.5):
@@ -252,7 +253,7 @@ class Field2d(object):
     def cut_edge(self, nlon, nlat):
         """Cut edge
         =======================================================================================
-        Input Parameters:
+        ::: input parameters :::
         nlon, nlon  - number of edge point in longitude/latitude to be cutted
         =======================================================================================
         """
@@ -276,35 +277,37 @@ class Field2d(object):
     def gradient(self, method='default', edge_order=1, order=2):
         """Compute gradient of the field
         =============================================================================================================
-        Input Parameters:
+        ::: input parameters :::
         edge_order  - edge_order : {1, 2}, optional, only has effect when method='default'
                         Gradient is calculated using Nth order accurate differences at the boundaries
         method      - method: 'default' : use numpy.gradient 'convolve': use convolution
         order       - order of finite difference scheme, only has effect when method='convolve'
+        ::: note :::
+        gradient arrays are of shape Nlat-1, Nlon-1
         =============================================================================================================
         """
-        Zarr=self.Zarr
+        Zarr            = self.Zarr
         if method=='default':
             # self.dlat_kmArr : dx here in numpy gradient since Zarr is Z[ilat, ilon]
-            self.grad=np.gradient( self.Zarr, self.dlat_kmArr, self.dlon_kmArr, edge_order=edge_order)
-            self.grad[0]=self.grad[0][1:-1, 1:-1]
-            self.grad[1]=self.grad[1][1:-1, 1:-1]
+            self.grad   = np.gradient( self.Zarr, self.dlat_kmArr, self.dlon_kmArr, edge_order=edge_order)
+            self.grad[0]= self.grad[0][1:-1, 1:-1]
+            self.grad[1]= self.grad[1][1:-1, 1:-1]
         elif method == 'convolve':
-            dlat_km=self.dlat_kmArr
-            dlon_km=self.dlon_kmArr
+            dlat_km     = self.dlat_kmArr
+            dlon_km     = self.dlon_kmArr
             if order==2:
-                diff_lon=convolve(Zarr, lon_diff_weight_2)/dlon_km
-                diff_lat=convolve(Zarr, lat_diff_weight_2)/dlat_km
+                diff_lon= convolve(Zarr, lon_diff_weight_2)/dlon_km
+                diff_lat= convolve(Zarr, lat_diff_weight_2)/dlat_km
             elif order==4:
-                diff_lon=convolve(Zarr, lon_diff_weight_4)/dlon_km
-                diff_lat=convolve(Zarr, lat_diff_weight_4)/dlat_km
+                diff_lon= convolve(Zarr, lon_diff_weight_4)/dlon_km
+                diff_lat= convolve(Zarr, lat_diff_weight_4)/dlat_km
             elif order==6:
-                diff_lon=convolve(Zarr, lon_diff_weight_6)/dlon_km
-                diff_lat=convolve(Zarr, lat_diff_weight_6)/dlat_km
-            self.grad=[]
+                diff_lon= convolve(Zarr, lon_diff_weight_6)/dlon_km
+                diff_lat= convolve(Zarr, lat_diff_weight_6)/dlat_km
+            self.grad   = []
             self.grad.append(diff_lat[1:-1, 1:-1])
             self.grad.append(diff_lon[1:-1, 1:-1])
-        self.proAngle=np.arctan2(self.grad[0], self.grad[1])/np.pi*180.
+        self.proAngle   = np.arctan2(self.grad[0], self.grad[1])/np.pi*180.
         return
     
     def get_appV(self):
@@ -318,52 +321,53 @@ class Field2d(object):
     def Laplacian(self, method='green', order=4, verbose=False):
         """Compute Laplacian of the field
         =============================================================================================================
-        Input Parameters:
-        edge_order  - edge_order : {1, 2}, optional, only has effect when method='default'
-                        Gradient is calculated using Nth order accurate differences at the boundaries
+        ::: input parameters :::
         method      - method: 'default' : use numpy.gradient
                               'convolve': use convolution
                               'green'   : use Green's theorem( 2D Gauss's theorem )
         order       - order of finite difference scheme, only has effect when method='convolve'
         =============================================================================================================
         """
-        Zarr=self.Zarr
+        Zarr                = self.Zarr
         if method == 'default':
-            dlat_km=self.dlat_kmArr[1:-1, 1:-1]
-            dlon_km=self.dlon_kmArr[1:-1, 1:-1]
-            Zarr_latp=Zarr[2:, 1:-1]
-            Zarr_latn=Zarr[:-2, 1:-1]
-            Zarr_lonp=Zarr[1:-1, 2:]
-            Zarr_lonn=Zarr[1:-1, :-2]
-            Zarr=Zarr[1:-1, 1:-1]
-            self.lplc=(Zarr_latp+Zarr_latn-2*Zarr) / (dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (dlon_km**2)
+            dlat_km         = self.dlat_kmArr[1:-1, 1:-1]
+            dlon_km         = self.dlon_kmArr[1:-1, 1:-1]
+            Zarr_latp       = Zarr[2:, 1:-1]
+            Zarr_latn       = Zarr[:-2, 1:-1]
+            Zarr_lonp       = Zarr[1:-1, 2:]
+            Zarr_lonn       = Zarr[1:-1, :-2]
+            Zarr            = Zarr[1:-1, 1:-1]
+            self.lplc       = (Zarr_latp+Zarr_latn-2*Zarr) / (dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (dlon_km**2)
         elif method == 'convolve':
-            dlat_km=self.dlat_kmArr
-            dlon_km=self.dlon_kmArr
+            dlat_km         = self.dlat_kmArr
+            dlon_km         = self.dlon_kmArr
             if order==2:
-                diff2_lon=convolve(Zarr, lon_diff2_weight_2)/dlon_km/dlon_km
-                diff2_lat=convolve(Zarr, lat_diff2_weight_2)/dlat_km/dlat_km
+                diff2_lon   = convolve(Zarr, lon_diff2_weight_2)/dlon_km/dlon_km
+                diff2_lat   = convolve(Zarr, lat_diff2_weight_2)/dlat_km/dlat_km
             elif order==4:
-                diff2_lon=convolve(Zarr, lon_diff2_weight_4)/dlon_km/dlon_km
-                diff2_lat=convolve(Zarr, lat_diff2_weight_4)/dlat_km/dlat_km
+                diff2_lon   = convolve(Zarr, lon_diff2_weight_4)/dlon_km/dlon_km
+                diff2_lat   = convolve(Zarr, lat_diff2_weight_4)/dlat_km/dlat_km
             elif order==6:
-                diff2_lon=convolve(Zarr, lon_diff2_weight_6)/dlon_km/dlon_km
-                diff2_lat=convolve(Zarr, lat_diff2_weight_6)/dlat_km/dlat_km
-            self.lplc=diff2_lon+diff2_lat
-            self.lplc=self.lplc[1:-1, 1:-1]
+                diff2_lon   = convolve(Zarr, lon_diff2_weight_6)/dlon_km/dlon_km
+                diff2_lat   = convolve(Zarr, lat_diff2_weight_6)/dlat_km/dlat_km
+            self.lplc       = diff2_lon+diff2_lat
+            self.lplc       = self.lplc[1:-1, 1:-1]
         elif method=='green':
             try:
-                grad_y=self.grad[0]; grad_x=self.grad[1]
+                grad_y      = self.grad[0]
+                grad_x      = self.grad[1]
             except:
-                self.gradient('default'); self.cut_edge(1,1)
-                grad_y=self.grad[0]; grad_x=self.grad[1]
-            grad_xp=grad_x[1:-1, 2:];  grad_xn=grad_x[1:-1, :-2]
-            grad_yp=grad_y[2:, 1:-1];  grad_yn=grad_y[:-2, 1:-1]
-            dlat_km=self.dlat_kmArr[1:-1, 1:-1]; dlon_km=self.dlon_kmArr[1:-1, 1:-1]
-            loopsum=(grad_xp - grad_xn)*dlat_km + (grad_yp - grad_yn)*dlon_km
-            area=dlat_km*dlon_km
-            lplc = loopsum/area
-            self.lplc=lplc
+                self.gradient('default')
+                self.cut_edge(1,1)
+                grad_y      = self.grad[0]
+                grad_x      = self.grad[1]
+            grad_xp         = grad_x[1:-1, 2:];  grad_xn=grad_x[1:-1, :-2]
+            grad_yp         = grad_y[2:, 1:-1];  grad_yn=grad_y[:-2, 1:-1]
+            dlat_km         = self.dlat_kmArr[1:-1, 1:-1]; dlon_km=self.dlon_kmArr[1:-1, 1:-1]
+            loopsum         = (grad_xp - grad_xn)*dlat_km + (grad_yp - grad_yn)*dlon_km
+            area            = dlat_km*dlon_km
+            lplc            = loopsum/area
+            self.lplc       = lplc
         if verbose:
             print 'max lplc:',self.lplc.max(), 'min lplc:',self.lplc.min()
         return
@@ -371,36 +375,36 @@ class Field2d(object):
     def interp_surface(self, workingdir, outfname, tension=0.0):
         """Interpolate input data to grid point with gmt surface command
         =======================================================================================
-        Input Parameters:
+        ::: input parameters :::
         workingdir  - working directory
         outfname    - output file name for interpolation
         tension     - input tension for gmt surface(0.0-1.0)
         ---------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         self.Zarr   - interpolated field data
         =======================================================================================
         """
         if not os.path.isdir(workingdir):
             os.makedirs(workingdir)
-        OutArr=np.append(self.lonArrIn, self.latArrIn)
-        OutArr=np.append(OutArr, self.ZarrIn)
-        OutArr=OutArr.reshape(3, self.lonArrIn.size)
-        OutArr=OutArr.T
+        OutArr      = np.append(self.lonArrIn, self.latArrIn)
+        OutArr      = np.append(OutArr, self.ZarrIn)
+        OutArr      = OutArr.reshape(3, self.lonArrIn.size)
+        OutArr      = OutArr.T
         np.savetxt(workingdir+'/'+outfname, OutArr, fmt='%g')
-        fnameHD=workingdir+'/'+outfname+'.HD'
-        tempGMT=workingdir+'/'+outfname+'_GMT.sh'
-        grdfile=workingdir+'/'+outfname+'.grd'
+        fnameHD     = workingdir+'/'+outfname+'.HD'
+        tempGMT     = workingdir+'/'+outfname+'_GMT.sh'
+        grdfile     = workingdir+'/'+outfname+'.grd'
         with open(tempGMT,'wb') as f:
-            REG='-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
+            REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
             f.writelines('gmtset MAP_FRAME_TYPE fancy \n')
             f.writelines('surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
             f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
         call(['bash', tempGMT])
         os.remove(grdfile)
         os.remove(tempGMT)
-        Inarray=np.loadtxt(fnameHD)
-        ZarrIn=Inarray[:,2]
-        self.Zarr=(ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
+        inArr       = np.loadtxt(fnameHD)
+        ZarrIn      = inArr[:, 2]
+        self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
         return
     
     def check_curvature(self, workingdir, outpfx='', threshold=0.005):
@@ -409,7 +413,7 @@ class Field2d(object):
         Points at boundaries will be discarded.
         Two interpolation schemes with different tension (0, 0.2) will be applied to the quality controlled field data file. 
         =====================================================================================================================
-        Input parameters:
+        ::: input parameters :::
         workingdir  - working directory
         threshold   - threshold value for Laplacian
         ---------------------------------------------------------------------------------------------------------------------
@@ -425,23 +429,23 @@ class Field2d(object):
         self.Laplacian(method='convolve', order=4)
         self.cut_edge(1,1)
         # quality control
-        LonLst=self.lonArr.reshape(self.lonArr.size)
-        LatLst=self.latArr.reshape(self.latArr.size)
-        TLst=self.Zarr.reshape(self.Zarr.size)
-        lplc = self.lplc.reshape(self.lplc.size)
-        index = np.where((lplc>-threshold)*(lplc<threshold))[0]
-        LonLst=LonLst[index]
-        LatLst=LatLst[index]
-        TLst=TLst[index]
+        LonLst  = self.lonArr.reshape(self.lonArr.size)
+        LatLst  = self.latArr.reshape(self.latArr.size)
+        TLst    = self.Zarr.reshape(self.Zarr.size)
+        lplc    = self.lplc.reshape(self.lplc.size)
+        index   = np.where((lplc>-threshold)*(lplc<threshold))[0]
+        LonLst  = LonLst[index]
+        LatLst  = LatLst[index]
+        TLst    = TLst[index]
         # output to txt file
-        outfname=workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
-        TfnameHD=outfname+'.HD'
+        outfname= workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
+        TfnameHD= outfname+'.HD'
         self._write_txt(fname=outfname, outlon=LonLst, outlat=LatLst, outZ=TLst)
         # interpolate with gmt surface
-        tempGMT=workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1_GMT.sh'
-        grdfile=workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.grd'
+        tempGMT = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1_GMT.sh'
+        grdfile = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.grd'
         with open(tempGMT,'wb') as f:
-            REG='-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
+            REG = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
             f.writelines('gmtset MAP_FRAME_TYPE fancy \n')
             f.writelines('surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
             f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, TfnameHD ))
@@ -458,7 +462,7 @@ class Field2d(object):
         Generate Slowness Maps from Travel Time Maps.
         Two interpolated travel time file with different tension will be used for quality control.
         =====================================================================================================================
-        Input parameters:
+        ::: input parameters :::
         workingdir      - working directory
         evlo, evla      - event location
         nearneighbor    - do near neighbor quality control or not

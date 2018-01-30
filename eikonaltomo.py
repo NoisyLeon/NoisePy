@@ -98,68 +98,67 @@ class EikonalTomoDataSet(h5py.File):
         """
         if fieldtype!='Tph' and fieldtype!='Tgr':
             raise ValueError('Wrong field type: '+fieldtype+' !')
-        create_group=False
+        create_group        = False
         while (not create_group):
             try:
-                group=self.create_group( name = 'Eikonal_run_'+str(runid) )
-                create_group=True
+                group       = self.create_group( name = 'Eikonal_run_'+str(runid) )
+                create_group= True
             except:
-                runid+=1
+                runid       += 1
                 continue
         group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
-        inDbase=pyasdf.ASDFDataSet(inasdffname)
-        pers = self.attrs['period_array']
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        dlon=self.attrs['dlon']
-        dlat=self.attrs['dlat']
-        fdict={ 'Tph': 2, 'Tgr': 3}
-        evLst=inDbase.waveforms.list()
+        inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        pers                = self.attrs['period_array']
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        dlon                = self.attrs['dlon']
+        dlat                = self.attrs['dlat']
+        fdict               = { 'Tph': 2, 'Tgr': 3}
+        evLst               = inDbase.waveforms.list()
         for per in pers:
             print 'Computing gradient for: '+str(per)+' sec'
-            del_per=per-int(per)
+            del_per         = per-int(per)
             if del_per==0.:
-                persfx=str(int(per))+'sec'
+                persfx      = str(int(per))+'sec'
             else:
-                dper=str(del_per)
-                persfx=str(int(per))+'sec'+dper.split('.')[1]
-            working_per=workingdir+'/'+str(per)+'sec'
-            per_group=group.create_group( name='%g_sec'%( per ) )
+                dper        = str(del_per)
+                persfx      = str(int(per))+'sec'+dper.split('.')[1]
+            working_per     = workingdir+'/'+str(per)+'sec'
+            per_group       = group.create_group( name='%g_sec'%( per ) )
             for evid in evLst:
-                netcode1, stacode1=evid.split('.')
+                netcode1, stacode1  = evid.split('.')
                 try:
-                    subdset = inDbase.auxiliary_data[data_type][netcode1][stacode1][channel][persfx]
+                    subdset         = inDbase.auxiliary_data[data_type][netcode1][stacode1][channel][persfx]
                 except KeyError:
-                    print 'No travel time field for: '+evid
+                    print ('No travel time field for: '+evid)
                     continue
-                if verbose: print 'Event: '+evid
-                lat1, elv1, lon1=inDbase.waveforms[evid].coordinates.values()
+                if verbose:
+                    print ('Event: '+evid)
+                lat1, elv1, lon1    = inDbase.waveforms[evid].coordinates.values()
                 if lon1<0.:
-                    lon1+=360.
-                dataArr = subdset.data.value
-                field2d=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
-                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=lon1, evla=lat1, fieldtype=fieldtype)
-                        # minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, fieldtype=fieldtype)
-
-                Zarr=dataArr[:, fdict[fieldtype]]
-                distArr=dataArr[:, 5]
+                    lon1            += 360.
+                dataArr             = subdset.data.value
+                field2d             = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=lon1, evla=lat1, fieldtype=fieldtype)
+                Zarr                = dataArr[:, fdict[fieldtype]]
+                distArr             = dataArr[:, 5]
                 field2d.read_array(lonArr=np.append(lon1, dataArr[:,0]), latArr=np.append(lat1, dataArr[:,1]), ZarrIn=np.append(0., distArr/Zarr) )
-                outfname=evid+'_'+fieldtype+'_'+channel+'.lst'
+                outfname            = evid+'_'+fieldtype+'_'+channel+'.lst'
                 field2d.interp_surface(workingdir=working_per, outfname=outfname)
                 field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
                 field2d.gradient_qc(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
                 # save data to hdf5 dataset
-                event_group=per_group.create_group(name=evid)
+                event_group         = per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=lon1)
                 event_group.attrs.create(name = 'evla', data=lat1)
-                appVdset     = event_group.create_dataset(name='appV', data=field2d.appV)
-                reason_ndset = event_group.create_dataset(name='reason_n', data=field2d.reason_n)
-                proAngledset = event_group.create_dataset(name='proAngle', data=field2d.proAngle)
-                azdset       = event_group.create_dataset(name='az', data=field2d.az)
-                bazdset      = event_group.create_dataset(name='baz', data=field2d.baz)
-                Tdset        = event_group.create_dataset(name='travelT', data=field2d.Zarr)
+                appVdset            = event_group.create_dataset(name='appV', data=field2d.appV)
+                reason_ndset        = event_group.create_dataset(name='reason_n', data=field2d.reason_n)
+                proAngledset        = event_group.create_dataset(name='proAngle', data=field2d.proAngle)
+                azdset              = event_group.create_dataset(name='az', data=field2d.az)
+                bazdset             = event_group.create_dataset(name='baz', data=field2d.baz)
+                Tdset               = event_group.create_dataset(name='travelT', data=field2d.Zarr)
         if deletetxt:
             shutil.rmtree(workingdir)
         return

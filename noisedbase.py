@@ -1613,8 +1613,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 field_lst.append(np.array([]))
                 Nfplst.append(0)
             lat1, elv1, lon1    = self.waveforms[staid1].coordinates.values()
-            if verbose:
-                print 'Getting field data for: '+staid1
+            Ndata       = 0
             for staid2 in staLst:
                 if staid1==staid2:
                     continue
@@ -1627,6 +1626,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         subdset     = self.auxiliary_data[data_type][netcode2][stacode2][netcode1][stacode1][channel]
                     except:
                         continue
+                Ndata               +=1
                 lat2, elv2, lon2    = self.waveforms[staid2].coordinates.values()
                 dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
                 dist                = dist/1000.
@@ -1636,15 +1636,16 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     lon2    += 360.
                 data                = subdset.data.value
                 index               = subdset.parameters
-                for iper in xrange(pers.size):
+                # loop over periods
+                for iper in range(pers.size):
                     per     = pers[iper]
                     if dist < 2.*per*3.5:
                         continue
                     ind_per = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
-                        raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
-                    pvel    = data[index['Vph']][ind_per]
-                    gvel    = data[index['Vgr']][ind_per]
+                        raise KeyError('No interpolated dispersion curve data for period='+str(per)+' sec!')
+                    pvel    = data[index['C']][ind_per]
+                    gvel    = data[index['U']][ind_per]
                     snr     = data[index['snr']][ind_per]
                     inbound = data[index['inbound']][ind_per]
                     # quality control
@@ -1661,24 +1662,26 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     field_lst[iper] = np.append(field_lst[iper], snr)
                     field_lst[iper] = np.append(field_lst[iper], dist)
                     Nfplst[iper]    += 1
+            if verbose:
+                print 'Getting field data for: '+staid1+', '+str(Ndata)+' paths'
             # end of reading data from all receivers, taking staid1 as virtual source
-            if outdir!=None:
+            if outdir is not None:
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir)
             staid_aux   = netcode1+'/'+stacode1+'/'+channel
-            for iper in xrange(pers.size):
-                per             = pers[iper]
-                del_per         = per-int(per)
+            for iper in range(pers.size):
+                per                 = pers[iper]
+                del_per             = per-int(per)
                 if field_lst[iper].size==0:
                     continue
-                field_lst[iper] = field_lst[iper].reshape(Nfplst[iper], 6)
+                field_lst[iper]     = field_lst[iper].reshape(Nfplst[iper], 6)
                 if del_per==0.:
-                    staid_aux_per=staid_aux+'/'+str(int(per))+'sec'
+                    staid_aux_per   =staid_aux+'/'+str(int(per))+'sec'
                 else:
                     dper            = str(del_per)
                     staid_aux_per   = staid_aux+'/'+str(int(per))+'sec'+dper.split('.')[1]
                 self.add_auxiliary_data(data=field_lst[iper], data_type='Field'+data_type, path=staid_aux_per, parameters=outindex)
-                if outdir is None:
+                if outdir is not None:
                     if not os.path.isdir(outdir+'/'+str(per)+'sec'):
                         os.makedirs(outdir+'/'+str(per)+'sec')
                     txtfname        = outdir+'/'+str(per)+'sec'+'/'+staid1+'_'+str(per)+'.txt'
