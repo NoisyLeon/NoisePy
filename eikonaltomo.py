@@ -54,7 +54,8 @@ def _get_azi_weight(aziArr, validArr):
 
 class EikonalTomoDataSet(h5py.File):
     
-    def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), dlon=0.2, dlat=0.2):
+    def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), dlon=0.2, dlat=0.2, \
+                             nlat_grad=1, nlon_grad=1, nlat_lplc=2, nlon_lplc=2):
         """
         Set input parameters for tomographic inversion.
         =================================================================================================================
@@ -79,6 +80,10 @@ class EikonalTomoDataSet(h5py.File):
         Nlat        = (maxlat-minlat)/dlat+1
         self.attrs.create(name = 'Nlon', data=Nlon)
         self.attrs.create(name = 'Nlat', data=Nlat)
+        self.attrs.create(name = 'nlat_grad', data=nlat_grad)
+        self.attrs.create(name = 'nlon_grad', data=nlon_grad)
+        self.attrs.create(name = 'nlat_lplc', data=nlat_lplc)
+        self.attrs.create(name = 'nlon_lplc', data=nlon_lplc)
         return
     
     def xcorr_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, deletetxt=True, verbose=True):
@@ -115,6 +120,10 @@ class EikonalTomoDataSet(h5py.File):
         maxlat              = self.attrs['maxlat']
         dlon                = self.attrs['dlon']
         dlat                = self.attrs['dlat']
+        nlat_grad           = self.attrs['nlat_grad']
+        nlon_grad           = self.attrs['nlon_grad']
+        nlat_lplc           = self.attrs['nlat_lplc']
+        nlon_lplc           = self.attrs['nlon_lplc']
         fdict               = { 'Tph': 2, 'Tgr': 3}
         evLst               = inDbase.waveforms.list()
         for per in pers:
@@ -141,7 +150,8 @@ class EikonalTomoDataSet(h5py.File):
                     lon1            += 360.
                 dataArr             = subdset.data.value
                 field2d             = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
-                                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=lon1, evla=lat1, fieldtype=fieldtype)
+                                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=lon1, evla=lat1, fieldtype=fieldtype, \
+                                        nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
                 Zarr                = dataArr[:, fdict[fieldtype]]
                 distArr             = dataArr[:, 5]
                 field2d.read_array(lonArr=np.append(lon1, dataArr[:,0]), latArr=np.append(lat1, dataArr[:,1]), ZarrIn=np.append(0., distArr/Zarr) )
@@ -159,6 +169,7 @@ class EikonalTomoDataSet(h5py.File):
                 azdset              = event_group.create_dataset(name='az', data=field2d.az)
                 bazdset             = event_group.create_dataset(name='baz', data=field2d.baz)
                 Tdset               = event_group.create_dataset(name='travelT', data=field2d.Zarr)
+                
         if deletetxt:
             shutil.rmtree(workingdir)
         return
@@ -183,100 +194,118 @@ class EikonalTomoDataSet(h5py.File):
         """
         if fieldtype!='Tph' and fieldtype!='Tgr':
             raise ValueError('Wrong field type: '+fieldtype+' !')
-        create_group=False
+        create_group        = False
         while (not create_group):
             try:
-                group=self.create_group( name = 'Eikonal_run_'+str(runid) )
-                create_group=True
+                group       = self.create_group( name = 'Eikonal_run_'+str(runid) )
+                create_group= True
             except:
-                runid+=1
+                runid       += 1
                 continue
         group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
-        inDbase=pyasdf.ASDFDataSet(inasdffname)
-        pers = self.attrs['period_array']
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        dlon=self.attrs['dlon']
-        dlat=self.attrs['dlat']
-        fdict={ 'Tph': 2, 'Tgr': 3}
-        evLst=inDbase.waveforms.list()
-        fieldLst=[]
+        inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        pers                = self.attrs['period_array']
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        dlon                = self.attrs['dlon']
+        dlat                = self.attrs['dlat']
+        nlat_grad           = self.attrs['nlat_grad']
+        nlon_grad           = self.attrs['nlon_grad']
+        nlat_lplc           = self.attrs['nlat_lplc']
+        nlon_lplc           = self.attrs['nlon_lplc']
+        fdict               = { 'Tph': 2, 'Tgr': 3}
+        evLst               = inDbase.waveforms.list()
+        fieldLst            = []
+        #------------------------
         # prepare data
+        #------------------------
         for per in pers:
             print 'Preparing data for gradient computation of '+str(per)+' sec'
-            del_per=per-int(per)
+            del_per         = per-int(per)
             if del_per==0.:
-                persfx=str(int(per))+'sec'
+                persfx      = str(int(per))+'sec'
             else:
-                dper=str(del_per)
-                persfx=str(int(per))+'sec'+dper.split('.')[1]
-            working_per=workingdir+'/'+str(per)+'sec'
-            if not os.path.isdir(working_per): os.makedirs(working_per)
+                dper        = str(del_per)
+                persfx      = str(int(per))+'sec'+dper.split('.')[1]
+            working_per     = workingdir+'/'+str(per)+'sec'
+            if not os.path.isdir(working_per):
+                os.makedirs(working_per)
             for evid in evLst:
-                netcode1, stacode1=evid.split('.')
+                netcode1, stacode1  = evid.split('.')
                 try:
-                    subdset = inDbase.auxiliary_data[data_type][netcode1][stacode1][channel][persfx]
+                    subdset         = inDbase.auxiliary_data[data_type][netcode1][stacode1][channel][persfx]
                 except KeyError:
                     print 'No travel time field for: '+evid
                     continue
-                lat1, elv1, lon1=inDbase.waveforms[evid].coordinates.values()
+                lat1, elv1, lon1    = inDbase.waveforms[evid].coordinates.values()
                 if lon1<0.:
-                    lon1+=360.
-                dataArr = subdset.data.value
-                field2d=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon, minlat=minlat, maxlat=maxlat, dlat=dlat,
-                        period=per, evlo=lon1, evla=lat1, fieldtype=fieldtype, evid=evid)
-                Zarr=dataArr[:, fdict[fieldtype]]
-                distArr=dataArr[:, 5]
+                    lon1            += 360.
+                dataArr             = subdset.data.value
+                field2d             = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon, minlat=minlat, maxlat=maxlat, dlat=dlat,
+                                        period=per, evlo=lon1, evla=lat1, fieldtype=fieldtype, evid=evid, \
+                                               nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
+                Zarr                = dataArr[:, fdict[fieldtype]]
+                distArr             = dataArr[:, 5]
                 field2d.read_array(lonArr=np.append(lon1, dataArr[:,0]), latArr=np.append(lat1, dataArr[:,1]), ZarrIn=np.append(0., distArr/Zarr) )
                 fieldLst.append(field2d)
+        #-----------------------------------------
         # Computing gradient with multiprocessing
+        #-----------------------------------------
         if len(fieldLst) > subsize:
-            Nsub = int(len(fieldLst)/subsize)
-            for isub in xrange(Nsub):
+            Nsub                    = int(len(fieldLst)/subsize)
+            for isub in range(Nsub):
                 print 'Subset:', isub,'in',Nsub,'sets'
-                cfieldLst=fieldLst[isub*subsize:(isub+1)*subsize]
-                EIKONAL = partial(eikonal4mp, workingdir=workingdir, channel=channel)
-                pool = multiprocessing.Pool(processes=nprocess)
+                cfieldLst           = fieldLst[isub*subsize:(isub+1)*subsize]
+                EIKONAL             = partial(eikonal4mp, workingdir=workingdir, channel=channel)
+                pool                = multiprocessing.Pool(processes=nprocess)
                 pool.map(EIKONAL, cfieldLst) #make our results with a map call
                 pool.close() #we are not adding any more processes
                 pool.join() #tell it to wait until all threads are done before going on
-            cfieldLst=fieldLst[(isub+1)*subsize:]
-            EIKONAL = partial(eikonal4mp, workingdir=workingdir, channel=channel)
-            pool = multiprocessing.Pool(processes=nprocess)
+            cfieldLst               = fieldLst[(isub+1)*subsize:]
+            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel)
+            pool                    = multiprocessing.Pool(processes=nprocess)
             pool.map(EIKONAL, cfieldLst) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
-            EIKONAL = partial(eikonal4mp, workingdir=workingdir, channel=channel)
-            pool = multiprocessing.Pool(processes=nprocess)
+            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel)
+            pool                    = multiprocessing.Pool(processes=nprocess)
             pool.map(EIKONAL, fieldLst) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
+        #-----------------------------------------
         # Read data into hdf5 dataset
+        #-----------------------------------------
         for per in pers:
             print 'Reading gradient data for: '+str(per)+' sec'
-            working_per=workingdir+'/'+str(per)+'sec'
-            per_group=group.create_group( name='%g_sec'%( per ) )
+            working_per = workingdir+'/'+str(per)+'sec'
+            per_group   = group.create_group( name='%g_sec'%( per ) )
             for evid in evLst:
-                infname=working_per+'/'+evid+'_field2d.npz'
-                if not os.path.isfile(infname): print 'No data for:', evid; continue
-                InArr=np.load(infname)
-                appV=InArr['arr_0']; reason_n=InArr['arr_1']; proAngle=InArr['arr_2']
-                az=InArr['arr_3']; baz=InArr['arr_4']; Zarr=InArr['arr_5']
-                lat1, elv1, lon1=inDbase.waveforms[evid].coordinates.values()
+                infname = working_per+'/'+evid+'_field2d.npz'
+                if not os.path.isfile(infname):
+                    print 'No data for:', evid; continue
+                InArr           = np.load(infname)
+                appV            = InArr['arr_0']
+                reason_n        = InArr['arr_1']
+                proAngle        = InArr['arr_2']
+                az              = InArr['arr_3']
+                baz             = InArr['arr_4']
+                Zarr            = InArr['arr_5']
+                lat1, elv1, lon1= inDbase.waveforms[evid].coordinates.values()
                 # save data to hdf5 dataset
-                event_group=per_group.create_group(name=evid)
+                event_group     = per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=lon1)
                 event_group.attrs.create(name = 'evla', data=lat1)
-                appVdset     = event_group.create_dataset(name='appV', data=appV)
-                reason_ndset = event_group.create_dataset(name='reason_n', data=reason_n)
-                proAngledset = event_group.create_dataset(name='proAngle', data=proAngle)
-                azdset       = event_group.create_dataset(name='az', data=az)
-                bazdset      = event_group.create_dataset(name='baz', data=baz)
-                Tdset        = event_group.create_dataset(name='travelT', data=Zarr)
-        if deletetxt: shutil.rmtree(workingdir)
+                appVdset        = event_group.create_dataset(name='appV', data=appV)
+                reason_ndset    = event_group.create_dataset(name='reason_n', data=reason_n)
+                proAngledset    = event_group.create_dataset(name='proAngle', data=proAngle)
+                azdset          = event_group.create_dataset(name='az', data=az)
+                bazdset         = event_group.create_dataset(name='baz', data=baz)
+                Tdset           = event_group.create_dataset(name='travelT', data=Zarr)
+        if deletetxt:
+            shutil.rmtree(workingdir)
         return
     
     def quake_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='Z', data_type='FieldDISPpmf2interp',
@@ -557,22 +586,26 @@ class EikonalTomoDataSet(h5py.File):
             Dec 6th, 2016   - add function to use numba, faster and much less memory consumption
         =================================================================================================================
         """
-        pers = self.attrs['period_array']
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        dlon=self.attrs['dlon']
-        dlat=self.attrs['dlat']
-        Nlon=self.attrs['Nlon']
-        Nlat=self.attrs['Nlat']
-        group=self['Eikonal_run_'+str(runid)]
+        pers            = self.attrs['period_array']
+        minlon          = self.attrs['minlon']
+        maxlon          = self.attrs['maxlon']
+        minlat          = self.attrs['minlat']
+        maxlat          = self.attrs['maxlat']
+        dlon            = self.attrs['dlon']
+        dlat            = self.attrs['dlat']
+        Nlon            = self.attrs['Nlon']
+        Nlat            = self.attrs['Nlat']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        nlat_lplc       = self.attrs['nlat_lplc']
+        nlon_lplc       = self.attrs['nlon_lplc']
+        group           = self['Eikonal_run_'+str(runid)]
         try:
-            group_out=self.create_group( name = 'Eikonal_stack_'+str(runid) )
+            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
         except ValueError:
             warnings.warn('Eikonal_stack_'+str(runid)+' exists! Will be recomputed!', UserWarning, stacklevel=1)
             del self['Eikonal_stack_'+str(runid)]
-            group_out=self.create_group( name = 'Eikonal_stack_'+str(runid) )
+            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
         group_out.attrs.create(name = 'anisotropic', data=anisotropic)
         group_out.attrs.create(name = 'N_bin', data=N_bin)
         group_out.attrs.create(name = 'minazi', data=minazi)
@@ -580,29 +613,31 @@ class EikonalTomoDataSet(h5py.File):
         group_out.attrs.create(name = 'fieldtype', data=group.attrs['fieldtype'])
         for per in pers:
             print 'Stacking Eikonal results for: '+str(per)+' sec'
-            per_group=group['%g_sec'%( per )]
-            Nevent=len(per_group.keys())
-            Nmeasure=np.zeros((Nlat-4, Nlon-4))
-            weightArr=np.zeros((Nevent, Nlat-4, Nlon-4))
-            slownessArr=np.zeros((Nevent, Nlat-4, Nlon-4))
-            aziArr=np.zeros((Nevent, Nlat-4, Nlon-4), dtype='float32')
-            reason_nArr=np.zeros((Nevent, Nlat-4, Nlon-4))
-            validArr=np.zeros((Nevent, Nlat-4, Nlon-4), dtype='float32')
-            for iev in xrange(Nevent):
-                evid=per_group.keys()[iev]
-                event_group=per_group[evid]
-                reason_n=event_group['reason_n'].value
-                az=event_group['az'].value
-                oneArr=np.ones((Nlat-4, Nlon-4))
-                oneArr[reason_n!=0]=0
-                Nmeasure+=oneArr
-                if helmholtz: velocity=event_group['corV'].value
-                else: velocity=event_group['appV'].value
-                slowness=np.zeros((Nlat-4, Nlon-4))
-                slowness[velocity!=0]=1./velocity[velocity!=0]
-                slownessArr[iev, :, :]=slowness
-                reason_nArr[iev, :, :]=reason_n
-                aziArr[iev, :, :]=az
+            per_group   = group['%g_sec'%( per )]
+            Nevent      = len(per_group.keys())
+            Nmeasure    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.float32)
+            weightArr   = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            slownessArr = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            aziArr      = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
+            reason_nArr = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            validArr    = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
+            for iev in range(Nevent):
+                evid                = per_group.keys()[iev]
+                event_group         = per_group[evid]
+                reason_n            = event_group['reason_n'].value
+                az                  = event_group['az'].value
+                oneArr              = np.ones((Nlat-4, Nlon-4))
+                oneArr[reason_n!=0] = 0
+                Nmeasure            += oneArr
+                if helmholtz:
+                    velocity            = event_group['corV'].value
+                else:   
+                    velocity            = event_group['appV'].value
+                slowness                = np.zeros((Nlat-4, Nlon-4))
+                slowness[velocity!=0]   = 1./velocity[velocity!=0]
+                slownessArr[iev, :, :]  = slowness
+                reason_nArr[iev, :, :]  = reason_n
+                aziArr[iev, :, :]       = az
             if Nmeasure.max()<15:
                 print 'No enough measurements for: '+str(per)+' sec'
                 continue
@@ -919,12 +954,12 @@ class EikonalTomoDataSet(h5py.File):
         
 
 def eikonal4mp(infield, workingdir, channel):
-    working_per=workingdir+'/'+str(infield.period)+'sec'
-    outfname=infield.evid+'_'+infield.fieldtype+'_'+channel+'.lst'
+    working_per     = workingdir+'/'+str(infield.period)+'sec'
+    outfname        = infield.evid+'_'+infield.fieldtype+'_'+channel+'.lst'
     infield.interp_surface(workingdir=working_per, outfname=outfname)
     infield.check_curvature(workingdir=working_per, outpfx=infield.evid+'_'+channel+'_')
     infield.gradient_qc(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
-    outfname_npz=working_per+'/'+infield.evid+'_field2d'
+    outfname_npz    = working_per+'/'+infield.evid+'_field2d'
     infield.write_binary(outfname=outfname_npz)
     return
 

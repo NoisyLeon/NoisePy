@@ -17,6 +17,8 @@ import random
 import copy
 import colormaps
 import pyasdf
+import math
+import numba
 
 lon_diff_weight_2 = np.array([[1., 0., -1.]])/2.
 lat_diff_weight_2 = lon_diff_weight_2.T
@@ -52,6 +54,140 @@ def _write_txt(fname, outlon, outlat, outZ):
     np.savetxt(fname, outArr, fmt='%g')
     return
 
+
+@numba.jit(numba.float64(numba.float64, numba.float64, numba.float64, numba.float64))
+def vincenty_inverse(lat1, lon1, lat2, lon2):
+    """
+    Vincenty's formula (inverse method) to calculate the distance (in
+    kilometers) between two points on the surface of a spheroid
+    """
+    # WGS 84
+    a                       = 6378137  # meters
+    f                       = 1 / 298.257223563
+    b                       = 6356752.314245  # meters; b = (1 - f)a
+    MAX_ITERATIONS          = 200
+    CONVERGENCE_THRESHOLD   = 1e-12  # .000,000,000,001
+    # short-circuit coincident points
+    if lon1 == lon2 and lat1 == lat2:
+        return 0.0
+
+    U1      = math.atan((1 - f) * math.tan(math.radians(lat1)))
+    U2      = math.atan((1 - f) * math.tan(math.radians(lat2)))
+    L       = math.radians(lon2 - lon1)
+    Lambda  = L
+
+    sinU1   = math.sin(U1)
+    cosU1   = math.cos(U1)
+    sinU2   = math.sin(U2)
+    cosU2   = math.cos(U2)
+
+    for iteration in range(MAX_ITERATIONS):
+        sinLambda       = math.sin(Lambda)
+        cosLambda       = math.cos(Lambda)
+        sinSigma        = math.sqrt((cosU2 * sinLambda) ** 2 +
+                             (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda) ** 2)
+        if sinSigma == 0:
+            return 0.0  # coincident points
+        cosSigma        = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda
+        sigma           = math.atan2(sinSigma, cosSigma)
+        sinAlpha        = cosU1 * cosU2 * sinLambda / sinSigma
+        cosSqAlpha      = 1 - sinAlpha ** 2
+        if cosSqAlpha == 0.:
+            cos2SigmaM  = 0.
+        C               = f / 16 * cosSqAlpha * (4 + f * (4 - 3 * cosSqAlpha))
+        LambdaPrev      = Lambda
+        Lambda          = L + (1 - C) * f * sinAlpha * (sigma + C * sinSigma *
+                                               (cos2SigmaM + C * cosSigma *
+                                                (-1 + 2 * cos2SigmaM ** 2)))
+        if abs(Lambda - LambdaPrev) < CONVERGENCE_THRESHOLD:
+            break  # successful convergence
+    else:
+        return 20000.  # failure to converge
+    uSq         = cosSqAlpha * (a ** 2 - b ** 2) / (b ** 2)
+    A           = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)))
+    B           = uSq / 1024 * (256 + uSq * (-128 + uSq * (74 - 47 * uSq)))
+    deltaSigma  = B * sinSigma * (cos2SigmaM + B / 4 * (cosSigma *
+                 (-1 + 2 * cos2SigmaM ** 2) - B / 6 * cos2SigmaM *
+                 (-3 + 4 * sinSigma ** 2) * (-3 + 4 * cos2SigmaM ** 2)))
+    s           = b * A * (sigma - deltaSigma)
+    s           /= 1000.  # meters to kilometers
+    return round(s, 6)
+
+
+@numba.jit(numba.float64(numba.float64, numba.float64, numba.float64, numba.float64))
+def distance(lat1, lon1, lat2, lon2, ):
+    r       = 6371.009
+    lat1    = math.radians(lat1)
+    lon1    = math.radians(lon1)
+    lat2    = math.radians(lat2)
+    lon2    = math.radians(lon2)
+    londelta = lon2 - lon1
+    a = math.pow(math.cos(lat2) * math.sin(londelta), 2) + math.pow(math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(londelta), 2)
+    b = math.sin(lat1) * math.sin(lat2) + math.cos(lat1) * math.cos(lat2) * math.cos(londelta)
+    angle = math.atan2(math.sqrt(a), b)
+
+    return angle * r
+
+def _test_vincenty(N):
+    lat1    = np.float64((np.random.random(N)-0.5)*90.)
+    lat2    = np.float64((np.random.random(N)-0.5)*90.)
+    lon1    = np.float64((np.random.random(N))*360.)
+    lon2    = np.float64((np.random.random(N))*360.)
+    
+    az, baz, dist1   = geodist.inv(lon1, lat1, lon2, lat2)
+    dist2   = np.zeros(N, dtype=np.float64)
+    dist3   = np.zeros(N, dtype=np.float64)
+    for i in range(N):
+        dist3[i], az, baz                  = obspy.geodetics.gps2dist_azimuth(lat1[i], lon1[i], lat2[i], lon2[i])
+        # dist2[i] = vincenty_inverse(lat1[i], lon1[i], lat2[i], lon2[i])
+        dist2[i] = distance(lat1[i], lon1[i], lat2[i], lon2[i])
+    return  dist1/1000., dist2, dist3/1000.
+
+@numba.jit(numba.types.UniTuple(numba.float64[:, :], 2)(numba.float64[:, :], numba.float64[:, :], numba.float64[:], numba.float64[:], \
+        numba.float64[:], numba.float64[:],   numba.float64) )
+def _check_nearneighbor_station(fieldArr, reason_n, lons, lats, lonArrIn, latArrIn, cdist):
+    Nlat, Nlon          = reason_n.shape
+    Nin                 = lonArrIn.size
+    for ilat in xrange(Nlat):
+        for ilon in xrange(Nlon):
+            if reason_n[ilat, ilon]==1:
+                continue
+            lon         = lons[ilon]
+            lat         = lats[ilat]
+            marker_EN   = np.zeros((2,2), dtype=np.int32)
+            marker_nn   = 4
+            tflag       = False
+            for iv1 in xrange(Nin):
+                lon2    = lonArrIn[iv1]
+                lat2    = latArrIn[iv1]
+                dist    = distance(lat, lon, lat2, lon2)
+                if dist > cdist:
+                    continue
+                if lon2-lon<0:
+                    marker_E    = 0
+                else:
+                    marker_E    = 1
+                if lat2-lat<0:
+                    marker_N    = 0
+                else:
+                    marker_N    = 1
+                if marker_EN[marker_E , marker_N]==1:
+                    continue
+                # dist            = vincenty_inverse(lat, lon, lat2, lon2)
+                # az, baz, dist   = geodist.inv(lon, lat, lon2, lat2) # loninArr/latinArr are initial points
+                # dist            = dist/1000.
+                if dist< cdist*2 and dist >= 1:
+                    marker_nn   = marker_nn-1
+                    if marker_nn==0:
+                        tflag   = True
+                        break
+                    marker_EN[marker_E, marker_N]=1
+            if not tflag:
+                fieldArr[ilat, ilon]    = 0
+                reason_n[ilat, ilon]    = 2
+        
+    return fieldArr, reason_n
+
 class Field2d(object):
     """
     An object to analyze 2D spherical field data on Earth
@@ -68,7 +204,8 @@ class Field2d(object):
     in lons[i, j] or lats[i, j],  i->lat, j->lon
     ===========================================================================
     """
-    def __init__(self, minlon, maxlon, dlon, minlat, maxlat, dlat, period, evlo=float('inf'), evla=float('inf'), fieldtype='Tph', evid=''):
+    def __init__(self, minlon, maxlon, dlon, minlat, maxlat, dlat, period, evlo=float('inf'), evla=float('inf'), fieldtype='Tph',\
+                 evid='', nlat_grad=1, nlon_grad=1, nlat_lplc=2, nlon_lplc=2):
         self.Nlon               = int(round((maxlon-minlon)/dlon)+1)
         self.Nlat               = int(round((maxlat-minlat)/dlat)+1)
         self.dlon               = dlon
@@ -90,10 +227,10 @@ class Field2d(object):
         #-----------------------------------------------------------
         # parameters indicate edge cutting for gradient/lplc arrays
         #-----------------------------------------------------------
-        self.nlon_grad          = 1
-        self.nlat_grad          = 1
-        self.nlon_lplc          = 2
-        self.nlat_lplc          = 2
+        self.nlon_grad          = nlon_grad
+        self.nlat_grad          = nlat_grad
+        self.nlon_lplc          = nlon_lplc
+        self.nlat_lplc          = nlat_lplc
         return
     
     def copy(self):
@@ -412,7 +549,7 @@ class Field2d(object):
                 grad_y          = self.grad[0]
                 grad_x          = self.grad[1]
             except:
-                self.gradient('default')
+                self.gradient('diff')
                 grad_y          = self.grad[0]
                 grad_x          = self.grad[1]
             grad_xp             = grad_x[1:-1, 2:]
@@ -451,9 +588,9 @@ class Field2d(object):
     def get_appV(self):
         """Get the apparent velocity from gradient
         """
-        slowness=np.sqrt ( self.grad[0] ** 2 + self.grad[1] ** 2)
-        slowness[slowness==0]=0.3
-        self.appV = 1./slowness
+        slowness                = np.sqrt ( self.grad[0] ** 2 + self.grad[1] ** 2)
+        slowness[slowness==0]   = 0.3
+        self.appV               = 1./slowness
         return
       
     def check_curvature(self, workingdir, outpfx='', threshold=0.005):
@@ -509,7 +646,161 @@ class Field2d(object):
         os.remove(tempGMT)
         return 
         
-    def gradient_qc(self, workingdir, inpfx='', nearneighbor=True, cdist=None, verbose=False):
+    def gradient_qc(self, workingdir, inpfx='', nearneighbor=True, cdist=None):
+        """
+        Generate Slowness Maps from Travel Time Maps.
+        Two interpolated travel time file with different tension will be used for quality control.
+        =====================================================================================================================
+        ::: input parameters :::
+        workingdir      - working directory
+        evlo, evla      - event location
+        nearneighbor    - do near neighbor quality control or not
+        cdist           - distance for quality control, default is 12*period
+        ::: output format :::
+        outdir/slow_azi_stacode.pflag.txt.HD.2.v2 - Slowness map
+        ---------------------------------------------------------------------------------------------------------------------
+        Note: edge has been cutting twice, one in check_curvature 
+        =====================================================================================================================
+        """
+        if cdist is None:
+            cdist   = 12.*self.period
+        evlo        = self.evlo
+        evla        = self.evla
+        # Read data,
+        # v1: data that pass check_curvature criterion
+        # v1HD and v1HD02: interpolated v1 data with tension = 0. and 0.2
+        fnamev1     = workingdir+'/'+inpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
+        fnamev1HD   = fnamev1+'.HD'
+        fnamev1HD02 = fnamev1HD+'_0.2'
+        InarrayV1   = np.loadtxt(fnamev1)
+        loninV1     = InarrayV1[:,0]
+        latinV1     = InarrayV1[:,1]
+        fieldin     = InarrayV1[:,2]
+        Inv1HD      = np.loadtxt(fnamev1HD)
+        lonv1HD     = Inv1HD[:,0]
+        latv1HD     = Inv1HD[:,1]
+        fieldv1HD   = Inv1HD[:,2]
+        Inv1HD02    = np.loadtxt(fnamev1HD02)
+        lonv1HD02   = Inv1HD02[:,0]
+        latv1HD02   = Inv1HD02[:,1]
+        fieldv1HD02 = Inv1HD02[:,2]
+        # Set field value to be zero if there is large difference between v1HD and v1HD02
+        diffArr     = fieldv1HD-fieldv1HD02
+        fieldArr    = fieldv1HD*((diffArr<2.)*(diffArr>-2.)) 
+        fieldArr    = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1, :]
+        # reason_n 
+        #   0: accepted point
+        #   1: data point the has large difference between v1HD and v1HD02
+        #   2: data point that does not have near neighbor points at all E/W/N/S directions
+        #   3: slowness is too large/small
+        #   4: near a zero field data point
+        #   5: epicentral distance is too small
+        reason_n    = np.ones(fieldArr.size, dtype=np.int32)
+        reason_n1   = np.int32(reason_n*(diffArr>2.))
+        reason_n2   = np.int32(reason_n*(diffArr<-2.))
+        reason_n    = reason_n1+reason_n2
+        reason_n    = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
+        #-------------------------------------------------------------------------------------------------------
+        # check each data point if there are close-by four stations located at E/W/N/S directions respectively
+        #-------------------------------------------------------------------------------------------------------
+        if nearneighbor:
+            for ilat in range(self.Nlat):
+                for ilon in range(self.Nlon):
+                    if reason_n[ilat, ilon]==1:
+                        continue
+                    lon         = self.lon[ilon]
+                    lat         = self.lat[ilat]
+                    dlon_km     = self.dlon_km[ilat]
+                    dlat_km     = self.dlat_km[ilat]
+                    difflon     = abs(self.lonArrIn-lon)/self.dlon*dlon_km
+                    difflat     = abs(self.latArrIn-lat)/self.dlat*dlat_km
+                    index       = np.where((difflon<cdist)*(difflat<cdist))[0]
+                    marker_EN   = np.zeros((2,2), dtype=np.bool)
+                    marker_nn   = 4
+                    tflag       = False
+                    for iv1 in index:
+                        lon2    = self.lonArrIn[iv1]
+                        lat2    = self.latArrIn[iv1]
+                        if lon2-lon<0:
+                            marker_E    = 0
+                        else:
+                            marker_E    = 1
+                        if lat2-lat<0:
+                            marker_N    = 0
+                        else:
+                            marker_N    = 1
+                        if marker_EN[marker_E , marker_N]:
+                            continue
+                        az, baz, dist   = geodist.inv(lon, lat, lon2, lat2) # loninArr/latinArr are initial points
+                        dist            = dist/1000.
+                        if dist< cdist*2 and dist >= 1:
+                            marker_nn   = marker_nn-1
+                            if marker_nn==0:
+                                tflag   = True
+                                break
+                            marker_EN[marker_E, marker_N]   = True
+                    if not tflag:
+                        fieldArr[ilat, ilon]    = 0
+                        reason_n[ilat, ilon]    = 2
+        # Start to Compute Gradient
+        tfield                      = self.copy()
+        tfield.Zarr                 = fieldArr
+        tfield.gradient('diff')
+        # if one field point has zero value, reason_n for four near neighbor points will all be set to 4
+        tempZarr                    = tfield.Zarr[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        index0                      = np.where(tempZarr==0.)
+        ilatArr                     = index0[0] + 1
+        ilonArr                     = index0[1] + 1
+        reason_n[ilatArr+1, ilonArr]= 4
+        reason_n[ilatArr-1, ilonArr]= 4
+        reason_n[ilatArr, ilonArr+1]= 4
+        reason_n[ilatArr, ilonArr-1]= 4
+        # reduce size of reason_n to be the same shape as gradient arrays
+        reason_n                    = reason_n[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        # if slowness is too large/small, reason_n will be set to 3
+        slowness                    = np.sqrt(tfield.grad[0]**2 + tfield.grad[1]**2)
+        if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
+            reason_n[(slowness>0.6)*(reason_n==0)]  = 3
+            reason_n[(slowness<0.2)*(reason_n==0)]  = 3
+        #-------------------------------------
+        # computing propagation deflection
+        #-------------------------------------
+        indexvalid                              = np.where(reason_n==0)
+        diffaArr                                = np.zeros(reason_n.shape, dtype = np.float64)
+        latinArr                                = self.lat[indexvalid[0] + 1]
+        loninArr                                = self.lon[indexvalid[1] + 1]
+        evloArr                                 = np.ones(loninArr.size, dtype=np.float64)*evlo
+        evlaArr                                 = np.ones(loninArr.size, dtype=np.float64)*evla
+        az, baz, distevent                      = geodist.inv(loninArr, latinArr, evloArr, evlaArr) # loninArr/latinArr are initial points
+        distevent                               = distevent/1000.
+        az                                      = az + 180.
+        az                                      = 90.-az
+        baz                                     = 90.-baz
+        az[az>180.]                             = az[az>180.] - 360.
+        az[az<-180.]                            = az[az<-180.] + 360.
+        baz[baz>180.]                           = baz[baz>180.] - 360.
+        baz[baz<-180.]                          = baz[baz<-180.] + 360.
+        diffaArr[indexvalid[0], indexvalid[1]]  = tfield.proAngle[indexvalid[0], indexvalid[1]] - az
+        self.az                                 = np.zeros(self.proAngle.shape, dtype=np.float64)
+        self.az[indexvalid[0], indexvalid[1]]   = az
+        self.baz                                = np.zeros(self.proAngle.shape, dtype=np.float64)
+        self.baz[indexvalid[0], indexvalid[1]]  = baz
+        # if epicentral distance is too small, reason_n will be set to 5, and diffaArr will be 0.
+        tempArr                                 = diffaArr[indexvalid[0], indexvalid[1]]
+        tempArr[distevent<cdist+50.]            = 0.
+        diffaArr[indexvalid[0], indexvalid[1]]  = tempArr
+        diffaArr[diffaArr>180.]                 = diffaArr[diffaArr>180.]-360.
+        diffaArr[diffaArr<-180.]                = diffaArr[diffaArr<-180.]+360.
+        tempArr                                 = reason_n[indexvalid[0], indexvalid[1]]
+        tempArr[distevent<cdist+50.]            = 5
+        reason_n[indexvalid[0], indexvalid[1]]  = tempArr
+        self.diffaArr                           = diffaArr
+        self.get_appV()
+        self.reason_n                           = reason_n
+        self.grad                               = tfield.grad
+        return 
+    
+    def gradient_qc_new(self, workingdir, inpfx='', nearneighbor=True, cdist=None, verbose=False):
         """
         Generate Slowness Maps from Travel Time Maps.
         Two interpolated travel time file with different tension will be used for quality control.
@@ -553,108 +844,68 @@ class Field2d(object):
         fieldArr    = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1, :]
         # reason_n -> 0: accepted point 1: data point the has large difference between v1HD and v1HD02
         # 2: data point that does not have near neighbor points at all E/W/N/S directions
-        reason_n    = np.ones(fieldArr.size)
+        reason_n    = np.ones(fieldArr.size, dtype=np.int64)
         reason_n1   = reason_n*(diffArr>2.)
         reason_n2   = reason_n*(diffArr<-2.)
         reason_n    = reason_n1+reason_n2
         reason_n    = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
         # Nested loop, may need modification to speed the code up
         if nearneighbor:
-            if verbose:
-                print 'Start near neighbor quality control checking'
-            for ilat in range(self.Nlat):
-                for ilon in range(self.Nlon):
-                    if reason_n[ilat, ilon]==1:
-                        continue
-                    lon         = self.lon[ilon]
-                    lat         = self.lat[ilat]
-                    dlon_km     = self.dlon_km[ilat]
-                    dlat_km     = self.dlat_km[ilat]
-                    difflon     = abs(self.lonArrIn-lon)/self.dlon*dlon_km
-                    difflat     = abs(self.latArrIn-lat)/self.dlat*dlat_km
-                    index       = np.where((difflon<cdist)*(difflat<cdist))[0]
-                    marker_EN   = np.zeros((2,2))
-                    marker_nn   = 4
-                    tflag       = False
-                    for iv1 in index:
-                        lon2    = self.lonArrIn[iv1]
-                        lat2    = self.latArrIn[iv1]
-                        if lon2-lon<0:
-                            marker_E    = 0
-                        else:
-                            marker_E    = 1
-                        if lat2-lat<0:
-                            marker_N    = 0
-                        else:
-                            marker_N    = 1
-                        if marker_EN[marker_E , marker_N]==1:
-                            continue
-                        az, baz, dist   = geodist.inv(lon, lat, lon2, lat2) # loninArr/latinArr are initial points
-                        dist            = dist/1000.
-                        if dist< cdist*2 and dist >= 1:
-                            marker_nn   = marker_nn-1
-                            if marker_nn==0:
-                                tflag   = True
-                                break
-                            marker_EN[marker_E, marker_N]=1
-                    if not tflag:
-                        fieldArr[ilat, ilon]    = 0
-                        reason_n[ilat, ilon]    = 2
-            if verbose:
-                print 'End near neighbor quality control checking'
-        # Start to Compute Gradient
-        self.Zarr=fieldArr
-        self.gradient('default')
-        self.cut_edge(1, 1)
-        # if one field point has zero value, reason_n for four near neighbor points will all be set to 4
-        index0=np.where(self.Zarr==0)
-        ilatArr=index0[0]+1
-        ilonArr=index0[1]+1
-        reason_n[ilatArr+1, ilonArr]=4
-        reason_n[ilatArr-1, ilonArr]=4
-        reason_n[ilatArr, ilonArr+1]=4
-        reason_n[ilatArr, ilonArr-1]=4
-        reason_n=reason_n[1:-1,1:-1]
-        # if slowness is too large/small, reason_n will be set to 3
-        slowness=np.sqrt(self.grad[0]**2+self.grad[1]**2)
-        if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
-            reason_n[(slowness>0.6)*(reason_n==0)]=3
-            reason_n[(slowness<0.2)*(reason_n==0)]=3
-        if verbose: print 'Computing deflections'
-        indexvalid=np.where(reason_n==0)
-        diffaArr=np.zeros(reason_n.shape)
-        latinArr=self.lat[indexvalid[0]]
-        loninArr=self.lon[indexvalid[1]]
-        evloArr=np.ones(loninArr.size)*evlo
-        evlaArr=np.ones(loninArr.size)*evla
-        az, baz, distevent = geodist.inv(loninArr, latinArr, evloArr, evlaArr) # loninArr/latinArr are initial points
-        distevent=distevent/1000.
-        az = az + 180.
-        az = 90.-az
-        baz = 90.-baz
-        az[az>180.]=az[az>180.] - 360.
-        az[az<-180.]=az[az<-180.] + 360.
-        baz[baz>180.]=baz[baz>180.] - 360.
-        baz[baz<-180.]=baz[baz<-180.] + 360.
-        diffaArr[indexvalid[0], indexvalid[1]] = \
-            self.proAngle[indexvalid[0], indexvalid[1]] - az
-        self.az=np.zeros(self.proAngle.shape)
-        self.az[indexvalid[0], indexvalid[1]] = az
-        self.baz=np.zeros(self.proAngle.shape)
-        self.baz[indexvalid[0], indexvalid[1]] = baz
-        # if epicentral distance is too small, reason_n will be set to 5, and diffaArr will be 0.
-        tempArr = diffaArr[indexvalid[0], indexvalid[1]]
-        tempArr[distevent<cdist+50.] = 0.
-        diffaArr[indexvalid[0], indexvalid[1]] = tempArr
-        diffaArr[diffaArr>180.]=diffaArr[diffaArr>180.]-360.
-        diffaArr[diffaArr<-180.]=diffaArr[diffaArr<-180.]+360.
-        tempArr = reason_n[indexvalid[0], indexvalid[1]]
-        tempArr[distevent<cdist+50.] = 5
-        reason_n[indexvalid[0], indexvalid[1]] = tempArr
-        self.diffaArr=diffaArr
-        self.get_appV()
-        self.reason_n=reason_n
-        return
+            fieldArr, reason_n = _check_nearneighbor_station(np.float64(fieldArr), np.float64(reason_n), self.lon, self.lat,  \
+                                                    self.lonArrIn, self.latArrIn,  cdist)            
+        # # Start to Compute Gradient
+        # self.Zarr=fieldArr
+        # self.gradient('default')
+        # self.cut_edge(1, 1)
+        # # if one field point has zero value, reason_n for four near neighbor points will all be set to 4
+        # index0=np.where(self.Zarr==0)
+        # ilatArr=index0[0]+1
+        # ilonArr=index0[1]+1
+        # reason_n[ilatArr+1, ilonArr]=4
+        # reason_n[ilatArr-1, ilonArr]=4
+        # reason_n[ilatArr, ilonArr+1]=4
+        # reason_n[ilatArr, ilonArr-1]=4
+        # reason_n=reason_n[1:-1,1:-1]
+        # # if slowness is too large/small, reason_n will be set to 3
+        # slowness=np.sqrt(self.grad[0]**2+self.grad[1]**2)
+        # if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
+        #     reason_n[(slowness>0.6)*(reason_n==0)]=3
+        #     reason_n[(slowness<0.2)*(reason_n==0)]=3
+        # if verbose: print 'Computing deflections'
+        # indexvalid=np.where(reason_n==0)
+        # diffaArr=np.zeros(reason_n.shape)
+        # latinArr=self.lat[indexvalid[0]]
+        # loninArr=self.lon[indexvalid[1]]
+        # evloArr=np.ones(loninArr.size)*evlo
+        # evlaArr=np.ones(loninArr.size)*evla
+        # az, baz, distevent = geodist.inv(loninArr, latinArr, evloArr, evlaArr) # loninArr/latinArr are initial points
+        # distevent=distevent/1000.
+        # az = az + 180.
+        # az = 90.-az
+        # baz = 90.-baz
+        # az[az>180.]=az[az>180.] - 360.
+        # az[az<-180.]=az[az<-180.] + 360.
+        # baz[baz>180.]=baz[baz>180.] - 360.
+        # baz[baz<-180.]=baz[baz<-180.] + 360.
+        # diffaArr[indexvalid[0], indexvalid[1]] = \
+        #     self.proAngle[indexvalid[0], indexvalid[1]] - az
+        # self.az=np.zeros(self.proAngle.shape)
+        # self.az[indexvalid[0], indexvalid[1]] = az
+        # self.baz=np.zeros(self.proAngle.shape)
+        # self.baz[indexvalid[0], indexvalid[1]] = baz
+        # # if epicentral distance is too small, reason_n will be set to 5, and diffaArr will be 0.
+        # tempArr = diffaArr[indexvalid[0], indexvalid[1]]
+        # tempArr[distevent<cdist+50.] = 0.
+        # diffaArr[indexvalid[0], indexvalid[1]] = tempArr
+        # diffaArr[diffaArr>180.]=diffaArr[diffaArr>180.]-360.
+        # diffaArr[diffaArr<-180.]=diffaArr[diffaArr<-180.]+360.
+        # tempArr = reason_n[indexvalid[0], indexvalid[1]]
+        # tempArr[distevent<cdist+50.] = 5
+        # reason_n[indexvalid[0], indexvalid[1]] = tempArr
+        # self.diffaArr=diffaArr
+        # self.get_appV()
+        # self.reason_n=reason_n
+        return fieldArr, reason_n
     
     def get_lplc_amp(self):
         if self.fieldtype!='Amp': raise ValueError('Not amplitude field!')
@@ -664,40 +915,42 @@ class Field2d(object):
         return
     
     def write_binary(self, outfname, amplplc=False):
-        if amplplc: np.savez( outfname, self.appV, self.reason_n, self.proAngle, self.az, self.baz, self.Zarr, self.lplc_amp, self.corV )
-        else: np.savez( outfname, self.appV, self.reason_n, self.proAngle, self.az, self.baz, self.Zarr )
+        if amplplc:
+            np.savez( outfname, self.appV, self.reason_n, self.proAngle, self.az, self.baz, self.Zarr, self.lplc_amp, self.corV )
+        else:
+            np.savez( outfname, self.appV, self.reason_n, self.proAngle, self.az, self.baz, self.Zarr )
         return
 
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Plot data with contour
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
-        lat_centre = (self.maxlat+self.minlat)/2.0
-        lon_centre = (self.maxlon+self.minlon)/2.0
+        lat_centre  = (self.maxlat+self.minlat)/2.0
+        lon_centre  = (self.maxlon+self.minlon)/2.0
         if projection=='merc':
-            m=Basemap(projection='merc', llcrnrlat=self.minlat-5., urcrnrlat=self.maxlat+5., llcrnrlon=self.minlon-5.,
-                      urcrnrlon=self.maxlon+5., lat_ts=20, resolution=resolution)
+            m       = Basemap(projection='merc', llcrnrlat=self.minlat-5., urcrnrlat=self.maxlat+5., llcrnrlon=self.minlon-5.,
+                        urcrnrlon=self.maxlon+5., lat_ts=20, resolution=resolution)
             m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
             m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             m.drawstates(color='g', linewidth=2.)
         elif projection=='global':
-            m=Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
             m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
         
         elif projection=='regional_ortho':
-            m1 = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution='l')
-            m = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution=resolution,\
-                llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m1      = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution='l')
+            m       = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution=resolution,\
+                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz=obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
                                 self.minlat, self.maxlon) # distance is in m
-            distNS, az, baz=obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon,
                                 self.maxlat+2., self.minlon) # distance is in m
-            m = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
-                lat_1=self.minlat, lat_2=self.maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
+            m               = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+                                lat_1=self.minlat, lat_2=self.maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
         m.drawcoastlines(linewidth=1.0)
@@ -835,12 +1088,15 @@ class Field2d(object):
     def plot_appV(self, projection='lambert', geopolygons=None, showfig=True, vmin=None, vmax=None):
         """Plot data with contour
         """
-        m=self._get_basemap(projection=projection, geopolygons=geopolygons)
-        x, y=m(self.lonArr, self.latArr)
-        cmap = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
-            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
-        im=m.pcolormesh(x, y, self.appV, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        cb = m.colorbar(im, "right", size="3%", pad='2%')
+        plt.figure()
+        m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y    = m(self.lonArr, self.latArr)
+        x       = x[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        y       = y[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        cmap    = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                    0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        im      = m.pcolormesh(x, y, self.appV, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb      = m.colorbar(im, "right", size="3%", pad='2%')
         cb.ax.tick_params(labelsize=10)
         cb.set_label(r"$\frac{\mathrm{km}}{\mathrm{s}}$", fontsize=8, rotation=0)
         if showfig:
