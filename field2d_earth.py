@@ -48,11 +48,12 @@ class Field2d(object):
     """
     An object to analyze 2D spherical field data on Earth
     ===========================================================================
-    Parameters:
+    ::: parameters :::
     dlon, dlat      - grid interval
     Nlon, Nlat      - grid number in longitude, latitude 
     lonArr, latArr  - arrays for grid location
     fieldtype       - field type (Tph, Tgr, Amp)
+    
     ---------------------------------------------------------------------------
     Note: meshgrid's default indexing is 'xy', which means:
     lons, lats = np.meshgrid[lon, lat]
@@ -75,9 +76,16 @@ class Field2d(object):
         self.period             = period
         self.evid               = evid
         self.fieldtype          = fieldtype
-        self.Zarr               = np.zeros((self.Nlat, self.Nlon))
+        self.Zarr               = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
         self.evlo               = evlo
         self.evla               = evla
+        #-----------------------------------------------------------
+        # parameters indicate edge cutting for gradient/lplc arrays
+        #-----------------------------------------------------------
+        self.nlon_grad          = 1
+        self.nlat_grad          = 1
+        self.nlon_lplc          = 2
+        self.nlat_lplc          = 2
         return
     
     def copy(self):
@@ -257,119 +265,21 @@ class Field2d(object):
         nlon, nlon  - number of edge point in longitude/latitude to be cutted
         =======================================================================================
         """
-        self.Nlon=self.Nlon-2*nlon
-        self.Nlat=self.Nlat-2*nlat
-        self.minlon=self.minlon + nlon*self.dlon
-        self.maxlon=self.maxlon - nlon*self.dlon
-        self.minlat=self.minlat + nlat*self.dlat
-        self.maxlat=self.maxlat - nlat*self.dlat
-        self.lon=np.arange(self.Nlon)*self.dlon+self.minlon
-        self.lat=np.arange(self.Nlat)*self.dlat+self.minlat
-        self.lonArr, self.latArr = np.meshgrid(self.lon, self.lat)
-        self.Zarr=self.Zarr[nlat:-nlat, nlon:-nlon]
+        self.Nlon               = self.Nlon-2*nlon
+        self.Nlat               = self.Nlat-2*nlat
+        self.minlon             = self.minlon + nlon*self.dlon
+        self.maxlon             = self.maxlon - nlon*self.dlon
+        self.minlat             = self.minlat + nlat*self.dlat
+        self.maxlat             = self.maxlat - nlat*self.dlat
+        self.lon                = np.arange(self.Nlon)*self.dlon+self.minlon
+        self.lat                = np.arange(self.Nlat)*self.dlat+self.minlat
+        self.lonArr,self.latArr = np.meshgrid(self.lon, self.lat)
+        self.Zarr               = self.Zarr[nlat:-nlat, nlon:-nlon]
         try:
-            self.reason_n=self.reason_n[nlat:-nlat, nlon:-nlon]
+            self.reason_n       = self.reason_n[nlat:-nlat, nlon:-nlon]
         except:
             pass
         self._get_dlon_dlat_km()
-        return
-    
-    def gradient(self, method='default', edge_order=1, order=2):
-        """Compute gradient of the field
-        =============================================================================================================
-        ::: input parameters :::
-        edge_order  - edge_order : {1, 2}, optional, only has effect when method='default'
-                        Gradient is calculated using Nth order accurate differences at the boundaries
-        method      - method: 'default' : use numpy.gradient 'convolve': use convolution
-        order       - order of finite difference scheme, only has effect when method='convolve'
-        ::: note :::
-        gradient arrays are of shape Nlat-1, Nlon-1
-        =============================================================================================================
-        """
-        Zarr            = self.Zarr
-        if method=='default':
-            # self.dlat_kmArr : dx here in numpy gradient since Zarr is Z[ilat, ilon]
-            self.grad   = np.gradient( self.Zarr, self.dlat_kmArr, self.dlon_kmArr, edge_order=edge_order)
-            self.grad[0]= self.grad[0][1:-1, 1:-1]
-            self.grad[1]= self.grad[1][1:-1, 1:-1]
-        elif method == 'convolve':
-            dlat_km     = self.dlat_kmArr
-            dlon_km     = self.dlon_kmArr
-            if order==2:
-                diff_lon= convolve(Zarr, lon_diff_weight_2)/dlon_km
-                diff_lat= convolve(Zarr, lat_diff_weight_2)/dlat_km
-            elif order==4:
-                diff_lon= convolve(Zarr, lon_diff_weight_4)/dlon_km
-                diff_lat= convolve(Zarr, lat_diff_weight_4)/dlat_km
-            elif order==6:
-                diff_lon= convolve(Zarr, lon_diff_weight_6)/dlon_km
-                diff_lat= convolve(Zarr, lat_diff_weight_6)/dlat_km
-            self.grad   = []
-            self.grad.append(diff_lat[1:-1, 1:-1])
-            self.grad.append(diff_lon[1:-1, 1:-1])
-        self.proAngle   = np.arctan2(self.grad[0], self.grad[1])/np.pi*180.
-        return
-    
-    def get_appV(self):
-        """Get the apparent velocity from gradient
-        """
-        slowness=np.sqrt ( self.grad[0] ** 2 + self.grad[1] ** 2)
-        slowness[slowness==0]=0.3
-        self.appV = 1./slowness
-        return
-    
-    def Laplacian(self, method='green', order=4, verbose=False):
-        """Compute Laplacian of the field
-        =============================================================================================================
-        ::: input parameters :::
-        method      - method: 'default' : use numpy.gradient
-                              'convolve': use convolution
-                              'green'   : use Green's theorem( 2D Gauss's theorem )
-        order       - order of finite difference scheme, only has effect when method='convolve'
-        =============================================================================================================
-        """
-        Zarr                = self.Zarr
-        if method == 'default':
-            dlat_km         = self.dlat_kmArr[1:-1, 1:-1]
-            dlon_km         = self.dlon_kmArr[1:-1, 1:-1]
-            Zarr_latp       = Zarr[2:, 1:-1]
-            Zarr_latn       = Zarr[:-2, 1:-1]
-            Zarr_lonp       = Zarr[1:-1, 2:]
-            Zarr_lonn       = Zarr[1:-1, :-2]
-            Zarr            = Zarr[1:-1, 1:-1]
-            self.lplc       = (Zarr_latp+Zarr_latn-2*Zarr) / (dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (dlon_km**2)
-        elif method == 'convolve':
-            dlat_km         = self.dlat_kmArr
-            dlon_km         = self.dlon_kmArr
-            if order==2:
-                diff2_lon   = convolve(Zarr, lon_diff2_weight_2)/dlon_km/dlon_km
-                diff2_lat   = convolve(Zarr, lat_diff2_weight_2)/dlat_km/dlat_km
-            elif order==4:
-                diff2_lon   = convolve(Zarr, lon_diff2_weight_4)/dlon_km/dlon_km
-                diff2_lat   = convolve(Zarr, lat_diff2_weight_4)/dlat_km/dlat_km
-            elif order==6:
-                diff2_lon   = convolve(Zarr, lon_diff2_weight_6)/dlon_km/dlon_km
-                diff2_lat   = convolve(Zarr, lat_diff2_weight_6)/dlat_km/dlat_km
-            self.lplc       = diff2_lon+diff2_lat
-            self.lplc       = self.lplc[1:-1, 1:-1]
-        elif method=='green':
-            try:
-                grad_y      = self.grad[0]
-                grad_x      = self.grad[1]
-            except:
-                self.gradient('default')
-                self.cut_edge(1,1)
-                grad_y      = self.grad[0]
-                grad_x      = self.grad[1]
-            grad_xp         = grad_x[1:-1, 2:];  grad_xn=grad_x[1:-1, :-2]
-            grad_yp         = grad_y[2:, 1:-1];  grad_yn=grad_y[:-2, 1:-1]
-            dlat_km         = self.dlat_kmArr[1:-1, 1:-1]; dlon_km=self.dlon_kmArr[1:-1, 1:-1]
-            loopsum         = (grad_xp - grad_xn)*dlat_km + (grad_yp - grad_yn)*dlon_km
-            area            = dlat_km*dlon_km
-            lplc            = loopsum/area
-            self.lplc       = lplc
-        if verbose:
-            print 'max lplc:',self.lplc.max(), 'min lplc:',self.lplc.min()
         return
     
     def interp_surface(self, workingdir, outfname, tension=0.0):
@@ -406,6 +316,133 @@ class Field2d(object):
         ZarrIn      = inArr[:, 2]
         self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
         return
+    
+    def gradient(self, method='default', edge_order=1, order=2):
+        """Compute gradient of the field
+        =============================================================================================================
+        ::: input parameters :::
+        edge_order  - edge_order : {1, 2}, optional, only has effect when method='default'
+                        Gradient is calculated using Nth order accurate differences at the boundaries
+        method      - method: 'default' : use numpy.gradient 'convolve': use convolution
+        order       - order of finite difference scheme, only has effect when method='convolve'
+        ::: note :::
+        gradient arrays are of shape Nlat-1, Nlon-1
+        =============================================================================================================
+        """
+        Zarr            = self.Zarr
+        if method=='default':
+            # self.dlat_kmArr : dx here in numpy gradient since Zarr is Z[ilat, ilon]
+            self.grad   = np.gradient( self.Zarr, self.dlat_kmArr, self.dlon_kmArr, edge_order=edge_order)
+            self.grad[0]= self.grad[0][self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+            self.grad[1]= self.grad[1][self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        elif method == 'convolve':
+            dlat_km     = self.dlat_kmArr
+            dlon_km     = self.dlon_kmArr
+            if order==2:
+                diff_lon= convolve(Zarr, lon_diff_weight_2)/dlon_km
+                diff_lat= convolve(Zarr, lat_diff_weight_2)/dlat_km
+            elif order==4:
+                diff_lon= convolve(Zarr, lon_diff_weight_4)/dlon_km
+                diff_lat= convolve(Zarr, lat_diff_weight_4)/dlat_km
+            elif order==6:
+                diff_lon= convolve(Zarr, lon_diff_weight_6)/dlon_km
+                diff_lat= convolve(Zarr, lat_diff_weight_6)/dlat_km
+            self.grad   = []
+            self.grad.append(diff_lat[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad])
+            self.grad.append(diff_lon[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad])
+        self.proAngle   = np.arctan2(self.grad[0], self.grad[1])/np.pi*180.
+        return
+    
+    def Laplacian(self, method='green', order=4, verbose=False):
+        """Compute Laplacian of the field
+        =============================================================================================================
+        ::: input parameters :::
+        method      - method: 'diff'    : use central finite difference scheme, similar to convolve with order =2
+                              'convolve': use convolution
+                              'green'   : use Green's theorem( 2D Gauss's theorem )
+        order       - order of finite difference scheme, only has effect when method='convolve'
+        =============================================================================================================
+        """
+        Zarr                = self.Zarr
+        if method == 'diff':
+            dlat_km         = self.dlat_kmArr[1:-1, 1:-1]
+            dlon_km         = self.dlon_kmArr[1:-1, 1:-1]
+            Zarr_latp       = Zarr[2:, 1:-1]
+            Zarr_latn       = Zarr[:-2, 1:-1]
+            Zarr_lonp       = Zarr[1:-1, 2:]
+            Zarr_lonn       = Zarr[1:-1, :-2]
+            Zarr            = Zarr[1:-1, 1:-1]
+            lplc            = (Zarr_latp+Zarr_latn-2*Zarr) / (dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (dlon_km**2)
+            dnlat           = self.nlat_lplc - 1
+            dnlon           = self.nlon_lplc - 1
+            if dnlat == 0 and dnlon == 0:
+                self.lplc       = lplc
+            elif dnlat == 0 and dnlon != 0:
+                self.lplc       = lplc[:, dnlon:-dnlon]
+            elif dnlat != 0 and dnlon == 0:
+                self.lplc       = lplc[dnlat:-dnlat, :]
+            else:
+                self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
+            # # dlat_km         = self.dlat_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+            # # dlon_km         = self.dlon_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+            # # Zarr_latp       = Zarr[2*self.nlat_lplc:,   self.nlon_lplc:-self.nlon_lplc]
+            # # Zarr_latn       = Zarr[:-2*self.nlat_lplc,  self.nlon_lplc:-self.nlon_lplc]
+            # # Zarr_lonp       = Zarr[self.nlat_lplc:-self.nlat_lplc, 2*self.nlon_lplc:]
+            # # Zarr_lonn       = Zarr[self.nlat_lplc:-self.nlat_lplc, :-2*self.nlon_lplc]
+            # # Zarr            = Zarr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+            # # self.lplc       = (Zarr_latp+Zarr_latn-2*Zarr) / (dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (dlon_km**2)
+        elif method == 'convolve':
+            dlat_km         = self.dlat_kmArr
+            dlon_km         = self.dlon_kmArr
+            if order==2:
+                diff2_lon   = convolve(Zarr, lon_diff2_weight_2)/dlon_km/dlon_km
+                diff2_lat   = convolve(Zarr, lat_diff2_weight_2)/dlat_km/dlat_km
+            elif order==4:
+                diff2_lon   = convolve(Zarr, lon_diff2_weight_4)/dlon_km/dlon_km
+                diff2_lat   = convolve(Zarr, lat_diff2_weight_4)/dlat_km/dlat_km
+            elif order==6:
+                diff2_lon   = convolve(Zarr, lon_diff2_weight_6)/dlon_km/dlon_km
+                diff2_lat   = convolve(Zarr, lat_diff2_weight_6)/dlat_km/dlat_km
+            self.lplc       = diff2_lon+diff2_lat
+            self.lplc       = self.lplc[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        elif method=='green':
+            try:
+                grad_y          = self.grad[0]
+                grad_x          = self.grad[1]
+            except:
+                self.gradient('default')
+                grad_y          = self.grad[0]
+                grad_x          = self.grad[1]
+            dnlat               = self.nlat_lplc - self.nlat_grad
+            dnlon               = self.nlon_lplc - self.nlon_grad
+            if dnlat < 1:
+                self.nlat_lplc  = self.nlat_grad + 1
+                dnlat           = 1
+            if dnlon < 1:
+                self.nlon_lplc  = self.nlon_grad + 1
+                dnlon           = 1
+            grad_xp             = grad_x[dnlat:-dnlat, dnlon+1:]
+            grad_xn             = grad_x[dnlat:-dnlat, :-dnlon-1]
+            grad_yp             = grad_y[dnlat+1:, dnlon:-dnlon]
+            grad_yn             = grad_y[:-dnlat-1, dnlon:-dnlon]
+            dlat_km             = self.dlat_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+            dlon_km             = self.dlon_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+            loopsum             = (grad_xp - grad_xn)*dlat_km + (grad_yp - grad_yn)*dlon_km
+            area                = dlat_km*dlon_km
+            lplc                = loopsum/area
+            self.lplc           = lplc
+        if verbose:
+            print 'max lplc:',self.lplc.max(), 'min lplc:',self.lplc.min()
+        return
+    
+    def get_appV(self):
+        """Get the apparent velocity from gradient
+        """
+        slowness=np.sqrt ( self.grad[0] ** 2 + self.grad[1] ** 2)
+        slowness[slowness==0]=0.3
+        self.appV = 1./slowness
+        return
+    
     
     def check_curvature(self, workingdir, outpfx='', threshold=0.005):
         """
@@ -693,17 +730,16 @@ class Field2d(object):
     def plot_lplc(self, projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
         """Plot data with contour
         """
-        m=self._get_basemap(projection=projection, geopolygons=geopolygons)
-        if self.lonArr.shape[0]-2==self.lplc.shape[0] and self.lonArr.shape[1]-2==self.lplc.shape[1]:
-            self.cut_edge(1,1)
-        elif self.lonArr.shape[0]!=self.lplc.shape[0] or self.lonArr.shape[1]!=self.lplc.shape[1]:
-            raise ValueError('Incompatible shape for lplc and lon/lat array!')
-        x, y=m(self.lonArr, self.latArr)
+        plt.figure()
+        m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y    = m(self.lonArr, self.latArr)
+        x       = x[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        y       = y[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
         # cmap =discrete_cmap(int(vmax-vmin)/2+1, 'seismic')
         m.pcolormesh(x, y, self.lplc, cmap='seismic', shading='gouraud', vmin=vmin, vmax=vmax)
-        cb=m.colorbar()
+        cb      = m.colorbar()
         cb.ax.tick_params(labelsize=15) 
-        levels=np.linspace(self.lplc.min(), self.lplc.max(), 100)
+        levels  = np.linspace(self.lplc.min(), self.lplc.max(), 100)
         if contour:
             plt.contour(x, y, self.lplc, colors='k', levels=levels)
         if showfig:
