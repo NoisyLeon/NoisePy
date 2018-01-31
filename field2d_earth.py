@@ -420,19 +420,23 @@ class Field2d(object):
             grad_xn             = grad_x[1:-1, :-2]
             grad_yp             = grad_y[2:, 1:-1]
             grad_yn             = grad_y[:-2, 1:-1]
-            dlat_km             = self.dlat_kmArr[2:-2, 2:-2]
-            dlon_km             = self.dlon_kmArr[2:-2, 2:-2]
+            dlat_km             = self.dlat_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            dlon_km             = self.dlon_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            #------------------
             # Green's theorem
+            #------------------
             loopsum             = (grad_xp - grad_xn)*dlat_km + (grad_yp - grad_yn)*dlon_km
             area                = dlat_km*dlon_km
             lplc                = loopsum/area
+            #-----------------------------------------------
             # cut edges according to nlat_lplc, nlon_lplc
-            dnlat               = self.nlat_lplc - 2
+            #-----------------------------------------------
+            dnlat               = self.nlat_lplc - self.nlat_grad - 1
             if dnlat < 0:
-                self.nlat_lplc  = 2
-            dnlon               = self.nlon_lplc - 2
+                self.nlat_lplc  = self.nlat_grad + 1
+            dnlon               = self.nlon_lplc - self.nlon_grad - 1
             if dnlon < 0:
-                self.nlon_lplc  = 2
+                self.nlon_lplc  = self.nlon_grad + 1
             if dnlat == 0 and dnlon == 0:
                 self.lplc       = lplc
             elif dnlat == 0 and dnlon != 0:
