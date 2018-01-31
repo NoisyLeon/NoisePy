@@ -44,6 +44,14 @@ def discrete_cmap(N, base_cmap=None):
     cmap_name = base.name + str(N)
     return base.from_list(cmap_name, color_list, N)
 
+def _write_txt(fname, outlon, outlat, outZ):
+    outArr  = np.append(outlon, outlat)
+    outArr  = np.append(outArr, outZ)
+    outArr  = outArr.reshape((3,outZ.size))
+    outArr  = outArr.T
+    np.savetxt(fname, outArr, fmt='%g')
+    return
+
 class Field2d(object):
     """
     An object to analyze 2D spherical field data on Earth
@@ -197,15 +205,6 @@ class Field2d(object):
             raise TypeError('Wrong output format!')
         return
     
-    
-    def _write_txt(self, fname, outlon, outlat, outZ):
-        outArr=np.append(outlon, outlat)
-        outArr=np.append(outArr, outZ)
-        outArr=outArr.reshape((3,outZ.size))
-        outArr=outArr.T
-        np.savetxt(fname, outArr, fmt='%g')
-        return
-    
     def np2ma(self):
         """Convert all the data array to masked array according to reason_n array.
         """
@@ -317,7 +316,7 @@ class Field2d(object):
         self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
         return
     
-    def gradient(self, method='default', edge_order=1, order=2):
+    def gradient(self, method='diff', edge_order=1, order=2):
         """Compute gradient of the field
         =============================================================================================================
         ::: input parameters :::
@@ -330,7 +329,7 @@ class Field2d(object):
         =============================================================================================================
         """
         Zarr            = self.Zarr
-        if method=='default':
+        if method=='diff':
             # self.dlat_kmArr : dx here in numpy gradient since Zarr is Z[ilat, ilon]
             self.grad   = np.gradient( self.Zarr, self.dlat_kmArr, self.dlon_kmArr, edge_order=edge_order)
             self.grad[0]= self.grad[0][self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
@@ -456,11 +455,10 @@ class Field2d(object):
         slowness[slowness==0]=0.3
         self.appV = 1./slowness
         return
-    
-    
+      
     def check_curvature(self, workingdir, outpfx='', threshold=0.005):
         """
-        Check and discard those points with large curvatures.
+        Check and discard data points with large curvatures.
         Points at boundaries will be discarded.
         Two interpolation schemes with different tension (0, 0.2) will be applied to the quality controlled field data file. 
         =====================================================================================================================
@@ -468,7 +466,7 @@ class Field2d(object):
         workingdir  - working directory
         threshold   - threshold value for Laplacian
         ---------------------------------------------------------------------------------------------------------------------
-        Output format:
+        ::: output :::
         workingdir/outpfx+fieldtype_per_v1.lst         - output field file with data point passing curvature checking
         workingdir/outpfx+fieldtype_per_v1.lst.HD      - interpolated travel time file 
         workingdir/outpfx+fieldtype_per_v1.lst.HD_0.2  - interpolated travel time file with tension=0.2
@@ -477,26 +475,29 @@ class Field2d(object):
         =====================================================================================================================
         """
         # Compute Laplacian
-        self.Laplacian(method='convolve', order=4)
-        self.cut_edge(1,1)
+        self.Laplacian(method='green')
+        tfield      = self.copy()
+        tfield.cut_edge(nlon=self.nlon_lplc, nlat=self.nlat_lplc)
+        #--------------------
         # quality control
-        LonLst  = self.lonArr.reshape(self.lonArr.size)
-        LatLst  = self.latArr.reshape(self.latArr.size)
-        TLst    = self.Zarr.reshape(self.Zarr.size)
-        lplc    = self.lplc.reshape(self.lplc.size)
-        index   = np.where((lplc>-threshold)*(lplc<threshold))[0]
-        LonLst  = LonLst[index]
-        LatLst  = LatLst[index]
-        TLst    = TLst[index]
+        #--------------------
+        LonLst      = tfield.lonArr.reshape(tfield.lonArr.size)
+        LatLst      = tfield.latArr.reshape(tfield.latArr.size)
+        TLst        = tfield.Zarr.reshape(tfield.Zarr.size)
+        lplc        = self.lplc.reshape(self.lplc.size)
+        index       = np.where((lplc>-threshold)*(lplc<threshold))[0]
+        LonLst      = LonLst[index]
+        LatLst      = LatLst[index]
+        TLst        = TLst[index]
         # output to txt file
-        outfname= workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
-        TfnameHD= outfname+'.HD'
-        self._write_txt(fname=outfname, outlon=LonLst, outlat=LatLst, outZ=TLst)
+        outfname    = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
+        TfnameHD    = outfname+'.HD'
+        _write_txt(fname=outfname, outlon=LonLst, outlat=LatLst, outZ=TLst)
         # interpolate with gmt surface
-        tempGMT = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1_GMT.sh'
-        grdfile = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.grd'
+        tempGMT     = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1_GMT.sh'
+        grdfile     = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.grd'
         with open(tempGMT,'wb') as f:
-            REG = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
+            REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
             f.writelines('gmtset MAP_FRAME_TYPE fancy \n')
             f.writelines('surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
             f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, TfnameHD ))
@@ -524,80 +525,83 @@ class Field2d(object):
         Note: edge has been cutting twice, one in check_curvature 
         =====================================================================================================================
         """
-        if cdist==None:
-            cdist=12.*self.period
-        evlo=self.evlo; evla=self.evla
+        if cdist is None:
+            cdist   = 12.*self.period
+        evlo        = self.evlo
+        evla        = self.evla
         # Read data,
         # v1: data that pass check_curvature criterion
         # v1HD and v1HD02: interpolated v1 data with tension = 0. and 0.2
-        fnamev1=workingdir+'/'+inpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
-        fnamev1HD=fnamev1+'.HD'
-        fnamev1HD02=fnamev1HD+'_0.2'
-        InarrayV1=np.loadtxt(fnamev1)
-        loninV1=InarrayV1[:,0]
-        latinV1=InarrayV1[:,1]
-        fieldin=InarrayV1[:,2]
-        Inv1HD=np.loadtxt(fnamev1HD)
-        lonv1HD=Inv1HD[:,0]
-        latv1HD=Inv1HD[:,1]
-        fieldv1HD=Inv1HD[:,2]
-        Inv1HD02=np.loadtxt(fnamev1HD02)
-        lonv1HD02=Inv1HD02[:,0]
-        latv1HD02=Inv1HD02[:,1]
-        fieldv1HD02=Inv1HD02[:,2]
+        fnamev1     = workingdir+'/'+inpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
+        fnamev1HD   = fnamev1+'.HD'
+        fnamev1HD02 = fnamev1HD+'_0.2'
+        InarrayV1   = np.loadtxt(fnamev1)
+        loninV1     = InarrayV1[:,0]
+        latinV1     = InarrayV1[:,1]
+        fieldin     = InarrayV1[:,2]
+        Inv1HD      = np.loadtxt(fnamev1HD)
+        lonv1HD     = Inv1HD[:,0]
+        latv1HD     = Inv1HD[:,1]
+        fieldv1HD   = Inv1HD[:,2]
+        Inv1HD02    = np.loadtxt(fnamev1HD02)
+        lonv1HD02   = Inv1HD02[:,0]
+        latv1HD02   = Inv1HD02[:,1]
+        fieldv1HD02 = Inv1HD02[:,2]
         # Set field value to be zero if there is large difference between v1HD and v1HD02
-        diffArr = fieldv1HD-fieldv1HD02
-        fieldArr=fieldv1HD*((diffArr<2.)*(diffArr>-2.)) 
-        fieldArr = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1,:]
+        diffArr     = fieldv1HD-fieldv1HD02
+        fieldArr    = fieldv1HD*((diffArr<2.)*(diffArr>-2.)) 
+        fieldArr    = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1, :]
         # reason_n -> 0: accepted point 1: data point the has large difference between v1HD and v1HD02
         # 2: data point that does not have near neighbor points at all E/W/N/S directions
-        reason_n=np.ones(fieldArr.size)
-        reason_n1=reason_n*(diffArr>2.)
-        reason_n2=reason_n*(diffArr<-2.)
-        reason_n=reason_n1+reason_n2
-        reason_n = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
+        reason_n    = np.ones(fieldArr.size)
+        reason_n1   = reason_n*(diffArr>2.)
+        reason_n2   = reason_n*(diffArr<-2.)
+        reason_n    = reason_n1+reason_n2
+        reason_n    = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
         # Nested loop, may need modification to speed the code up
         if nearneighbor:
-            if verbose: print 'Start near neighbor quality control checking'
-            for ilat in xrange(self.Nlat):
-                for ilon in xrange(self.Nlon):
+            if verbose:
+                print 'Start near neighbor quality control checking'
+            for ilat in range(self.Nlat):
+                for ilon in range(self.Nlon):
                     if reason_n[ilat, ilon]==1:
                         continue
-                    lon=self.lon[ilon]
-                    lat=self.lat[ilat]
-                    dlon_km=self.dlon_km[ilat]
-                    dlat_km=self.dlat_km[ilat]
-                    difflon=abs(self.lonArrIn-lon)/self.dlon*dlon_km
-                    difflat=abs(self.latArrIn-lat)/self.dlat*dlat_km
-                    index=np.where((difflon<cdist)*(difflat<cdist))[0]
-                    marker_EN=np.zeros((2,2))
-                    marker_nn=4
-                    tflag = False
+                    lon         = self.lon[ilon]
+                    lat         = self.lat[ilat]
+                    dlon_km     = self.dlon_km[ilat]
+                    dlat_km     = self.dlat_km[ilat]
+                    difflon     = abs(self.lonArrIn-lon)/self.dlon*dlon_km
+                    difflat     = abs(self.latArrIn-lat)/self.dlat*dlat_km
+                    index       = np.where((difflon<cdist)*(difflat<cdist))[0]
+                    marker_EN   = np.zeros((2,2))
+                    marker_nn   = 4
+                    tflag       = False
                     for iv1 in index:
-                        lon2=self.lonArrIn[iv1]
-                        lat2=self.latArrIn[iv1]
+                        lon2    = self.lonArrIn[iv1]
+                        lat2    = self.latArrIn[iv1]
                         if lon2-lon<0:
-                            marker_E=0
+                            marker_E    = 0
                         else:
-                            marker_E=1
+                            marker_E    = 1
                         if lat2-lat<0:
-                            marker_N=0
+                            marker_N    = 0
                         else:
-                            marker_N=1
+                            marker_N    = 1
                         if marker_EN[marker_E , marker_N]==1:
                             continue
-                        az, baz, dist = geodist.inv(lon, lat, lon2, lat2) # loninArr/latinArr are initial points
-                        dist=dist/1000.
+                        az, baz, dist   = geodist.inv(lon, lat, lon2, lat2) # loninArr/latinArr are initial points
+                        dist            = dist/1000.
                         if dist< cdist*2 and dist >= 1:
-                            marker_nn=marker_nn-1
+                            marker_nn   = marker_nn-1
                             if marker_nn==0:
-                                tflag = True
+                                tflag   = True
                                 break
                             marker_EN[marker_E, marker_N]=1
-                    if tflag==False:
-                        fieldArr[ilat, ilon]=0
-                        reason_n[ilat, ilon] = 2
-            if verbose: print 'End near neighbor quality control checking'
+                    if not tflag:
+                        fieldArr[ilat, ilon]    = 0
+                        reason_n[ilat, ilon]    = 2
+            if verbose:
+                print 'End near neighbor quality control checking'
         # Start to Compute Gradient
         self.Zarr=fieldArr
         self.gradient('default')
