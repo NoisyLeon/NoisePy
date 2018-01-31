@@ -406,6 +406,9 @@ class Field2d(object):
             self.lplc       = diff2_lon+diff2_lat
             self.lplc       = self.lplc[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
         elif method=='green':
+            #---------------
+            # gradient arrays
+            #---------------
             try:
                 grad_y          = self.grad[0]
                 grad_x          = self.grad[1]
@@ -413,24 +416,31 @@ class Field2d(object):
                 self.gradient('default')
                 grad_y          = self.grad[0]
                 grad_x          = self.grad[1]
-            dnlat               = self.nlat_lplc - self.nlat_grad
-            dnlon               = self.nlon_lplc - self.nlon_grad
-            if dnlat < 1:
-                self.nlat_lplc  = self.nlat_grad + 1
-                dnlat           = 1
-            if dnlon < 1:
-                self.nlon_lplc  = self.nlon_grad + 1
-                dnlon           = 1
-            grad_xp             = grad_x[dnlat:-dnlat, dnlon+1:]
-            grad_xn             = grad_x[dnlat:-dnlat, :-dnlon-1]
-            grad_yp             = grad_y[dnlat+1:, dnlon:-dnlon]
-            grad_yn             = grad_y[:-dnlat-1, dnlon:-dnlon]
-            dlat_km             = self.dlat_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
-            dlon_km             = self.dlon_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+            grad_xp             = grad_x[1:-1, 2:]
+            grad_xn             = grad_x[1:-1, :-2]
+            grad_yp             = grad_y[2:, 1:-1]
+            grad_yn             = grad_y[:-2, 1:-1]
+            dlat_km             = self.dlat_kmArr[2:-2, 2:-2]
+            dlon_km             = self.dlon_kmArr[2:-2, 2:-2]
+            # Green's theorem
             loopsum             = (grad_xp - grad_xn)*dlat_km + (grad_yp - grad_yn)*dlon_km
             area                = dlat_km*dlon_km
             lplc                = loopsum/area
-            self.lplc           = lplc
+            # cut edges according to nlat_lplc, nlon_lplc
+            dnlat               = self.nlat_lplc - 2
+            if dnlat < 0:
+                self.nlat_lplc  = 2
+            dnlon               = self.nlon_lplc - 2
+            if dnlon < 0:
+                self.nlon_lplc  = 2
+            if dnlat == 0 and dnlon == 0:
+                self.lplc       = lplc
+            elif dnlat == 0 and dnlon != 0:
+                self.lplc       = lplc[:, dnlon:-dnlon]
+            elif dnlat != 0 and dnlon == 0:
+                self.lplc       = lplc[dnlat:-dnlat, :]
+            else:
+                self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
         if verbose:
             print 'max lplc:',self.lplc.max(), 'min lplc:',self.lplc.min()
         return
