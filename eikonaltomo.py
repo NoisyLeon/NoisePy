@@ -724,84 +724,136 @@ class EikonalTomoDataSet(h5py.File):
             # determine anisotropic parameters, need benchmark and further verification
             #----------------------------------------------------------------------------
             if anisotropic:
-                NmeasureAni=np.zeros((Nlat-4, Nlon-4))
-                total_near_neighbor=Nmeasure[4:-4, 4:-4]+Nmeasure[:-8, :-8]+Nmeasure[8:, 8:]+Nmeasure[:-8, 4:-4]+\
-                        Nmeasure[8:, 4:-4]+Nmeasure[4:-4, :-8]+Nmeasure[4:-4, 8:] + Nmeasure[8:, :-8]+Nmeasure[:-8, 8:]
-                NmeasureAni[4:-4, 4:-4]=total_near_neighbor # for quality control
+                NmeasureAni                 = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                total_near_neighbor         = Nmeasure[4:-4, 4:-4]+Nmeasure[:-8, :-8]+Nmeasure[8:, 8:]+Nmeasure[:-8, 4:-4]+\
+                                Nmeasure[8:, 4:-4]+Nmeasure[4:-4, :-8]+Nmeasure[4:-4, 8:] + Nmeasure[8:, :-8]+Nmeasure[:-8, 8:]
+                NmeasureAni[4:-4, 4:-4]     = total_near_neighbor # for quality control
                 # initialization of anisotropic parameters
-                d_bin=(maxazi-minazi)/N_bin
-                histArr=np.zeros((N_bin, Nlat-4, Nlon-4))
-                histArr_cutted=histArr[:, 3:-3, 3:-3]
-                slow_sum_ani=np.zeros((N_bin, Nlat-4, Nlon-4))
-                slow_sum_ani_cutted=slow_sum_ani[:, 3:-3, 3:-3]
-                slow_un=np.zeros((N_bin, Nlat-4, Nlon-4))
-                slow_un_cutted=slow_un[:, 3:-3, 3:-3]
-                azi_11=aziArr[:, :-6, :-6]; azi_12=aziArr[:, :-6, 3:-3]; azi_13=aziArr[:, :-6, 6:]
-                azi_21=aziArr[:, 3:-3, :-6]; azi_22=aziArr[:, 3:-3, 3:-3]; azi_23=aziArr[:, 3:-3, 6:]
-                azi_31=aziArr[:, 6:, :-6]; azi_32=aziArr[:, 6:, 3:-3]; azi_33=aziArr[:, 6:, 6:]
-                slowsumQC_cutted=slowness_sumArrQC[3:-3, 3:-3]
-                slownessArr_cutted=slownessArr[:, 3:-3, 3:-3]
-                index_outlier_cutted=index_outlier[:, 3:-3, 3:-3]
+                d_bin                       = (maxazi-minazi)/N_bin
+                histArr                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                histArr_cutted              = histArr[:, 3:-3, 3:-3]
+                slow_sum_ani                = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                slow_sum_ani_cutted         = slow_sum_ani[:, 3:-3, 3:-3]
+                slow_un                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                slow_un_cutted              = slow_un[:, 3:-3, 3:-3]
+                azi_11                      = aziALL[:, :-6, :-6]
+                azi_12                      = aziALL[:, :-6, 3:-3]
+                azi_13                      = aziALL[:, :-6, 6:]
+                azi_21                      = aziALL[:, 3:-3, :-6]
+                azi_22                      = aziALL[:, 3:-3, 3:-3]
+                azi_23                      = aziALL[:, 3:-3, 6:]
+                azi_31                      = aziALL[:, 6:, :-6]
+                azi_32                      = aziALL[:, 6:, 3:-3]
+                azi_33                      = aziALL[:, 6:, 6:]
+                slowsumQC_cutted            = slowness_sumQC[3:-3, 3:-3]
+                slownessALL_cutted          = slownessALL[:, 3:-3, 3:-3]
+                index_outlier_cutted        = index_outlier[:, 3:-3, 3:-3]
                 for ibin in xrange(N_bin):
-                    sumNbin=(np.zeros((Nlat-4, Nlon-4)))[3:-3, 3:-3]
-                    slowbin=(np.zeros((Nlat-4, Nlon-4)))[3:-3, 3:-3]
-                    ibin11=np.floor((azi_11-minazi)/d_bin); temp1=1*(ibin==ibin11); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted); 
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); #temp2[temp1!=0]=temp2[temp1!=0]/temp1[temp1!=0]
-                    sumNbin+=temp1; slowbin+=temp2; #print temp2.max(), temp2.min() 
+                    sumNbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[3:-3, 3:-3]
+                    slowbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[3:-3, 3:-3]
+                    
+                    ibin11                      = np.floor((azi_11-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin11)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0) #temp2[temp1!=0]=temp2[temp1!=0]/temp1[temp1!=0]
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2 #print temp2.max(), temp2.min() 
 
-                    ibin12=np.floor((azi_12-minazi)/d_bin); temp1=1*(ibin==ibin12); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin12                      = np.floor((azi_12-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin12)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                     
-                    ibin13=np.floor((azi_13-minazi)/d_bin); temp1=1*(ibin==ibin13); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin13                      = np.floor((azi_13-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin13)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                     
-                    ibin21=np.floor((azi_21-minazi)/d_bin); temp1=1*(ibin==ibin21); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin21                      = np.floor((azi_21-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin21)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                     
-                    ibin22=np.floor((azi_22-minazi)/d_bin); temp1=1*(ibin==ibin22); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin22                      = np.floor((azi_22-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin22)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                     
-                    ibin23=np.floor((azi_23-minazi)/d_bin); temp1=1*(ibin==ibin23); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin23                      = np.floor((azi_23-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin23)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                     
-                    ibin31=np.floor((azi_31-minazi)/d_bin); temp1=1*(ibin==ibin31); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin31                      = np.floor((azi_31-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin31)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                     
-                    ibin32=np.floor((azi_32-minazi)/d_bin); temp1=1*(ibin==ibin32); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin32                      = np.floor((azi_32-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin32)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                     
-                    ibin33=np.floor((azi_33-minazi)/d_bin); temp1=1*(ibin==ibin33); temp1[index_outlier_cutted]=0
-                    temp2=temp1*(slownessArr_cutted-slowsumQC_cutted)
-                    temp1=np.sum(temp1, 0); temp2=np.sum(temp2, 0); sumNbin+=temp1; slowbin+=temp2
+                    ibin33                      = np.floor((azi_33-minazi)/d_bin)
+                    temp1                       = 1*(ibin==ibin33)
+                    temp1[index_outlier_cutted] = 0
+                    temp2                       = temp1*(slownessALL_cutted-slowsumQC_cutted)
+                    temp1                       = np.sum(temp1, 0)
+                    temp2                       = np.sum(temp2, 0)
+                    sumNbin                     +=temp1
+                    slowbin                     +=temp2
                    
-                    histArr_cutted[ibin, :, :]=sumNbin
-                    slow_sum_ani_cutted[ibin, :, :]=slowbin
-                slow_sum_ani_cutted[histArr_cutted>10]=slow_sum_ani_cutted[histArr_cutted>10]/histArr_cutted[histArr_cutted>10]
-                slow_sum_ani_cutted[histArr_cutted<=10]=0
-                slow_iso_std=np.broadcast_to(slowness_stdArrQC[3:-3, 3:-3], histArr_cutted.shape)
-                slow_un_cutted[histArr_cutted>10]=slow_iso_std[histArr_cutted>10]/np.sqrt(histArr_cutted[histArr_cutted>10])
-                slow_un_cutted[histArr_cutted<=10]=0
-                temp=np.broadcast_to(slowsumQC_cutted, slow_un_cutted.shape)
-                temp=( temp + slow_sum_ani_cutted)**2
-                slow_un_cutted=slow_un_cutted/temp
-                slow_sum_ani[:, 3:-3, 3:-3]=slow_sum_ani_cutted
-                slow_un[:, 3:-3, 3:-3]=slow_un_cutted
-                slow_sum_ani[:, NmeasureAni<45]=0 # near neighbor quality control
-                slow_un[:, NmeasureAni<45]=0
-                histArr[:, 3:-3, 3:-3]=histArr_cutted
+                    histArr_cutted[ibin, :, :]          = sumNbin
+                    slow_sum_ani_cutted[ibin, :, :]     = slowbin
+                    
+                slow_sum_ani_cutted[histArr_cutted>10]  = slow_sum_ani_cutted[histArr_cutted>10]/histArr_cutted[histArr_cutted>10]
+                slow_sum_ani_cutted[histArr_cutted<=10] = 0
+                slow_iso_std                            = np.broadcast_to(slowness_stdQC[3:-3, 3:-3], histArr_cutted.shape)
+                slow_un_cutted[histArr_cutted>10]       = slow_iso_std[histArr_cutted>10]/np.sqrt(histArr_cutted[histArr_cutted>10])
+                slow_un_cutted[histArr_cutted<=10]      = 0
+                temp                                    = np.broadcast_to(slowsumQC_cutted, slow_un_cutted.shape)
+                temp                                    = ( temp + slow_sum_ani_cutted)**2
+                slow_un_cutted                          = slow_un_cutted/temp
+                slow_sum_ani[:, 3:-3, 3:-3]             = slow_sum_ani_cutted
+                slow_un[:, 3:-3, 3:-3]                  = slow_un_cutted
+                slow_sum_ani[:, NmeasureAni<45]         = 0 # near neighbor quality control
+                slow_un[:, NmeasureAni<45]              = 0
+                histArr[:, 3:-3, 3:-3]                  = histArr_cutted
                 # save data to database
-                s_anidset    = per_group_out.create_dataset(name='slownessAni', data=slow_sum_ani)
-                s_anistddset = per_group_out.create_dataset(name='slownessAni_std', data=slow_un)
-                histdset     = per_group_out.create_dataset(name='histArr', data=histArr)
-                NmAnidset    = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
+                s_anidset       = per_group_out.create_dataset(name='slownessAni', data=slow_sum_ani)
+                s_anistddset    = per_group_out.create_dataset(name='slownessAni_std', data=slow_un)
+                histdset        = per_group_out.create_dataset(name='histArr', data=histArr)
+                NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
         return
            
     def _numpy2ma(self, inarray, reason_n=None):
@@ -842,42 +894,41 @@ class EikonalTomoDataSet(h5py.File):
         return
     
     
-    
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Get basemap for plotting results
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        lat_centre = (maxlat+minlat)/2.0
-        lon_centre = (maxlon+minlon)/2.0
+        minlon      = self.attrs['minlon']
+        maxlon      = self.attrs['maxlon']
+        minlat      = self.attrs['minlat']
+        maxlat      = self.attrs['maxlat']
+        lat_centre  = (maxlat+minlat)/2.0
+        lon_centre  = (maxlon+minlon)/2.0
         if projection=='merc':
-            m=Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
-                      urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
+            m       = Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
+                        urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
             # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
             m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
             m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             m.drawstates(color='g', linewidth=2.)
         elif projection=='global':
-            m=Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
         elif projection=='regional_ortho':
-            m1 = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
-            m = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
-                llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m1      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
+            m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
+                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             # m.drawparallels(np.arange(-90.0,90.0,30.0),labels=[1,0,0,0], dashes=[10, 5], linewidth=2,  fontsize=20)
             # m.drawmeridians(np.arange(10,180.0,30.0), dashes=[10, 5], linewidth=2)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz=obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
-            distNS, az, baz=obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
-            m = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
-                lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
+            m               = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+                                lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=0.5, dashes=[2,2], labels=[1,0,0,0], fontsize=5)
@@ -1029,7 +1080,6 @@ class EikonalTomoDataSet(h5py.File):
 def eikonal4mp(infield, workingdir, channel):
     working_per     = workingdir+'/'+str(infield.period)+'sec'
     outfname        = infield.evid+'_'+infield.fieldtype+'_'+channel+'.lst'
-    print infield.evid
     infield.interp_surface(workingdir=working_per, outfname=outfname)
     infield.check_curvature(workingdir=working_per, outpfx=infield.evid+'_'+channel+'_')
     infield.gradient_qc(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)

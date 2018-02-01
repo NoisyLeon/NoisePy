@@ -442,12 +442,15 @@ class Field2d(object):
         grdfile     = workingdir+'/'+outfname+'.grd'
         with open(tempGMT,'wb') as f:
             REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
-            f.writelines('gmtset MAP_FRAME_TYPE fancy \n')
-            f.writelines('surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
-            f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
+            # f.writelines('gmtset MAP_FRAME_TYPE fancy \n')
+            # f.writelines('surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
+            # f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
+            f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
+            f.writelines('gmt surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
+            f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
         call(['bash', tempGMT])
         os.remove(grdfile)
-        os.remove(tempGMT)
+        # os.remove(tempGMT)
         inArr       = np.loadtxt(fnameHD)
         ZarrIn      = inArr[:, 2]
         self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
@@ -635,11 +638,17 @@ class Field2d(object):
         grdfile     = workingdir+'/'+outpfx+self.fieldtype+'_'+str(self.period)+'_v1.grd'
         with open(tempGMT,'wb') as f:
             REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
-            f.writelines('gmtset MAP_FRAME_TYPE fancy \n')
-            f.writelines('surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
-            f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, TfnameHD ))
-            f.writelines('surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
-            f.writelines('grd2xyz %s %s > %s \n' %( grdfile+'.T0.2', REG, TfnameHD+'_0.2' ))
+            # f.writelines('gmtset MAP_FRAME_TYPE fancy \n')
+            # f.writelines('surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
+            # f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, TfnameHD ))
+            # f.writelines('surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
+            # f.writelines('grd2xyz %s %s > %s \n' %( grdfile+'.T0.2', REG, TfnameHD+'_0.2' ))
+            
+            f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
+            f.writelines('gmt surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
+            f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, TfnameHD ))
+            f.writelines('gmt surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
+            f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile+'.T0.2', REG, TfnameHD+'_0.2' ))
         call(['bash', tempGMT])
         os.remove(grdfile+'.T0.2')
         os.remove(grdfile)

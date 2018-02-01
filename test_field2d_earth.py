@@ -41,8 +41,8 @@ field.interp_surface(workingdir=workingdir, outfname='Tph_10sec')
 # field5.plot_lplc(vmin=-0.06, vmax=0.06,showfig=True)
 # field3.Laplacian('convolve', order=2)
 
-field.check_curvature(workingdir=workingdir, threshold=0.01)
-field.gradient_qc(workingdir=workingdir)
+# field.check_curvature(workingdir=workingdir, threshold=0.01)
+# field.gradient_qc(workingdir=workingdir)
 
 # field2= field.copy()
 # fieldArr2, reason_n2 = field2.gradient_qc_new(workingdir=workingdir, nearneighbor=True)

@@ -4,11 +4,12 @@ import timeit
 
 
 import eikonaltomo
-dset=eikonaltomo.EikonalTomoDataSet('../eikonal_xcorr_tomo_Alaska.h5')
+dset=eikonaltomo.EikonalTomoDataSet('/work3/leon/eikonal_xcorr_tomo_Alaska.h5')
 dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72)
 
-dset.xcorr_eikonal_mp(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/xcorr_Alaska.h5', workingdir='./eikonal_working', \
-                   fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=24, subsize=10)
+dset.xcorr_eikonal_mp(inasdffname='/work3/leon/xcorr_Alaska.h5', workingdir='/work3/leon/eikonal_working', \
+                   fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10, subsize=100)
+# dset.xcorr_eikonal(inasdffname='/work3/leon/xcorr_Alaska.h5', workingdir='./eikonal_working')
 #
 # t1=timeit.default_timer()
 dset.eikonal_stack()
