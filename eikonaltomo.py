@@ -86,7 +86,7 @@ class EikonalTomoDataSet(h5py.File):
         self.attrs.create(name = 'nlon_lplc', data=nlon_lplc)
         return
     
-    def xcorr_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, deletetxt=True, verbose=True):
+    def xcorr_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, deletetxt=True, verbose=False):
         """
         Compute gradient of travel time for cross-correlation data
         =================================================================================================================
@@ -169,7 +169,6 @@ class EikonalTomoDataSet(h5py.File):
                 azdset              = event_group.create_dataset(name='az', data=field2d.az)
                 bazdset             = event_group.create_dataset(name='baz', data=field2d.baz)
                 Tdset               = event_group.create_dataset(name='travelT', data=field2d.Zarr)
-                
         if deletetxt:
             shutil.rmtree(workingdir)
         return
@@ -637,6 +636,11 @@ class EikonalTomoDataSet(h5py.File):
                 slownessALL[iev, :, :]  = slowness
                 reason_nALL[iev, :, :]  = reason_n
                 aziALL[iev, :, :]       = az
+                
+                # ## debug
+                # Ndebug = (velocity[(reason_n==0)*(velocity< 1.)]).size
+                # if Ndebug != 0: 
+                #     print evid, Ndebug 
             if Nmeasure.max()< threshmeasure:
                 print ('No enough measurements for: '+str(per)+' sec')
                 continue
@@ -703,7 +707,7 @@ class EikonalTomoDataSet(h5py.File):
             temp                            = np.sum(temp, axis=0)
             slowness_stdQC                  = np.sqrt(temp/(1-w2sumQC))
             # mask and velocity arrays of shape Nlat, Nlon
-            mask                            = np.zeros((Nlat, Nlon), dtype=np.bool)
+            mask                            = np.ones((Nlat, Nlon), dtype=np.bool)
             tempmask                        = (weightsumQC == 0)
             mask[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
                                             = tempmask
@@ -966,6 +970,7 @@ class EikonalTomoDataSet(h5py.File):
         dataid          = 'Eikonal_stack_'+str(runid)
         ingroup         = self[dataid]
         pers            = self.attrs['period_array']
+        self._get_lon_lat_arr()
         if not period in pers:
             raise KeyError('period = '+str(period)+' not included in the database')
         pergrp          = ingroup['%g_sec'%( period )]

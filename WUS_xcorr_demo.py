@@ -3,16 +3,16 @@ import numpy as np
 import timeit
 
 ################################################################################
-# dset=ASDFDBase.noiseASDF('../COR_WUS.h5')
+# dset=noisedbase.noiseASDF('/work3/leon//COR_WUS.h5')
 # # dset.read_stationtxt_ind('/Users/leon/Downloads/ancc-1.0-0/Station.lst', chans=['LHZ'])
 # # dset.read_xcorr('/Users/leon/Downloads/ancc-1.0-0', pfx='COR')
-# dset.xcorr_prephp(outdir='/Users/leon/PRE_PHP', mapfile='./MAPS/smpkolya_phv')
-# # # aftan
-# dset.xcorr_aftan_mp(outdir='/Users/leon/WUS_workingdir', prephdir='/Users/leon/PRE_PHP_R', f77=True, nprocess=10)
-# # # interpolate dispersion curve
-# dset.interp_disp()
-# # # get data for ray tomography
-# dset.xcorr_raytomoinput(outdir='../ray_tomo_data')
+# # dset.xcorr_prephp(outdir='/Users/leon/PRE_PHP', mapfile='./MAPS/smpkolya_phv')
+# # # # aftan
+# # dset.xcorr_aftan_mp(outdir='/Users/leon/WUS_workingdir', prephdir='/Users/leon/PRE_PHP_R', f77=True, nprocess=10)
+# # # # interpolate dispersion curve
+# # dset.interp_disp()
+# # # # get data for ray tomography
+# # dset.xcorr_raytomoinput(outdir='../ray_tomo_data')
 # # # get field data for Eikonal tomography
 # dset.xcorr_get_field()
 #################################################################################
@@ -32,11 +32,11 @@ import timeit
 # dset.plot_global_map(period=50., inglbpfx='./MAPS/smpkolya_phv_R')
 # 
 # #################################################################################
-# import eikonaltomo
-# dset=eikonaltomo.EikonalTomoDataSet('../eikonal_tomo_WUS.h5')
-# dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([12.]))
+import eikonaltomo
+dset=eikonaltomo.EikonalTomoDataSet('/work3/leon/eikonal_tomo_WUS.h5')
+# dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([8., 12., 24., 40.]))
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)
-# dset.xcorr_eikonal_mp(inasdffname='../COR_WUS.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
+# dset.xcorr_eikonal_mp(inasdffname='../COR_WUS.h5', workingdir='/work3/leon/eikonal_working_WUS', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
 # dset.xcorr_eikonal(inasdffname='../COR_WUS.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp')
 # #
 # # t1=timeit.default_timer()

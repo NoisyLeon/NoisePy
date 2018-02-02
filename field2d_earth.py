@@ -804,9 +804,9 @@ class Field2d(object):
         tempArr[distevent<cdist+50.]            = 5
         reason_n[indexvalid[0], indexvalid[1]]  = tempArr
         self.diffaArr                           = diffaArr
+        self.grad                               = tfield.grad
         self.get_appV()
         self.reason_n                           = reason_n
-        self.grad                               = tfield.grad
         return 
     
     def gradient_qc_new(self, workingdir, inpfx='', nearneighbor=True, cdist=None, verbose=False):
