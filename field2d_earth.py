@@ -450,7 +450,7 @@ class Field2d(object):
             f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
         call(['bash', tempGMT])
         os.remove(grdfile)
-        # os.remove(tempGMT)
+        os.remove(tempGMT)
         inArr       = np.loadtxt(fnameHD)
         ZarrIn      = inArr[:, 2]
         self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]

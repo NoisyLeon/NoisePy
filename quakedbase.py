@@ -1177,6 +1177,130 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print('-----------------------------------------------------------------------------------------------------------')
         print('================================== End reading downloaded body wave data ==================================')
         return
+    
+    def read_surf_waveforms_DMT(self, datadir, minDelta=0., maxDelta=180., startdate=None, enddate=None,  verbose=True, vmin=1., vmax=6.):
+        """read body wave data downloaded using obspyDMT
+        ====================================================================================================================
+        ::: input parameters :::
+        datadir         - data directory
+        min/maxDelta    - minimum/maximum epicentral distance, in degree
+        start/enddate   - start and end date for reading downloaded data
+        vmin/vmax       - minimum/maximum velocity for data trim
+        =====================================================================================================================
+        """
+        evnumb          = 0
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        try:
+            stime4read  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4read  = obspy.UTCDateTime(0)
+        try:
+            etime4read  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4read  = obspy.UTCDateTime()
+        L               = len(self.cat)
+        print('==================================== Reading downloaded surf wave data ====================================')
+        for event in self.cat:
+            event_id        = event.resource_id.id.split('=')[-1]
+            pmag            = event.preferred_magnitude()
+            magnitude       = pmag.mag
+            Mtype           = pmag.magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
+            porigin         = event.preferred_origin()
+            otime           = porigin.time
+            if otime < stime4read or otime > etime4read:
+                continue
+            print('Event ' + str(evnumb)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+            evlo            = porigin.longitude
+            evla            = porigin.latitude
+            evdp            = porigin.depth/1000.
+            tag             = 'surf_ev_%05d' %evnumb
+            suddatadir      = datadir+'/'+'%d%02d%02d_%02d%02d%02d.a' \
+                                %(otime.year, otime.month, otime.day, otime.hour, otime.minute, otime.second)
+            Ndata           = 0
+            outstr          = ''
+            for staid in self.waveforms.list():
+                netcode, stacode    = staid.split('.')
+                respdir             = suddatadir+'/resp'
+                rawdir              = suddatadir+'/raw'
+                fnameZ              = rawdir+'/'+netcode+'.'+stacode +'..LHZ'
+                invfnameZ           = respdir+'/STXML.'+netcode+'.'+stacode + '..LHZ'
+                if not os.path.isfile(fnameZ) :
+                    fnameZ          = rawdir+'/'+netcode+'.'+stacode + '.00.LHZ'
+                    invfnameZ       = respdir+'/STXML.'+netcode+'.'+stacode + '.00.LHZ'
+                    if not os.path.isfile(fnameZ) :
+                        fnameZ      = rawdir+'/'+netcode+'.'+stacode + '.10.LHZ'
+                        invfnameZ   = respdir+'/STXML.'+netcode+'.'+stacode + '.10.lHZ'
+                        if not os.path.isfile(fnameZ):
+                            if verbose:
+                                print('No data for: '+staid)
+                            continue
+                if not os.path.isfile(invfnameZ) :
+                    if verbose:
+                        print('No resp for: '+staid)
+                    continue
+                if verbose:
+                    print 'Reading data for:', staid
+                stla, elev, stlo    = self.waveforms[staid].coordinates.values()
+                elev                = elev/1000.
+                az, baz, dist       = geodist.inv(evlo, evla, stlo, stla)
+                dist                = dist/1000.
+                if baz<0.:
+                    baz             += 360.
+                Delta               = obspy.geodetics.kilometer2degrees(dist)
+                if Delta<minDelta:
+                    continue
+                if Delta>maxDelta:
+                    continue
+                st                  = obspy.read(fnameZ)
+                if len(st) > 1:
+                    continue
+                inv                 = obspy.read_inventory(invfnameZ, format="stationxml")
+                st.attach_response(inv)
+                pre_filt            = (0.001, 0.005, 1., 100.)
+                st.detrend()
+                try:
+                    st.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
+                    st.resample(sampling_rate=fs)
+                except ValueError:
+                    errordir    = datadir+'/error_dir'
+                    errorfile   = errordir+'/%d%02d%02d_%02d%02d%02d.log' \
+                        %(otime.year, otime.month, otime.day, otime.hour, otime.minute, otime.second)
+                    with open(errorfile, 'a') as fid:
+                        fid.writelines(staid+'\n')
+                    continue
+                # trim data
+                if dist < 1000.:
+                    tbeg            = otime
+                else:
+                    tbeg            = otime + dist/vmax
+                if dist > 5000.:
+                    if vmin < 1.5:
+                        tend        = otime + dist/1.5
+                    else:
+                        tend        = otime + dist/vmin
+                else:
+                    tend            = otime + dist/vmin
+                starttime           = st[0].stats.starttime
+                endtime             = st[0].stats.endtime
+                if starttime < tbeg:
+                    starttime       = tbeg
+                if endtime > tend:
+                    endtime         = tend
+                st.trim(starttime=starttime, endtime=endtime)
+                self.add_waveforms(st, event_id=event_id, tag=tag, labels='surf')
+                Ndata   += 1
+                outstr  += staid
+                outstr  += ' '
+            print(str(Ndata)+' data streams are stored in ASDF')
+            print('STATION CODE: '+outstr)
+            print('-----------------------------------------------------------------------------------------------------------')
+        print('================================== End reading downloaded surf wave data ==================================')
+        return
 
     def write2sac(self, network, station, evnumb, datatype='body'):
         """ Extract data from ASDF to SAC file
