@@ -4,18 +4,14 @@ import timeit
 import GeoPolygon
 import raytomo
 
-# dbase   = noisedbase.noiseASDF('inv_Alaska.h5')
-# geopoly = GeoPolygon.GeoPolygonLst()
-# geopoly.read_tomoctr('contour.ctr')
-# dbase.plot_stations(geopolygons=geopoly)
 
-dset=raytomo.RayTomoDataSet('../ray_tomo_Alaska.h5')
-dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_')
-dset.run_smooth(datadir='./raytomo_input', outdir='../ray_tomo_working_dir')
-dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=True, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=1, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=2, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
+dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_01.h5')
+# dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_')
+# dset.run_smooth(datadir='./raytomo_input', outdir='../ray_tomo_working_dir')
+# dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=True, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
+# dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
+# dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=1, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
+# dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=2, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
 # 
 # dset.get_data4plot(dataid='qc_run_1', period=12.)
 # dset.plot_vel_iso(vmin=2.9, vmax=3.5, fastaxis=False, projection='global')

@@ -453,12 +453,6 @@ class RayTomoDataSet(h5py.File):
         group.attrs.create(name = 'sigmaAni4', data=sigmaAni4)
         group.attrs.create(name = 'comments', data=comments)
         group.attrs.create(name = 'smoothid', data='smooth_run_'+str(smoothid))
-        # # # if anipara==0 or isotropic:
-        # # #     index0  = {'vel_iso': 0}
-        # # # elif anipara==1:
-        # # #     index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6}
-        # # # elif anipara==2:
-        # # #     index0  = {'vel_iso': 0, 'vel_rmod': 1, 'dm': 2, 'amp2': 3, 'psi2': 4, 'Acos2': 5, 'Asin2': 6, 'amp4': 7, 'psi4': 8, 'Acos4': 9, 'Asin4': 10}
         for per in pers:
             subgroup    = group.create_group(name='%g_sec'%( per ))
             outper      = outdir+'/'+'%g'%( per ) +'_'+datatype
@@ -775,7 +769,7 @@ class RayTomoDataSet(h5py.File):
         self.lonArr, self.latArr= np.meshgrid(self.lons, self.lats)
         return
     
-    def plot(self, runtype, runid, datatype, period, clabel='', cmap='cv', projection='lambert', geopolygons=None, vmin=None, vmax=None, showfig=True):
+    def plot(self, runtype, runid, datatype, period, shpfx=None, clabel='', cmap='cv', projection='lambert', geopolygons=None, vmin=None, vmax=None, showfig=True):
         """plot maps from the tomographic inversion
         =================================================================================================================
         ::: input parameters :::
@@ -841,6 +835,8 @@ class RayTomoDataSet(h5py.File):
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
+        shapefname  = '/scratch/summit/life9360/ALASKA_work/fault_maps/qfaults'
+        m.readshapefile(shapefname, 'faultline', linewidth=2)
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
@@ -908,7 +904,11 @@ class RayTomoDataSet(h5py.File):
                     reg_lat = lonlat_arr[ir, 1]
                     reg_C   = velocity[ir, 0]
                 if abs(reg_lon-glb_lon)<0.05 and abs(reg_lat-glb_lat)<0.05 and reg_C != 0 :
+                    if glb_C - reg_C < 0.5 and glb_C - reg_C > -0.5:
                         outArr[ig, 2]     = reg_C
+                    else:
+                        print 'Large changes in regional map: \
+                                vel_glb = '+str(glb_C)+' km/s'+' vel_reg = '+str(reg_C)+' km/sec, '+str(reg_lon)+' '+str(reg_lat)
             np.savetxt(outfname, outArr, fmt='%g %g %.4f')
         return
         

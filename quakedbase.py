@@ -1178,7 +1178,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print('================================== End reading downloaded body wave data ==================================')
         return
     
-    def read_surf_waveforms_DMT(self, datadir, fs=1., minDelta=0., maxDelta=180., startdate=None, enddate=None,  verbose=True, vmin=1., vmax=6.):
+    def read_surf_waveforms_DMT(self, datadir, fs=1., minDelta=0., maxDelta=180., startdate=None, enddate=None,  verbose=False, vmin=1., vmax=6.):
         """read body wave data downloaded using obspyDMT
         ====================================================================================================================
         ::: input parameters :::
@@ -1202,6 +1202,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
         except:
             etime4read  = obspy.UTCDateTime()
         L               = len(self.cat)
+        errordir        = datadir+'/error_dir'
+        if not os.path.isdir(errordir):
+            os.makedirs(errordir)
         print('==================================== Reading downloaded surf wave data ====================================')
         for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]

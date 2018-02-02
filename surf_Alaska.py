@@ -4,12 +4,10 @@ import timeit
 import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
-dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Alaska.h5')
+dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5')
 # dset.add_quakeml('/scratch/summit/life9360/ALASKA_work/quakeml/alaska_2017_aug.ml')
 
-# dset=quakedbase.quakeASDF('ref_Alaska.h5')
-# dset.cat = quakedbase.obspy.read_events('/scratch/summit/life9360/ALASKA_work/quakeml/alaska_2017_aug.ml')
-# dset.cat = quakedbase.obspy.read_events('test.ml')
+
 # print dset.events[0]
 # Retrieving earthquake catalog
 # ISC catalog
@@ -17,12 +15,12 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Al
 # gcmt catalog
 # dset.get_events(startdate='1991-01-01', enddate='2017-08-31', Mmin=5.5, magnitudetype='mb', gcmt=True)
 # Getting station information
-# dset.get_stations(channel='BH*', minlatitude=52., maxlatitude=72.5, minlongitude=-172., maxlongitude=-122.)
+# dset.get_stations(channel='LHZ', minlatitude=52., maxlatitude=72.5, minlongitude=-172., maxlongitude=-122.)
 
 # Downloading data
 # t1=timeit.default_timer()
-# # st=dset.get_body_waveforms()
-# dset.read_body_waveforms_DMT_rtz(datadir='/scratch/summit/life9360/ALASKA_work/p_wave_19910101_20170831')
+
+dset.read_surf_waveforms_DMT(datadir='/scratch/summit/life9360/ALASKA_work/surf_19950101_20170831', verbose=False)
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
 # 
