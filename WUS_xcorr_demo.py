@@ -33,14 +33,14 @@ import timeit
 # 
 # #################################################################################
 import eikonaltomo
-dset=eikonaltomo.EikonalTomoDataSet('/work3/leon/eikonal_tomo_WUS.h5')
+dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([8., 12., 24., 40.]))
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)
 # dset.xcorr_eikonal_mp(inasdffname='../COR_WUS.h5', workingdir='/work3/leon/eikonal_working_WUS', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
 # dset.xcorr_eikonal(inasdffname='../COR_WUS.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp')
 # #
 # # t1=timeit.default_timer()
-# dset.eikonal_stack()
+dset.eikonal_stack(anisotropic=True)
 # # t2=timeit.default_timer()
 # # print t2-t1
 # # dset.eikonal_stack()

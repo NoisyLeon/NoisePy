@@ -1916,8 +1916,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
         self.hsdbase.plot(stacode=network+'.'+station, longitude=stlo, latitude=stla)
         return
 
-
-
     def array_processing(self, evnumb=1, win_len=20., win_frac=0.2, sll_x=-3.0, slm_x=3.0, sll_y=-3.0, slm_y=3.0, sl_s=0.03,
             frqlow=0.0125, frqhigh=0.02, semb_thres=-1e9, vel_thres=-1e9, prewhiten=0, verbose=True, coordsys='lonlat', timestamp='mlabday',
                 method=0, minlat=None, maxlat=None, minlon=None, maxlon=None, lon0=None, lat0=None, radius=None, Tmin=None, Tmax=None, vmax=5.0, vmin=2.0):
@@ -2025,7 +2023,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         plt.show()
         return 
     
-    def quake_prephp(self, outdir, mapfile='./MAPS/smpkolya_phv'):
+    def quake_prephp_old(self, outdir, mapfile='./MAPS/smpkolya_phv', verbose=True):
         """
         Generate predicted phase velocity dispersion curves for event-station pairs
         ====================================================================================
@@ -2033,66 +2031,82 @@ class quakeASDF(pyasdf.ASDFDataSet):
         outdir  - output directory
         mapfile - phase velocity maps
         ------------------------------------------------------------------------------------
-        Input format:
+        : input format :
         prephaseEXE pathfname mapfile perlst staname
         
-        Output format:
+        : output format :
         outdirL(outdirR)/evid.staid.pre
         ====================================================================================
         """
-        staLst=self.waveforms.list()
-        evnumb=0
-        for event in self.events:
-            evnumb+=1
-            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-            evid='E%05d' % evnumb
-            pathfname=evid+'_pathfile'
-            prephaseEXE='./mhr_grvel_predict/lf_mhr_predict_earth'
-            perlst='./mhr_grvel_predict/perlist_phase'
+        staLst          = self.waveforms.list()
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        evnumb          = 0
+        for event in self.cat:
+            evnumb      +=1
+            evlo        = event.origins[0].longitude; evla=event.origins[0].latitude
+            evid        = 'E%05d' % evnumb
+            tag         = 'surf_ev_%05d' %evnumb
+            pathfname   = evid+'_pathfile'
+            prephaseEXE = './mhr_grvel_predict/lf_mhr_predict_earth'
+            perlst      = './mhr_grvel_predict/perlist_phase'
             if not os.path.isfile(prephaseEXE):
                 print 'lf_mhr_predict_earth executable does not exist!'
                 return
             if not os.path.isfile(perlst):
                 print 'period list does not exist!'
                 return
+            if verbose:
+                print evid
+            ista                = 0
             with open(pathfname,'w') as f:
-                ista=0
                 for station_id in staLst:
-                    stacode=station_id.split('.')[1]
-                    stla, stz, stlo=self.waveforms[station_id].coordinates.values()
-                    if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ): continue
-                    ista=ista+1
+                    taglst          = self.waveforms[station_id].get_waveform_tags()
+                    if not tag in taglst:
+                        continue
+                    stacode         = station_id.split('.')[1]
+                    stla, stz, stlo = self.waveforms[station_id].coordinates.values()
+                    if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ):
+                        continue
+                    ista            = ista+1
                     f.writelines('%5d%5d %15s %15s %10.5f %10.5f %10.5f %10.5f \n'
                             %(1, ista, evid, station_id, evla, evlo, stla, stlo ))
+            if ista == 0:
+                os.remove(pathfname)
+                continue
             call([prephaseEXE, pathfname, mapfile, perlst, evid])
             os.remove(pathfname)
-            outdirL=outdir+'_L'
-            outdirR=outdir+'_R'
-            if not os.path.isdir(outdirL): os.makedirs(outdirL)
-            if not os.path.isdir(outdirR): os.makedirs(outdirR)
-            fout = open(evid+'_temp','wb')
+            outdirL                 = outdir+'_L'
+            outdirR                 = outdir+'_R'
+            if not os.path.isdir(outdirL):
+                os.makedirs(outdirL)
+            if not os.path.isdir(outdirR):
+                os.makedirs(outdirR)
+            fout                    = open(evid+'_temp','wb')
             for l1 in open('PREDICTION_L'+'_'+evid):
-                l2 = l1.rstrip().split()
+                l2                  = l1.rstrip().split()
                 if (len(l2)>8):
                     fout.close()
-                    outname = outdirL + "/%s.%s.pre" % (l2[3],l2[4])
-                    fout = open(outname,"w")
+                    outname         = outdirL + "/%s.%s.pre" % (l2[3],l2[4])
+                    fout            = open(outname,"w")
                 elif (len(l2)>7):
                     fout.close()
-                    outname = outdirL + "/%s.%s.pre" % (l2[2],l2[3])
-                    fout = open(outname,"w")                
+                    outname         = outdirL + "/%s.%s.pre" % (l2[2],l2[3])
+                    fout            = open(outname,"w")                
                 else:
                     fout.write("%g %g\n" % (float(l2[0]),float(l2[1])))
             for l1 in open('PREDICTION_R'+'_'+evid):
-                l2 = l1.rstrip().split()
+                l2                  = l1.rstrip().split()
                 if (len(l2)>8):
                     fout.close()
-                    outname = outdirR + "/%s.%s.pre" % (l2[3],l2[4])
-                    fout = open(outname,"w")
+                    outname         = outdirR + "/%s.%s.pre" % (l2[3],l2[4])
+                    fout            = open(outname,"w")
                 elif (len(l2)>7):
                     fout.close()
-                    outname = outdirR + "/%s.%s.pre" % (l2[2],l2[3])
-                    fout = open(outname,"w")         
+                    outname         = outdirR + "/%s.%s.pre" % (l2[2],l2[3])
+                    fout            = open(outname,"w")         
                 else:
                     fout.write("%g %g\n" % (float(l2[0]),float(l2[1])))
             fout.close()
@@ -2101,7 +2115,98 @@ class quakeASDF(pyasdf.ASDFDataSet):
             os.remove('PREDICTION_R'+'_'+evid)
         return
     
-    def quake_aftan(self, channel='Z', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True, \
+    def quake_prephp(self, outdir, mapfile='./MAPS/smpkolya_phv', verbose=True):
+        """
+        Generate predicted phase velocity dispersion curves for event-station pairs
+        ====================================================================================
+        ::: input parameters :::
+        outdir  - output directory
+        mapfile - phase velocity maps
+        ------------------------------------------------------------------------------------
+        : input format :
+        prephaseEXE pathfname mapfile perlst staname
+        
+        : output format :
+        outdirL(outdirR)/evid.staid.pre
+        ====================================================================================
+        """
+        staLst          = self.waveforms.list()
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        prephaseEXE     = './mhr_grvel_predict/lf_mhr_predict_earth'
+        perlst          = './mhr_grvel_predict/perlist_phase'
+        if not os.path.isfile(prephaseEXE):
+            print 'lf_mhr_predict_earth executable does not exist!'
+            return
+        if not os.path.isfile(perlst):
+            print 'period list does not exist!'
+            return
+        for station_id in staLst:
+            if verbose:
+                print station_id
+            stacode             = station_id.split('.')[1]
+            stla, stz, stlo     = self.waveforms[station_id].coordinates.values()
+            pathfname           = station_id+'_pathfile'
+            ievent              = 0
+            taglst              = self.waveforms[station_id].get_waveform_tags()
+            with open(pathfname,'w') as f:
+                for tag in taglst:
+                    iev         = int(tag.split('_')[-1])-1
+                    event       = self.cat[iev]
+                    evlo        = event.origins[0].longitude
+                    evla        = event.origins[0].latitude
+                    evid        = 'E%05d' % (iev+1)
+                    if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ):
+                        continue
+                    ievent      += 1
+                    f.writelines('%5d%5d %15s %15s %10.5f %10.5f %10.5f %10.5f \n'
+                            %(1, ievent, station_id, evid, stla, stlo, evla, evlo ))
+            call([prephaseEXE, pathfname, mapfile, perlst, station_id])
+            os.remove(pathfname)
+            outdirL                 = outdir+'_L'
+            outdirR                 = outdir+'_R'
+            if not os.path.isdir(outdirL):
+                os.makedirs(outdirL)
+            if not os.path.isdir(outdirR):
+                os.makedirs(outdirR)
+            fout                    = open(station_id+'_temp','wb')
+            for l1 in open('PREDICTION_L'+'_'+station_id):
+                l2                  = l1.rstrip().split()
+                if (len(l2)>8):
+                    fout.close()
+                    # outname         = outdirL + "/%s.%s.pre" % (l2[3],l2[4])
+                    outname         = outdirL + "/%s.%s.pre" % (l2[4],l2[3])
+                    fout            = open(outname,"w")
+                elif (len(l2)>7):
+                    fout.close()
+                    # outname         = outdirL + "/%s.%s.pre" % (l2[2],l2[3])
+                    outname         = outdirL + "/%s.%s.pre" % (l2[3],l2[2])
+                    fout            = open(outname,"w")                
+                else:
+                    fout.write("%g %g\n" % (float(l2[0]),float(l2[1])))
+            for l1 in open('PREDICTION_R'+'_'+station_id):
+                l2                  = l1.rstrip().split()
+                if (len(l2)>8):
+                    fout.close()
+                    # outname         = outdirR + "/%s.%s.pre" % (l2[3],l2[4])
+                    outname         = outdirR + "/%s.%s.pre" % (l2[4],l2[3])
+                    fout            = open(outname,"w")
+                elif (len(l2)>7):
+                    fout.close()
+                    # outname         = outdirR + "/%s.%s.pre" % (l2[2],l2[3])
+                    outname         = outdirR + "/%s.%s.pre" % (l2[3],l2[2])
+                    fout            = open(outname,"w")         
+                else:
+                    fout.write("%g %g\n" % (float(l2[0]),float(l2[1])))
+            fout.close()
+            os.remove(station_id+'_temp')
+            os.remove('PREDICTION_L'+'_'+station_id)
+            os.remove('PREDICTION_R'+'_'+station_id)
+        return
+    
+    def quake_aftan_old(self, channel='Z', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True, \
             pmf1=True, pmf2=True, verbose=True, prephdir=None, f77=True, pfx='DISP'):
         """ aftan analysis of earthquake data 
         =======================================================================================
@@ -2123,35 +2228,60 @@ class quakeASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.DISPpmf1, self.auxiliary_data.DISPpmf2
         =======================================================================================
         """
+        staLst          = self.waveforms.list()
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        L                       = len(self.cat)
+        evnumb                  = 0
         print 'Start aftan analysis!'
-        staLst=self.waveforms.list()
-        evnumb=0
-        for event in self.events:
-            evnumb+=1
-            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-            otime=event.origins[0].time
-            tag='surf_ev_%05d' %evnumb
-            evid='E%05d' % evnumb
+        for event in self.cat:
+            evnumb              +=1
+            porigin             = event.preferred_origin()
+            otime               = porigin.time
+            evlo                = porigin.longitude
+            evla                = porigin.latitude
+            evdp                = porigin.depth/1000.
+            event_id            = event.resource_id.id.split('=')[-1]
+            pmag                = event.preferred_magnitude()
+            magnitude           = pmag.mag
+            Mtype               = pmag.magnitude_type
+            tag                 = 'surf_ev_%05d' %evnumb
+            evid                = 'E%05d' % evnumb
+            event_descrip       = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+            Ndata               = 0
+            outstr              = ''
             for staid in staLst:
-                netcode, stacode=staid.split('.')
-                stla, stz, stlo=self.waveforms[staid].coordinates.values()
-                az, baz, dist = geodist.inv(evlo, evla, stlo, stla); dist=dist/1000. 
-                if baz<0: baz+=360.
+                netcode, stacode= staid.split('.')
+                stla, stz, stlo = self.waveforms[staid].coordinates.values()
+                az, baz, dist   = geodist.inv(evlo, evla, stlo, stla); dist=dist/1000. 
+                if baz<0:
+                    baz         +=360.
                 try:
                     if channel!='R' or channel!='T':
-                        inST=self.waveforms[staid][tag].select(component=channel)
+                        inST    = self.waveforms[staid][tag].select(component=channel)
                     else:
-                        st=self.waveforms[staid][tag]
+                        st      = self.waveforms[staid][tag]
                         st.rotate('NE->RT', backazimuth=baz) 
-                        inST=st.select(component=channel)
-                except KeyError: continue
-                if len(inST)==0: continue
-                else: tr=inST[0]
-                stime=tr.stats.starttime; etime=tr.stats.endtime
-                tr.stats.sac={}; tr.stats.sac['dist']= dist; tr.stats.sac['b']=stime-otime; tr.stats.sac['e']=etime-otime
-                aftanTr=pyaftan.aftantrace(tr.data, tr.stats)
-                if prephdir !=None: phvelname = prephdir + "/%s.%s.pre" %(evid, staid)
-                else: phvelname =''
+                        inST    = st.select(component=channel)
+                except KeyError:
+                    continue
+                if len(inST)==0:
+                    continue
+                else:
+                    tr          = inST[0]
+                stime               = tr.stats.starttime; etime=tr.stats.endtime
+                tr.stats.sac        = {}
+                tr.stats.sac['dist']= dist
+                tr.stats.sac['b']   = stime-otime
+                tr.stats.sac['e']   = etime-otime
+                aftanTr             = pyaftan.aftantrace(tr.data, tr.stats)
+                if prephdir !=None:
+                    phvelname       = prephdir + "/%s.%s.pre" %(evid, staid)
+                else:
+                    phvelname       = ''
                 if f77:
                     aftanTr.aftanf77(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
                         tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
@@ -2160,28 +2290,158 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     aftanTr.aftan(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
                         tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
                             npoints=inftan.npoints, perc=inftan.perc, phvelname=phvelname)
-                if verbose: print 'aftan analysis for: ' + evid+' '+staid+'_'+channel
+                if verbose:
+                    print 'aftan analysis for: ' + evid+' '+staid+'_'+channel
                 aftanTr.get_snr(ffact=inftan.ffact) # SNR analysis
-                staid_aux=evid+'/'+netcode+'_'+stacode+'_'+channel
+                staid_aux           = evid+'/'+netcode+'_'+stacode+'_'+channel
                 # save aftan results to ASDF dataset
                 if basic1:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_1}
                     self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_1, data_type='DISPbasic1', path=staid_aux, parameters=parameters)
                 if basic2:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': aftanTr.ftanparam.nfout2_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': aftanTr.ftanparam.nfout2_1}
                     self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_1, data_type='DISPbasic2', path=staid_aux, parameters=parameters)
                 if inftan.pmf:
                     if pmf1:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_2}
                         self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_2, data_type='DISPpmf1', path=staid_aux, parameters=parameters)
                     if pmf2:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': aftanTr.ftanparam.nfout2_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': aftanTr.ftanparam.nfout2_2}
                         self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_2, data_type='DISPpmf2', path=staid_aux, parameters=parameters)
-                if outdir != None:
+                if outdir is not None:
                     if not os.path.isdir(outdir+'/'+pfx+'/'+evid):
                         os.makedirs(outdir+'/'+pfx+'/'+evid)
-                    foutPR=outdir+'/'+pfx+'/'+evid+'/'+ staid+'_'+channel+'.SAC'
+                    foutPR          = outdir+'/'+pfx+'/'+evid+'/'+ staid+'_'+channel+'.SAC'
                     aftanTr.ftanparam.writeDISP(foutPR)
+                Ndata               += 1
+                outstr              += staid
+                outstr              += ' '
+            print(str(Ndata)+' data streams processed for aftan')
+            print('STATION CODE: '+outstr)
+            print('-----------------------------------------------------------------------------------------------------------')
+        print 'End aftan analysis!'
+        return
+    
+    def quake_aftan(self, channel='Z', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True, \
+            pmf1=True, pmf2=True, verbose=False, prephdir=None, f77=True, pfx='DISP'):
+        """ aftan analysis of earthquake data 
+        =======================================================================================
+        ::: input parameters :::
+        channel     - channel pair for aftan analysis('Z', 'R', 'T')
+        tb          - begin time (default = 0.0)
+        outdir      - directory for output disp txt files (default = None, no txt output)
+        inftan      - input aftan parameters
+        basic1      - save basic aftan results or not
+        basic2      - save basic aftan results(with jump correction) or not
+        pmf1        - save pmf aftan results or not
+        pmf2        - save pmf aftan results(with jump correction) or not
+        prephdir    - directory for predicted phase velocity dispersion curve
+        f77         - use aftanf77 or not
+        pfx         - prefix for output txt DISP files
+        ---------------------------------------------------------------------------------------
+        Output:
+        self.auxiliary_data.DISPbasic1, self.auxiliary_data.DISPbasic2,
+        self.auxiliary_data.DISPpmf1, self.auxiliary_data.DISPpmf2
+        =======================================================================================
+        """
+        staLst          = self.waveforms.list()
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        Nsta            = len(staLst)
+        ista            = 0
+        for staid in staLst:
+            ista                += 1
+            print ('aftan for station: '+staid+' '+str(ista)+'/'+str(Nsta))
+            netcode, stacode    = staid.split('.')
+            stla, stz, stlo     = self.waveforms[staid].coordinates.values()
+            Ndata               = 0
+            outstr              = ''
+            taglst              = self.waveforms[staid].get_waveform_tags()
+            if len(taglst) == 0:
+                print 'No data for station: '+ staid
+                continue
+            for tag in taglst:
+                iev                 = int(tag.split('_')[-1])-1
+                event               = self.cat[iev]
+                porigin             = event.preferred_origin()
+                otime               = porigin.time
+                evlo                = porigin.longitude
+                evla                = porigin.latitude
+                evdp                = porigin.depth/1000.
+                event_id            = event.resource_id.id.split('=')[-1]
+                pmag                = event.preferred_magnitude()
+                magnitude           = pmag.mag
+                Mtype               = pmag.magnitude_type
+                evid                = 'E%05d' % (iev+1)
+                if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ):
+                    continue
+                az, baz, dist       = geodist.inv(evlo, evla, stlo, stla)
+                dist                = dist/1000. 
+                if baz<0:
+                    baz             += 360.
+                try:
+                    if channel!='R' or channel!='T':
+                        inST    = self.waveforms[staid][tag].select(component=channel)
+                    else:
+                        st      = self.waveforms[staid][tag]
+                        st.rotate('NE->RT', backazimuth=baz) 
+                        inST    = st.select(component=channel)
+                except KeyError:
+                    continue
+                if len(inST)==0:
+                    continue
+                else:
+                    tr          = inST[0]
+                Ndata               += 1
+                stime               = tr.stats.starttime
+                etime               = tr.stats.endtime
+                tr.stats.sac        = {}
+                tr.stats.sac['dist']= dist
+                tr.stats.sac['b']   = stime-otime
+                tr.stats.sac['e']   = etime-otime
+                aftanTr             = pyaftan.aftantrace(tr.data, tr.stats)
+                if prephdir !=None:
+                    phvelname       = prephdir + "/%s.%s.pre" %(evid, staid)
+                else:
+                    phvelname       = ''
+                if f77:
+                    aftanTr.aftanf77(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
+                        tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
+                            npoints=inftan.npoints, perc=inftan.perc, phvelname=phvelname)
+                else:
+                    aftanTr.aftan(pmf=inftan.pmf, piover4=inftan.piover4, vmin=inftan.vmin, vmax=inftan.vmax, tmin=inftan.tmin, tmax=inftan.tmax,
+                        tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
+                            npoints=inftan.npoints, perc=inftan.perc, phvelname=phvelname)
+                aftanTr.get_snr(ffact=inftan.ffact) # SNR analysis
+                staid_aux           = evid+'/'+netcode+'_'+stacode+'_'+channel
+                # save aftan results to ASDF dataset
+                if basic1:
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_1}
+                    self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_1, data_type='DISPbasic1', path=staid_aux, parameters=parameters)
+                if basic2:
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': aftanTr.ftanparam.nfout2_1}
+                    self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_1, data_type='DISPbasic2', path=staid_aux, parameters=parameters)
+                if inftan.pmf:
+                    if pmf1:
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_2}
+                        self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_2, data_type='DISPpmf1', path=staid_aux, parameters=parameters)
+                    if pmf2:
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': aftanTr.ftanparam.nfout2_2}
+                        self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_2, data_type='DISPpmf2', path=staid_aux, parameters=parameters)
+                if outdir is not None:
+                    if not os.path.isdir(outdir+'/'+pfx+'/'+evid):
+                        os.makedirs(outdir+'/'+pfx+'/'+evid)
+                    foutPR          = outdir+'/'+pfx+'/'+evid+'/'+ staid+'_'+channel+'.SAC'
+                    aftanTr.ftanparam.writeDISP(foutPR)
+                Ndata               += 1
+                outstr              += otime.date.isoformat()
+                outstr              += ' '
+            print(str(Ndata)+' data streams processed for aftan')
+            if verbose:
+                print('EVENT DATE: '+outstr)
+            print('-----------------------------------------------------------------------------------------------------------')
         print 'End aftan analysis!'
         return
                
@@ -2211,58 +2471,68 @@ class quakeASDF(pyasdf.ASDFDataSet):
         =======================================================================================
         """
         print 'Preparing data for aftan analysis !'
-        staLst=self.waveforms.list()
-        inputStream=[]
-        evnumb=0
+        staLst      = self.waveforms.list()
+        inputStream = []
+        evnumb      = 0
         for event in self.events:
-            evnumb+=1
-            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-            otime=event.origins[0].time
-            tag='surf_ev_%05d' %evnumb
-            evid='E%05d' % evnumb
-            if not os.path.isdir(outdir+'/'+pfx+'/'+evid): os.makedirs(outdir+'/'+pfx+'/'+evid)
+            evnumb  += 1
+            evlo    = event.origins[0].longitude; evla=event.origins[0].latitude
+            otime   = event.origins[0].time
+            tag     = 'surf_ev_%05d' %evnumb
+            evid    = 'E%05d' % evnumb
+            if not os.path.isdir(outdir+'/'+pfx+'/'+evid):
+                os.makedirs(outdir+'/'+pfx+'/'+evid)
             for staid in staLst:
-                netcode, stacode=staid.split('.')
-                stla, stz, stlo=self.waveforms[staid].coordinates.values()
+                netcode, stacode    = staid.split('.')
+                stla, stz, stlo     = self.waveforms[staid].coordinates.values()
                 # event should be initial point, station is end point, then we use baz to to rotation!
-                az, baz, dist = geodist.inv(evlo, evla, stlo, stla); dist=dist/1000. 
-                if baz<0: baz+=360.
+                az, baz, dist       = geodist.inv(evlo, evla, stlo, stla); dist=dist/1000. 
+                if baz<0:
+                    baz             +=360.
                 try:
                     if channel!='R' or channel!='T':
-                        inST=self.waveforms[staid][tag].select(component=channel)
+                        inST        = self.waveforms[staid][tag].select(component=channel)
                     else:
-                        st=self.waveforms[staid][tag]
+                        st          = self.waveforms[staid][tag]
                         st.rotate('NE->RT', backazimuth=baz) # need check
-                        inST=st.select(component=channel)
-                except KeyError: continue
-                if len(inST)==0: continue
-                else: tr=inST[0]
-                stime=tr.stats.starttime; etime=tr.stats.endtime
-                tr.stats.sac={}; tr.stats.sac['dist']= dist; tr.stats.sac['b']=stime-otime; tr.stats.sac['e']=etime-otime
-                tr.stats.sac['kuser0']=evid
-                aftanTr=pyaftan.aftantrace(tr.data, tr.stats)
-                if verbose: print 'Preparing aftan data: ' + evid+' '+staid+'_'+channel
+                        inST        = st.select(component=channel)
+                except KeyError:
+                    continue
+                if len(inST)==0:
+                    continue
+                else:
+                    tr      = inST[0]
+                stime                   = tr.stats.starttime
+                etime                   = tr.stats.endtime
+                tr.stats.sac            = {}
+                tr.stats.sac['dist']    = dist
+                tr.stats.sac['b']       = stime-otime
+                tr.stats.sac['e']       = etime-otime
+                tr.stats.sac['kuser0']  = evid
+                aftanTr                 = pyaftan.aftantrace(tr.data, tr.stats)
+                if verbose:
+                    print 'Preparing aftan data: ' + evid+' '+staid+'_'+channel
                 inputStream.append(aftanTr)
         print 'Start multiprocessing aftan analysis !'
         if len(inputStream) > subsize:
-            Nsub = int(len(inputStream)/subsize)
+            Nsub            = int(len(inputStream)/subsize)
             for isub in xrange(Nsub):
                 print 'Subset:', isub,'in',Nsub,'sets'
-                cstream=inputStream[isub*subsize:(isub+1)*subsize]
-                AFTAN = partial(aftan4mp_quake, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-                pool = multiprocessing.Pool(processes=nprocess)
+                cstream     = inputStream[isub*subsize:(isub+1)*subsize]
+                AFTAN       = partial(aftan4mp_quake, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+                pool        = multiprocessing.Pool(processes=nprocess)
                 pool.map(AFTAN, cstream) #make our results with a map call
                 pool.close() #we are not adding any more processes
                 pool.join() #tell it to wait until all threads are done before going on
-            cstream=inputStream[(isub+1)*subsize:]
-            AFTAN = partial(aftan4mp_quake, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-            pool = multiprocessing.Pool(processes=nprocess)
+            cstream         = inputStream[(isub+1)*subsize:]
+            AFTAN           = partial(aftan4mp_quake, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+            pool            = multiprocessing.Pool(processes=nprocess)
             pool.map(AFTAN, cstream) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
-            AFTAN = partial(aftan4mp_quake, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
-            pool = multiprocessing.Pool(processes=nprocess)
+            AFTAN           = partial(aftan4mp_quake, outdir=outdir, inftan=inftan, prephdir=prephdir, f77=f77, pfx=pfx)
+            pool            = multiprocessing.Pool(processes=nprocess)
             pool.map(AFTAN, inputStream) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
@@ -2270,46 +2540,48 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print 'Reading aftan results into ASDF Dataset !'
         for event in self.events:
             for staid in staLst:
-                netcode, stacode=staid.split('.')
-                evid='E%05d' % evnumb
-                finPR=pfx+'/'+evid+'/'+staid+'_'+channel+'.SAC'
+                netcode, stacode    = staid.split('.')
+                evid                = 'E%05d' % evnumb
+                finPR               = pfx+'/'+evid+'/'+staid+'_'+channel+'.SAC'
                 try:
-                    f10=np.load(outdir+'/'+finPR+'_1_DISP.0.npz')
-                    f11=np.load(outdir+'/'+finPR+'_1_DISP.1.npz')
-                    f20=np.load(outdir+'/'+finPR+'_2_DISP.0.npz')
-                    f21=np.load(outdir+'/'+finPR+'_2_DISP.1.npz')
+                    f10     = np.load(outdir+'/'+finPR+'_1_DISP.0.npz')
+                    f11     = np.load(outdir+'/'+finPR+'_1_DISP.1.npz')
+                    f20     = np.load(outdir+'/'+finPR+'_2_DISP.0.npz')
+                    f21     = np.load(outdir+'/'+finPR+'_2_DISP.1.npz')
                 except IOError:
                     print 'NO aftan results: '+ evid+' '+staid+'_'+channel
                     continue
-                if verbose: print 'Reading aftan results '+ evid+' '+staid+'_'+channel
+                if verbose:
+                    print 'Reading aftan results '+ evid+' '+staid+'_'+channel
                 if deletedisp:
                     os.remove(outdir+'/'+finPR+'_1_DISP.0.npz')
                     os.remove(outdir+'/'+finPR+'_1_DISP.1.npz')
                     os.remove(outdir+'/'+finPR+'_2_DISP.0.npz')
                     os.remove(outdir+'/'+finPR+'_2_DISP.1.npz')
-                arr1_1  = f10['arr_0']
-                nfout1_1= f10['arr_1']
-                arr2_1  = f11['arr_0']
-                nfout2_1= f11['arr_1']
-                arr1_2  = f20['arr_0']
-                nfout1_2= f20['arr_1']
-                arr2_2  = f21['arr_0']
-                nfout2_2= f21['arr_1']
-                staid_aux=evid+'/'+netcode+'_'+stacode+'_'+channel
+                arr1_1      = f10['arr_0']
+                nfout1_1    = f10['arr_1']
+                arr2_1      = f11['arr_0']
+                nfout2_1    = f11['arr_1']
+                arr1_2      = f20['arr_0']
+                nfout1_2    = f20['arr_1']
+                arr2_2      = f21['arr_0']
+                nfout2_2    = f21['arr_1']
+                staid_aux   = evid+'/'+netcode+'_'+stacode+'_'+channel
                 if basic1:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_1}
                     self.add_auxiliary_data(data=arr1_1, data_type='DISPbasic1', path=staid_aux, parameters=parameters)
                 if basic2:
-                    parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': nfout2_1}
+                    parameters      = {'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': nfout2_1}
                     self.add_auxiliary_data(data=arr2_1, data_type='DISPbasic2', path=staid_aux, parameters=parameters)
                 if inftan.pmf:
                     if pmf1:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': nfout1_2}
                         self.add_auxiliary_data(data=arr1_2, data_type='DISPpmf1', path=staid_aux, parameters=parameters)
                     if pmf2:
-                        parameters={'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': nfout2_2}
+                        parameters  = {'Tc': 0, 'To': 1, 'Vgr': 2, 'Vph': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': nfout2_2}
                         self.add_auxiliary_data(data=arr2_2, data_type='DISPpmf2', path=staid_aux, parameters=parameters)
-        if deletedisp: shutil.rmtree(outdir+'/'+pfx)
+        if deletedisp:
+            shutil.rmtree(outdir+'/'+pfx)
         return
     
     def interp_disp(self, data_type='DISPpmf2', channel='Z', pers=np.array([]), verbose=True):
@@ -2336,7 +2608,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 netcode, stacode=staid.split('.')
                 try:
                     subdset=self.auxiliary_data[data_type][evid][netcode+'_'+stacode+'_'+channel]
-                except KeyError: continue
+                except KeyError:
+                    continue
                 data=subdset.data.value
                 index=subdset.parameters
                 if verbose: print 'Interpolating dispersion curve for '+ evid+' '+staid+'_'+channel

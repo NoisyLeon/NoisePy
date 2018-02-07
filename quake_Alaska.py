@@ -2,6 +2,7 @@ import quakedbase
 import numpy as np
 import timeit
 import matplotlib.pyplot as plt
+import pyaftan
 
 # Initialize ASDF dataset
 dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5')
@@ -20,20 +21,10 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_A
 # Downloading data
 # t1=timeit.default_timer()
 
-dset.read_surf_waveforms_DMT(datadir='/scratch/summit/life9360/ALASKA_work/surf_19950101_20170831', verbose=False)
-# t2=timeit.default_timer()
-# print t2-t1, 'sec'
-# 
-# # Computing receiver function
-# dset.compute_ref(walltimeinhours=135., startind=78)
-# dset.compute_ref(walltimeinhours=150, startind=92)
-# dset.compute_ref_mp(outdir='/scratch/summit/life9360/ALASKA_work/ref_working', verbose=False, nprocess=24)
-# try: del dset.auxiliary_data.RefRHS
-# except: pass
-# 
-# # Harmonic analysis
-# dset.harmonic_stripping()
-# t2=timeit.default_timer()
-# print t2-t1, 'sec'
-# dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')
-# plt.show()
+# dset.read_surf_waveforms_DMT(datadir='/scratch/summit/life9360/ALASKA_work/surf_19950101_20170831', verbose=False)
+
+# dset.quake_prephp(outdir='/scratch/summit/life9360/ALASKA_work/quake_working_dir/pre_disp')
+inftan      = pyaftan.InputFtanParam()
+inftan.tmax = 100.
+inftan.tmin = 5.
+dset.quake_aftan(prephdir='/scratch/summit/life9360/ALASKA_work/quake_working_dir/pre_disp_R', inftan=inftan)

@@ -1545,7 +1545,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 iray                += 1
                 if np.fmod(iray+1, Ntr_one_percent) ==0:
                     ipercent        += 1
-                    print ('Number of traces finished interpolating dispersion curve: '+str(iray)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                    print ('Number of traces finished generating raytomo input: '+str(iray)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
                 try:
                     subdset         = self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
                 except:
@@ -1580,8 +1580,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         continue
                     fph             = fph_lst[iper]
                     fgr             = fgr_lst[iper]
-                    fph.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(i, lat1, lon1, lat2, lon2, pvel, staid1, staid2))
-                    fgr.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(i, lat1, lon1, lat2, lon2, gvel, staid1, staid2))
+                    fph.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(iray, lat1, lon1, lat2, lon2, pvel, staid1, staid2))
+                    fgr.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(iray, lat1, lon1, lat2, lon2, gvel, staid1, staid2))
         for iper in range(pers.size):
             fph                     = fph_lst[iper]
             fgr                     = fgr_lst[iper]
