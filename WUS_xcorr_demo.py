@@ -1,7 +1,7 @@
 import noisedbase
 import numpy as np
 import timeit
-
+import matplotlib.pyplot as plt
 ################################################################################
 # dset=noisedbase.noiseASDF('/work3/leon//COR_WUS.h5')
 # # dset.read_stationtxt_ind('/Users/leon/Downloads/ancc-1.0-0/Station.lst', chans=['LHZ'])
@@ -33,14 +33,14 @@ import timeit
 # 
 # #################################################################################
 import eikonaltomo
-dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
-# dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([8., 12., 24., 40.]))
+dset=eikonaltomo.EikonalTomoDataSet('/work3/leon/eikonal_tomo_WUS_24.h5')
+# dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([24.]))
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)
 # dset.xcorr_eikonal_mp(inasdffname='../COR_WUS.h5', workingdir='/work3/leon/eikonal_working_WUS', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
 # dset.xcorr_eikonal(inasdffname='../COR_WUS.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp')
 # #
 # # t1=timeit.default_timer()
-dset.eikonal_stack(anisotropic=True)
+out = dset.eikonal_stack(anisotropic=True)
 # # t2=timeit.default_timer()
 # # print t2-t1
 # # dset.eikonal_stack()
@@ -49,4 +49,4 @@ dset.eikonal_stack(anisotropic=True)
 # dset.np2ma()
 # dset.plot_vel_iso(vmin=3.4, vmax=4.0)
 
-
+# out = dset.debug_plot_azimuth(40., 247.)

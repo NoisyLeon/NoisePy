@@ -695,6 +695,8 @@ class Field2d(object):
         fieldv1HD02 = Inv1HD02[:,2]
         # Set field value to be zero if there is large difference between v1HD and v1HD02
         diffArr     = fieldv1HD-fieldv1HD02
+        # fieldArr    = fieldv1HD*((diffArr<1.)*(diffArr>-1.))
+        # old
         fieldArr    = fieldv1HD*((diffArr<2.)*(diffArr>-2.)) 
         fieldArr    = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1, :]
         # reason_n 
@@ -705,8 +707,12 @@ class Field2d(object):
         #   4: near a zero field data point
         #   5: epicentral distance is too small
         reason_n    = np.ones(fieldArr.size, dtype=np.int32)
+        # reason_n1   = np.int32(reason_n*(diffArr>1.))
+        # reason_n2   = np.int32(reason_n*(diffArr<-1.))
+        # old
         reason_n1   = np.int32(reason_n*(diffArr>2.))
         reason_n2   = np.int32(reason_n*(diffArr<-2.))
+        
         reason_n    = reason_n1+reason_n2
         reason_n    = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
         #-------------------------------------------------------------------------------------------------------
@@ -779,7 +785,7 @@ class Field2d(object):
         latinArr                                = self.lat[indexvalid[0] + 1]
         loninArr                                = self.lon[indexvalid[1] + 1]
         evloArr                                 = np.ones(loninArr.size, dtype=np.float64)*evlo
-        evlaArr                                 = np.ones(loninArr.size, dtype=np.float64)*evla
+        evlaArr                                 = np.ones(latinArr.size, dtype=np.float64)*evla
         az, baz, distevent                      = geodist.inv(loninArr, latinArr, evloArr, evlaArr) # loninArr/latinArr are initial points
         distevent                               = distevent/1000.
         az                                      = az + 180.
@@ -789,6 +795,7 @@ class Field2d(object):
         az[az<-180.]                            = az[az<-180.] + 360.
         baz[baz>180.]                           = baz[baz>180.] - 360.
         baz[baz<-180.]                          = baz[baz<-180.] + 360.
+        # az azimuth receiver -> source 
         diffaArr[indexvalid[0], indexvalid[1]]  = tfield.proAngle[indexvalid[0], indexvalid[1]] - az
         self.az                                 = np.zeros(self.proAngle.shape, dtype=np.float64)
         self.az[indexvalid[0], indexvalid[1]]   = az
