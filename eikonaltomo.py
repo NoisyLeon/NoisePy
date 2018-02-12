@@ -613,8 +613,8 @@ class EikonalTomoDataSet(h5py.File):
         group_out.attrs.create(name = 'fieldtype', data=group.attrs['fieldtype'])
         for per in pers:
             print 'Stacking Eikonal results for: '+str(per)+' sec'
-            if per != 24.:
-                continue
+            # if per != 24.:
+            #     continue
             per_group   = group['%g_sec'%( per )]
             Nevent      = len(per_group.keys())
             Nmeasure    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
@@ -699,33 +699,27 @@ class EikonalTomoDataSet(h5py.File):
             slownessALL2                    = slownessALL*weightALL
             slowness_sum                    = np.sum(slownessALL2, axis=0)
             slowness_sumALL                 = np.broadcast_to(slowness_sum, weightALL.shape)
-            
             # new
             signALL                         = weightALL.copy()
             signALL[signALL!=0]             = 1.
             MArr                            = np.sum(signALL, axis=0)
             temp                            = weightALL*(slownessALL-slowness_sumALL)**2
             temp                            = np.sum(temp, axis=0)
-            slowness_std                    = np.sqrt(temp/weightsum*MArr/(MArr-1))
+            slowness_std                    = np.zeros(temp.shape)
+            tind                            = (weightsum!=0)*(MArr!=1)
+            slowness_std[tind]              = np.sqrt(temp[tind]/weightsum[tind]*MArr[tind]/(MArr[tind]-1))
             # old
             # w2sum                           = np.sum(weightALL**2, axis=0)
             # temp                            = weightALL*(slownessALL-slowness_sumALL)**2
             # temp                            = np.sum(temp, axis=0)
             # slowness_std                    = np.sqrt(temp/(1-w2sum))
-            
-            
-            ###
-            # slowness_std[slowness_std>0.5*slowness_std.max()]   = 0.5*slowness_std.max()
-            ###
             slowness_stdALL                 = np.broadcast_to(slowness_std, weightALL.shape)
             #-----------------------------------------------
             # discard outliers of slowness
             #-----------------------------------------------
             weightALLQC                     = weightALL.copy()
             index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>2.*slowness_stdALL
-            #######
             index_outlier                   += reason_nALL != 0
-            #######
             weightALLQC[index_outlier]      = 0
             weightsumQC                     = np.sum(weightALLQC, axis=0)
             NmALL                           = np.sign(weightALLQC)
@@ -734,23 +728,23 @@ class EikonalTomoDataSet(h5py.File):
             weightALLQC[weightsumQCALL!=0]  = weightALLQC[weightsumQCALL!=0]/weightsumQCALL[weightsumQCALL!=0]
             temp                            = weightALLQC*slownessALL
             slowness_sumQC                  = np.sum(temp, axis=0)
-            
-            
             # new
             signALLQC                       = weightALLQC.copy()
             signALLQC[signALLQC!=0]         = 1.
             MArrQC                          = np.sum(signALLQC, axis=0)
             temp                            = weightALLQC*(slownessALL-slowness_sumQC)**2
             temp                            = np.sum(temp, axis=0)
-            slowness_stdQC                  = np.sqrt(temp/weightsumQC*MArrQC/(MArrQC-1))
+            slowness_stdQC                  = np.zeros(temp.shape)
+            tind                            = (weightsumQC!=0)*(MArrQC!=1)
+            slowness_stdQC[tind]            = np.sqrt(temp[tind]/weightsumQC[tind]*MArrQC[tind]/(MArrQC[tind]-1))
             # old
             # # w2sumQC                         = np.sum(weightALLQC**2, axis=0)
             # # temp                            = weightALLQC*(slownessALL-slowness_sumQC)**2
             # # temp                            = np.sum(temp, axis=0)
             # # slowness_stdQC                  = np.sqrt(temp/(1-w2sumQC))
-            
-            
-            # mask and velocity arrays of shape Nlat, Nlon
+            #---------------------------------------------------------------
+            # mask, velocity, and sem arrays of shape Nlat, Nlon
+            #---------------------------------------------------------------
             mask                            = np.ones((Nlat, Nlon), dtype=np.bool)
             tempmask                        = (weightsumQC == 0)
             mask[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
@@ -760,25 +754,20 @@ class EikonalTomoDataSet(h5py.File):
             tempvel[tempvel!=0]             = 1./ tempvel[tempvel!=0]
             vel_iso[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
                                             = tempvel
-            
-            signALLQC                       = weightALLQC.copy()
-            signALLQC[signALLQC!=0]         = 1.
-            MArrQC                          = np.sum(signALLQC, axis=0)
+            # standard error of the mean
             slownessALL_temp                = slownessALL.copy()
             slownessALL_temp[slownessALL_temp==0.]\
                                             = 0.3
             temp                            = weightALLQC*(1./slownessALL-tempvel)**2
             temp                            = np.sum(temp, axis=0)
-            # tempstd                         = np.sqrt(temp/weightsumQC*MArrQC/(MArrQC-1))
-            tempstd                         = np.sqrt(temp/weightsumQC/(MArrQC-1))
-            
-            # 
-            vel_std                         = np.zeros((Nlat, Nlon), dtype=np.float32)
-            # tempstd                         = slowness_stdQC.copy()
-            # tempstd[slowness_sumQC!=0]      = tempstd[slowness_sumQC!=0]/(slowness_sumQC[slowness_sumQC!=0]**2)
-            vel_std[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
-                                            = tempstd
-            # return tempstd, slowness_stdQC
+            tempsem                         = np.zeros(temp.shape)
+            tind                            = (weightsumQC!=0)*(MArrQC!=1)
+            tempsem[tind]                   = np.sqrt(temp[tind]/weightsumQC[tind]/(MArrQC[tind]-1))        
+            # # # tempsem                         = slowness_stdQC/MArrQC
+            # # # tempsem[slowness_sumQC!=0]      = tempsem[slowness_sumQC!=0]/(slowness_sumQC[slowness_sumQC!=0]**2)
+            vel_sem                         = np.zeros((Nlat, Nlon), dtype=np.float32)
+            vel_sem[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
+                                            = tempsem
             # save isotropic velocity to database
             per_group_out                   = group_out.create_group( name='%g_sec'%( per ) )
             sdset                           = per_group_out.create_dataset(name='slowness', data=slowness_sumQC)
@@ -787,7 +776,7 @@ class EikonalTomoDataSet(h5py.File):
             NmQCdset                        = per_group_out.create_dataset(name='NmeasureQC', data=NmeasureQC)
             maskdset                        = per_group_out.create_dataset(name='mask', data=mask)
             visodset                        = per_group_out.create_dataset(name='vel_iso', data=vel_iso)
-            vstddset                        = per_group_out.create_dataset(name='vel_std', data=vel_std)
+            vstddset                        = per_group_out.create_dataset(name='vel_sem', data=vel_sem)
             #----------------------------------------------------------------------------
             # determine anisotropic parameters, need benchmark and further verification
             #----------------------------------------------------------------------------
@@ -808,7 +797,6 @@ class EikonalTomoDataSet(h5py.File):
             # slownessALL     = vALL.copy()
             # slownessALL[slownessALL!=0] = 1./slownessALL[slownessALL!=0]
             # slowness_sumQC[slowness_sumQC!=0]  = 1./3.5
-            
             
             if anisotropic:
                 NmeasureAni                 = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
@@ -933,7 +921,6 @@ class EikonalTomoDataSet(h5py.File):
                 temp                                    = np.broadcast_to(slowsumQC_cutted, slow_un_cutted.shape)
                 temp                                    = ( temp + slow_sum_ani_cutted)**2
                 slow_un_cutted[temp!=0]                 = slow_un_cutted[temp!=0]/temp[temp!=0]
-                
                 slow_sum_ani[:, 3:-3, 3:-3]             = slow_sum_ani_cutted
                 slow_un[:, 3:-3, 3:-3]                  = slow_un_cutted
                 slow_sum_ani[:, NmeasureAni<45]         = 0 # near neighbor quality control
@@ -944,13 +931,11 @@ class EikonalTomoDataSet(h5py.File):
                 s_anistddset    = per_group_out.create_dataset(name='slownessAni_std', data=slow_un)
                 histdset        = per_group_out.create_dataset(name='histArr', data=histArr)
                 NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
-        #
         # debug, raw az and slowness
             if per == 24.:
                 self.aziALL     = aziALL
                 self.slownessALL=slownessALL
                 self.index_outlier=index_outlier
-                
         #
         return
     
@@ -988,7 +973,6 @@ class EikonalTomoDataSet(h5py.File):
         minazi          = ingroup.attrs['minazi']
         Nbin            = ingroup.attrs['N_bin']
         azArr           = np.mgrid[minazi:maxazi:Nbin*1j]
-        
         if fitdata:
             indat           = (1./outslowness).reshape(1, Nbin)
             U               = np.zeros((Nbin, Nbin), dtype=np.float64)
@@ -1011,7 +995,6 @@ class EikonalTomoDataSet(h5py.File):
             # G               = np.append(G, tGsin4)
             # G               = np.append(G, tGcos4)
             # G               = G.reshape((5, Nbin))
-            
             
             G               = G.T
             G               = np.dot(U, G)
@@ -1147,9 +1130,9 @@ class EikonalTomoDataSet(h5py.File):
         pergrp          = ingroup['%g_sec'%( period )]
         if datatype == 'vel' or datatype=='velocity' or datatype == 'v':
             datatype    = 'vel_iso'
-        elif datatype == 'std' or datatype == 'un' or datatype == 'uncertainty':
-            datatype    = 'vel_std'
-        elif datatype=='un2':
+        elif datatype == 'sem' or datatype == 'un' or datatype == 'uncertainty':
+            datatype    = 'vel_sem'
+        elif datatype=='std':
             datatype    = 'slowness_std'
         try:
             data    = pergrp[datatype].value
