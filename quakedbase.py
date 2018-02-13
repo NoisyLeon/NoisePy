@@ -2596,95 +2596,162 @@ class quakeASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.DISPpmf1interp, self.auxiliary_data.DISPpmf2interp
         =======================================================================================================
         """
-        if data_type=='DISPpmf2': ntype=6
-        else: ntype=5
-        if pers.size==0: pers=np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
-        staLst=self.waveforms.list()
-        evnumb=0
-        for event in self.events:
-            evnumb+=1
-            evid='E%05d' % evnumb
+        if data_type=='DISPpmf2':
+            ntype   = 6
+        else:
+            ntype   = 5
+        if pers.size==0:
+            np.append( np.arange(16.)*2.+10., np.arange(10.)*5.+45.)
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        staLst      = self.waveforms.list()
+        evnumb      = 0
+        L           = len(self.cat)
+        evlst       = self.auxiliary_data[data_type].list()
+        for event in self.cat:
+            evnumb          += 1
+            evid            = 'E%05d' % evnumb
+            Ndata           = 0
+            outstr          = ''
+            porigin         = event.preferred_origin()
+            evlo            = porigin.longitude
+            evla            = porigin.latitude
+            evdp            = porigin.depth
+            otime           = porigin.time
+            pmag            = event.preferred_magnitude()
+            magnitude       = pmag.mag
+            Mtype           = pmag.magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+            if not evid in evlst:
+                print(str(Ndata)+' data streams processed disp interpolation')
+                continue
+            datalst         = self.auxiliary_data[data_type][evid].list()
             for staid in staLst:
-                netcode, stacode=staid.split('.')
+                netcode, stacode    = staid.split('.')
+                dataid              = netcode+'_'+stacode+'_'+channel
+                if not dataid in datalst:
+                    continue
                 try:
-                    subdset=self.auxiliary_data[data_type][evid][netcode+'_'+stacode+'_'+channel]
+                    subdset         = self.auxiliary_data[data_type][evid][dataid]
                 except KeyError:
                     continue
-                data=subdset.data.value
-                index=subdset.parameters
-                if verbose: print 'Interpolating dispersion curve for '+ evid+' '+staid+'_'+channel
-                outindex={ 'To': 0, 'Vgr': 1, 'Vph': 2,  'amp': 3, 'snr': 4, 'inbound': 5, 'Np': pers.size }
-                Np=int(index['Np'])
+                data                = subdset.data.value
+                index               = subdset.parameters
+                outindex            = { 'To': 0, 'U': 1, 'C': 2,  'amp': 3, 'snr': 4, 'inbound': 5, 'Np': pers.size }
+                Np                  = int(index['Np'])
                 if Np < 5:
-                    warnings.warn('Not enough datapoints for: '+ evid+' '+staid+'_'+channel, UserWarning, stacklevel=1)
+                    # warnings.warn('Not enough datapoints for: '+ evid+' '+staid+'_'+channel, UserWarning, stacklevel=1)
                     continue
-                obsT        = data[index['To']][:Np]
-                Vgr         = np.interp(pers, obsT, data[index['Vgr']][:Np] )
-                Vph         = np.interp(pers, obsT, data[index['Vph']][:Np] )
-                amp         = np.interp(pers, obsT, data[index['amp']][:Np] )
-                inbound     = (pers > obsT[0])*(pers < obsT[-1])*1
-                interpdata  = np.append(pers, Vgr)
-                interpdata  = np.append(interpdata, Vph)
-                interpdata  = np.append(interpdata, amp)
+                obsT                = data[index['To']][:Np]
+                U                   = np.interp(pers, obsT, data[index['U']][:Np] )
+                C                   = np.interp(pers, obsT, data[index['C']][:Np] )
+                amp                 = np.interp(pers, obsT, data[index['amp']][:Np] )
+                inbound             = (pers > obsT[0])*(pers < obsT[-1])*1
+                interpdata          = np.append(pers, U)
+                interpdata          = np.append(interpdata, C)
+                interpdata          = np.append(interpdata, amp)
                 if data_type=='DISPpmf2':
-                    snr     = np.interp(pers, obsT, data[index['snr']][:Np] )
-                    interpdata=np.append(interpdata, snr)
-                interpdata=np.append(interpdata, inbound)
-                interpdata=interpdata.reshape(ntype, pers.size)
-                staid_aux=evid+'/'+netcode+'_'+stacode+'_'+channel
+                    snr             = np.interp(pers, obsT, data[index['snr']][:Np] )
+                    interpdata      = np.append(interpdata, snr)
+                interpdata          = np.append(interpdata, inbound)
+                interpdata          = interpdata.reshape(ntype, pers.size)
+                staid_aux           = evid+'/'+netcode+'_'+stacode+'_'+channel
                 self.add_auxiliary_data(data=interpdata, data_type=data_type+'interp', path=staid_aux, parameters=outindex)
+                Ndata               += 1
+                outstr              += staid
+                outstr              += ' '
+            print(str(Ndata)+' data streams processed disp interpolation')
+            if verbose:
+                print('STATION CODE: '+outstr)
+            print('-----------------------------------------------------------------------------------------------------------')
         return
     
     def quake_get_field(self, outdir=None, channel='Z', pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
-        """ Get the field data for Eikonal tomography
+        """ Get the field data for Eikonal/Helmholtz tomography
         ============================================================================================================================
         ::: input parameters :::
         outdir      - directory for txt output (default is not to generate txt output)
         channel     - channel name
         pers        - period array
         datatype    - dispersion data type (default = DISPpmf2interp, interpolated pmf aftan results after jump detection)
-        Output:
+        ::: output :::
         self.auxiliary_data.FieldDISPpmf2interp
         ============================================================================================================================
         """
-        if pers.size==0: pers=np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
-        outindex={ 'longitude': 0, 'latitude': 1, 'Vph': 2,  'Vgr':3, 'amp': 4, 'snr': 5, 'dist': 6 }
-        staLst=self.waveforms.list()
-        evnumb=0
-        for event in self.events:
-            evnumb+=1
-            evid='E%05d' % evnumb
-            field_lst=[]
-            Nfplst=[]
+        if pers.size==0:
+            pers    = np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
+        outindex    = { 'longitude': 0, 'latitude': 1, 'Vph': 2,  'Vgr':3, 'amp': 4, 'snr': 5, 'dist': 6 }
+        staLst      = self.waveforms.list()
+        evnumb      = 0
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        L           = len(self.cat)
+        evlst       = self.auxiliary_data[data_type].list()
+        for event in self.cat:
+            evnumb          += 1
+            evid            = 'E%05d' % evnumb
+            Ndata           = 0
+            outstr          = ''
+            porigin         = event.preferred_origin()
+            evlo            = porigin.longitude
+            evla            = porigin.latitude
+            evdp            = porigin.depth
+            otime           = porigin.time
+            pmag            = event.preferred_magnitude()
+            magnitude       = pmag.mag
+            Mtype           = pmag.magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+            if not evid in evlst:
+                print(str(Ndata)+' data streams processed for field data')
+                continue
+            field_lst       = []
+            Nfplst          = []
             for per in pers:
                 field_lst.append(np.array([]))
                 Nfplst.append(0)
-            evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-            if verbose: print 'Getting field data for: '+evid
+            datalst         = self.auxiliary_data[data_type][evid].list()
             for staid in staLst:
-                netcode, stacode=staid.split('.')
-                try: subdset=self.auxiliary_data[data_type][evid][netcode+'_'+stacode+'_'+channel]
-                except KeyError: continue
-                stla, stel, stlo=self.waveforms[staid].coordinates.values()
-                az, baz, dist = geodist.inv(stlo, stla, evlo, evla); dist=dist/1000.
-                if stlo<0: stlo+=360.
-                if evlo<0: evlo+=360.
-                data=subdset.data.value
-                index=subdset.parameters
-                for iper in xrange(pers.size):
-                    per=pers[iper]
-                    if dist < 2.*per*3.5: continue
-                    ind_per=np.where(data[index['To']][:] == per)[0]
-                    if ind_per.size==0: raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
-                    pvel    = data[index['Vph']][ind_per]
-                    gvel    = data[index['Vgr']][ind_per]
-                    snr     = data[index['snr']][ind_per]
-                    amp     = data[index['amp']][ind_per]
-                    inbound = data[index['inbound']][ind_per]
+                netcode, stacode    = staid.split('.')
+                dataid              = netcode+'_'+stacode+'_'+channel
+                if not dataid in datalst:
+                    continue
+                try:
+                    subdset         = self.auxiliary_data[data_type][evid][dataid]
+                except KeyError:
+                    continue
+                stla, stel, stlo    = self.waveforms[staid].coordinates.values()
+                az, baz, dist       = geodist.inv(stlo, stla, evlo, evla); dist=dist/1000.
+                if stlo<0:
+                    stlo            += 360.
+                if evlo<0:
+                    evlo            += 360.
+                data                = subdset.data.value
+                index               = subdset.parameters
+                for iper in range(pers.size):
+                    per             = pers[iper]
+                    if dist < 2.*per*3.5:
+                        continue
+                    ind_per         = np.where(data[index['To']][:] == per)[0]
+                    if ind_per.size==0:
+                        raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
+                    pvel            = data[index['C']][ind_per]
+                    gvel            = data[index['U']][ind_per]
+                    snr             = data[index['snr']][ind_per]
+                    amp             = data[index['amp']][ind_per]
+                    inbound         = data[index['inbound']][ind_per]
                     # quality control
-                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10: continue
-                    if inbound!=1.: continue
-                    if snr < 10.: continue # different from noise data
+                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10:
+                        continue
+                    if inbound!=1.:
+                        continue
+                    if snr < 10.:
+                        continue # different from noise data
                     field_lst[iper] = np.append(field_lst[iper], stlo)
                     field_lst[iper] = np.append(field_lst[iper], stla)
                     field_lst[iper] = np.append(field_lst[iper], pvel)
@@ -2692,26 +2759,28 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     field_lst[iper] = np.append(field_lst[iper], amp)
                     field_lst[iper] = np.append(field_lst[iper], snr)
                     field_lst[iper] = np.append(field_lst[iper], dist)
-                    Nfplst[iper]+=1
-            if outdir!=None:
-                if not os.path.isdir(outdir): os.makedirs(outdir)
-            staid_aux=evid+'_'+channel
-            for iper in xrange(pers.size):
-                per=pers[iper]
-                del_per=per-int(per)
-                if field_lst[iper].size==0: continue
-                field_lst[iper]=field_lst[iper].reshape(Nfplst[iper], 7)
+                    Nfplst[iper]    += 1
+            if outdir is not None:
+                if not os.path.isdir(outdir):
+                    os.makedirs(outdir)
+            staid_aux               = evid+'_'+channel
+            for iper in range(pers.size):
+                per                 = pers[iper]
+                del_per             = per-int(per)
+                if field_lst[iper].size==0:
+                    continue
+                field_lst[iper]     = field_lst[iper].reshape(Nfplst[iper], 7)
                 if del_per==0.:
-                    staid_aux_per=staid_aux+'/'+str(int(per))+'sec'
+                    staid_aux_per   = staid_aux+'/'+str(int(per))+'sec'
                 else:
-                    dper=str(del_per)
-                    staid_aux_per=staid_aux+'/'+str(int(per))+'sec'+dper.split('.')[1]
+                    dper            = str(del_per)
+                    staid_aux_per   = staid_aux+'/'+str(int(per))+'sec'+dper.split('.')[1]
                 self.add_auxiliary_data(data=field_lst[iper], data_type='Field'+data_type, path=staid_aux_per, parameters=outindex)
-                if outdir!=None:
+                if outdir is not None:
                     if not os.path.isdir(outdir+'/'+str(per)+'sec'):
                         os.makedirs(outdir+'/'+str(per)+'sec')
-                    txtfname=outdir+'/'+str(per)+'sec'+'/'+evid+'_'+str(per)+'.txt'
-                    header = 'evlo='+str(evlo)+' evla='+str(evla)
+                    txtfname        = outdir+'/'+str(per)+'sec'+'/'+evid+'_'+str(per)+'.txt'
+                    header          = 'evlo='+str(evlo)+' evla='+str(evla)
                     np.savetxt( txtfname, field_lst[iper], fmt='%g', header=header )
         return
     
@@ -2875,7 +2944,7 @@ def aftan4mp_quake(aTr, outdir, inftan, prephdir, f77, pfx):
             tresh=inftan.tresh, ffact=inftan.ffact, taperl=inftan.taperl, snr=inftan.snr, fmatch=inftan.fmatch, nfin=inftan.nfin,
                 npoints=inftan.npoints, perc=inftan.perc, phvelname=phvelname)
     aTr.get_snr(ffact=inftan.ffact) # SNR analysis
-    foutPR=outdir+'/'+pfx+'/'+aTr.stats.sac.kuser0+'/'+aTr.stats.network+'.'+aTr.stats.station+'_'+aTr.stats.channel[-1]+'.SAC'
+    foutPR      = outdir+'/'+pfx+'/'+aTr.stats.sac.kuser0+'/'+aTr.stats.network+'.'+aTr.stats.station+'_'+aTr.stats.channel[-1]+'.SAC'
     aTr.ftanparam.writeDISPbinary(foutPR)
     return
 

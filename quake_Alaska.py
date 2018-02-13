@@ -24,7 +24,8 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_A
 # dset.read_surf_waveforms_DMT(datadir='/scratch/summit/life9360/ALASKA_work/surf_19950101_20170831', verbose=False)
 
 # dset.quake_prephp(outdir='/scratch/summit/life9360/ALASKA_work/quake_working_dir/pre_disp')
-inftan      = pyaftan.InputFtanParam()
-inftan.tmax = 100.
-inftan.tmin = 5.
-dset.quake_aftan(prephdir='/scratch/summit/life9360/ALASKA_work/quake_working_dir/pre_disp_R', inftan=inftan)
+# inftan      = pyaftan.InputFtanParam()
+# inftan.tmax = 100.
+# inftan.tmin = 5.
+# dset.quake_aftan(prephdir='/scratch/summit/life9360/ALASKA_work/quake_working_dir/pre_disp_R', inftan=inftan)
+dset.interp_disp(verbose=True)

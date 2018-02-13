@@ -522,14 +522,6 @@ class Field2d(object):
                 self.lplc       = lplc[dnlat:-dnlat, :]
             else:
                 self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
-            # # dlat_km         = self.dlat_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
-            # # dlon_km         = self.dlon_kmArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
-            # # Zarr_latp       = Zarr[2*self.nlat_lplc:,   self.nlon_lplc:-self.nlon_lplc]
-            # # Zarr_latn       = Zarr[:-2*self.nlat_lplc,  self.nlon_lplc:-self.nlon_lplc]
-            # # Zarr_lonp       = Zarr[self.nlat_lplc:-self.nlat_lplc, 2*self.nlon_lplc:]
-            # # Zarr_lonn       = Zarr[self.nlat_lplc:-self.nlat_lplc, :-2*self.nlon_lplc]
-            # # Zarr            = Zarr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
-            # # self.lplc       = (Zarr_latp+Zarr_latn-2*Zarr) / (dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (dlon_km**2)
         elif method == 'convolve':
             dlat_km         = self.dlat_kmArr
             dlon_km         = self.dlon_kmArr
@@ -610,8 +602,6 @@ class Field2d(object):
         workingdir/outpfx+fieldtype_per_v1.lst         - output field file with data point passing curvature checking
         workingdir/outpfx+fieldtype_per_v1.lst.HD      - interpolated travel time file 
         workingdir/outpfx+fieldtype_per_v1.lst.HD_0.2  - interpolated travel time file with tension=0.2
-        ---------------------------------------------------------------------------------------------------------------------
-        Note: edge has been cutting once
         =====================================================================================================================
         """
         # Compute Laplacian
@@ -655,9 +645,9 @@ class Field2d(object):
         os.remove(tempGMT)
         return 
         
-    def gradient_qc(self, workingdir, inpfx='', nearneighbor=True, cdist=None):
+    def eikonal_operator(self, workingdir, inpfx='', nearneighbor=True, cdist=None, lplcthresh=0.005):
         """
-        Generate Slowness Maps from Travel Time Maps.
+        Generate slowness maps from travel time maps using eikonal equation
         Two interpolated travel time file with different tension will be used for quality control.
         =====================================================================================================================
         ::: input parameters :::
@@ -775,7 +765,7 @@ class Field2d(object):
         # if slowness is too large/small, reason_n will be set to 3
         slowness                    = np.sqrt(tfield.grad[0]**2 + tfield.grad[1]**2)
         if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
-            reason_n[(slowness>0.6)*(reason_n==0)]  = 3
+            reason_n[(slowness>0.5)*(reason_n==0)]  = 3
             reason_n[(slowness<0.2)*(reason_n==0)]  = 3
         #-------------------------------------
         # computing propagation deflection
@@ -810,118 +800,43 @@ class Field2d(object):
         tempArr                                 = reason_n[indexvalid[0], indexvalid[1]]
         tempArr[distevent<cdist+50.]            = 5
         reason_n[indexvalid[0], indexvalid[1]]  = tempArr
+        # final check of curvature, discard grid points with large curvature
+        self.Laplacian(method='green')
+        dnlat                                   = self.nlat_lplc - self.nlat_grad
+        dnlon                                   = self.nlon_lplc - self.nlon_grad
+        tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
+        if dnlat == 0 and dnlon == 0:
+            reason_n[tempind]                   = 6
+        elif dnlat == 0 and dnlon != 0:
+            (reason_n[:, dnlon:-dnlon])[tempind]= 6
+        elif dnlat != 0 and dnlon == 0:
+            (reason_n[dnlat:-dnlat, :])[tempind]= 6
+        else:
+            (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
+                                                = 6
+        # # near neighbor discard for large curvature
+        # indexlplc                               = np.where(reason_n==6.)
+        # ilatArr                                 = indexlplc[0] 
+        # ilonArr                                 = indexlplc[1]
+        # reason_n_temp                           = np.zeros(self.lonArr.shape)
+        # reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
+        #                                         = reason_n.copy()
+        # reason_n_temp[ilatArr+1, ilonArr]       = 6
+        # reason_n_temp[ilatArr-1, ilonArr]       = 6
+        # reason_n_temp[ilatArr, ilonArr+1]       = 6
+        # reason_n_temp[ilatArr, ilonArr-1]       = 6
+        # reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        # store final data
         self.diffaArr                           = diffaArr
         self.grad                               = tfield.grad
         self.get_appV()
         self.reason_n                           = reason_n
-        return 
+        self.mask                               = np.ones((self.Nlat, self.Nlon), dtype=np.bool)
+        tempmask                                = reason_n != 0
+        self.mask[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]\
+                                                = tempmask
+        return
     
-    def gradient_qc_new(self, workingdir, inpfx='', nearneighbor=True, cdist=None, verbose=False):
-        """
-        Generate Slowness Maps from Travel Time Maps.
-        Two interpolated travel time file with different tension will be used for quality control.
-        =====================================================================================================================
-        ::: input parameters :::
-        workingdir      - working directory
-        evlo, evla      - event location
-        nearneighbor    - do near neighbor quality control or not
-        cdist           - distance for quality control, default is 12*period
-        Output format:
-        outdir/slow_azi_stacode.pflag.txt.HD.2.v2 - Slowness map
-        ---------------------------------------------------------------------------------------------------------------------
-        Note: edge has been cutting twice, one in check_curvature 
-        =====================================================================================================================
-        """
-        if cdist is None:
-            cdist   = 12.*self.period
-        evlo        = self.evlo
-        evla        = self.evla
-        # Read data,
-        # v1: data that pass check_curvature criterion
-        # v1HD and v1HD02: interpolated v1 data with tension = 0. and 0.2
-        fnamev1     = workingdir+'/'+inpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
-        fnamev1HD   = fnamev1+'.HD'
-        fnamev1HD02 = fnamev1HD+'_0.2'
-        InarrayV1   = np.loadtxt(fnamev1)
-        loninV1     = InarrayV1[:,0]
-        latinV1     = InarrayV1[:,1]
-        fieldin     = InarrayV1[:,2]
-        Inv1HD      = np.loadtxt(fnamev1HD)
-        lonv1HD     = Inv1HD[:,0]
-        latv1HD     = Inv1HD[:,1]
-        fieldv1HD   = Inv1HD[:,2]
-        Inv1HD02    = np.loadtxt(fnamev1HD02)
-        lonv1HD02   = Inv1HD02[:,0]
-        latv1HD02   = Inv1HD02[:,1]
-        fieldv1HD02 = Inv1HD02[:,2]
-        # Set field value to be zero if there is large difference between v1HD and v1HD02
-        diffArr     = fieldv1HD-fieldv1HD02
-        fieldArr    = fieldv1HD*((diffArr<2.)*(diffArr>-2.)) 
-        fieldArr    = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1, :]
-        # reason_n -> 0: accepted point 1: data point the has large difference between v1HD and v1HD02
-        # 2: data point that does not have near neighbor points at all E/W/N/S directions
-        reason_n    = np.ones(fieldArr.size, dtype=np.int64)
-        reason_n1   = reason_n*(diffArr>2.)
-        reason_n2   = reason_n*(diffArr<-2.)
-        reason_n    = reason_n1+reason_n2
-        reason_n    = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
-        # Nested loop, may need modification to speed the code up
-        if nearneighbor:
-            fieldArr, reason_n = _check_nearneighbor_station(np.float64(fieldArr), np.float64(reason_n), self.lon, self.lat,  \
-                                                    self.lonArrIn, self.latArrIn,  cdist)            
-        # # Start to Compute Gradient
-        # self.Zarr=fieldArr
-        # self.gradient('default')
-        # self.cut_edge(1, 1)
-        # # if one field point has zero value, reason_n for four near neighbor points will all be set to 4
-        # index0=np.where(self.Zarr==0)
-        # ilatArr=index0[0]+1
-        # ilonArr=index0[1]+1
-        # reason_n[ilatArr+1, ilonArr]=4
-        # reason_n[ilatArr-1, ilonArr]=4
-        # reason_n[ilatArr, ilonArr+1]=4
-        # reason_n[ilatArr, ilonArr-1]=4
-        # reason_n=reason_n[1:-1,1:-1]
-        # # if slowness is too large/small, reason_n will be set to 3
-        # slowness=np.sqrt(self.grad[0]**2+self.grad[1]**2)
-        # if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
-        #     reason_n[(slowness>0.6)*(reason_n==0)]=3
-        #     reason_n[(slowness<0.2)*(reason_n==0)]=3
-        # if verbose: print 'Computing deflections'
-        # indexvalid=np.where(reason_n==0)
-        # diffaArr=np.zeros(reason_n.shape)
-        # latinArr=self.lat[indexvalid[0]]
-        # loninArr=self.lon[indexvalid[1]]
-        # evloArr=np.ones(loninArr.size)*evlo
-        # evlaArr=np.ones(loninArr.size)*evla
-        # az, baz, distevent = geodist.inv(loninArr, latinArr, evloArr, evlaArr) # loninArr/latinArr are initial points
-        # distevent=distevent/1000.
-        # az = az + 180.
-        # az = 90.-az
-        # baz = 90.-baz
-        # az[az>180.]=az[az>180.] - 360.
-        # az[az<-180.]=az[az<-180.] + 360.
-        # baz[baz>180.]=baz[baz>180.] - 360.
-        # baz[baz<-180.]=baz[baz<-180.] + 360.
-        # diffaArr[indexvalid[0], indexvalid[1]] = \
-        #     self.proAngle[indexvalid[0], indexvalid[1]] - az
-        # self.az=np.zeros(self.proAngle.shape)
-        # self.az[indexvalid[0], indexvalid[1]] = az
-        # self.baz=np.zeros(self.proAngle.shape)
-        # self.baz[indexvalid[0], indexvalid[1]] = baz
-        # # if epicentral distance is too small, reason_n will be set to 5, and diffaArr will be 0.
-        # tempArr = diffaArr[indexvalid[0], indexvalid[1]]
-        # tempArr[distevent<cdist+50.] = 0.
-        # diffaArr[indexvalid[0], indexvalid[1]] = tempArr
-        # diffaArr[diffaArr>180.]=diffaArr[diffaArr>180.]-360.
-        # diffaArr[diffaArr<-180.]=diffaArr[diffaArr<-180.]+360.
-        # tempArr = reason_n[indexvalid[0], indexvalid[1]]
-        # tempArr[distevent<cdist+50.] = 5
-        # reason_n[indexvalid[0], indexvalid[1]] = tempArr
-        # self.diffaArr=diffaArr
-        # self.get_appV()
-        # self.reason_n=reason_n
-        return fieldArr, reason_n
     
     def get_lplc_amp(self):
         if self.fieldtype!='Amp': raise ValueError('Not amplitude field!')
@@ -979,6 +894,56 @@ class Field2d(object):
             pass
         return m
     
+    def plot(self, datatype, projection='lambert', cmap='cv', contour=False, geopolygons=None, showfig=True, vmin=None, vmax=None, stations=False, event=False):
+        """Plot data with contour
+        """
+        m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y    = m(self.lonArr, self.latArr)
+        if event:
+            try:
+                evx, evy    = m(self.evlo, self.evla)
+                m.plot(evx, evy, 'yo', markersize=10)
+            except:
+                pass
+        if stations:
+            try:
+                stx, sty    = m(self.lonArrIn, self.latArrIn)
+                m.plot(stx, sty, 'y^', markersize=6)
+            except:
+                pass
+        try:
+            stx, sty        = m(self.stalons, self.stalats)
+            m.plot(stx, sty, 'b^', markersize=6)
+        except:
+            pass
+        if datatype == 'v' or datatype == 'appv':
+            data        = np.zeros(self.lonArr.shape)
+            data[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]\
+                        = self.appV
+            mdata       = ma.masked_array(data, mask=self.mask )
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+        elif os.path.isfile(cmap):
+            import pycpt
+            cmap    = pycpt.load.gmtColormap(cmap)
+        im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.ax.tick_params(labelsize=10)
+        if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
+            cb.set_label('sec', fontsize=12, rotation=0)
+        if self.fieldtype=='Amp':
+            cb.set_label('nm', fontsize=12, rotation=0)
+        # if contour:
+        #     # levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 20)
+        #     levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 60)
+        #     m.contour(x, y, self.Zarr, colors='k', levels=levels, linewidths=0.5)
+        if showfig:
+            plt.show()
+        return m
     
     def plot_field(self, projection='lambert', contour=True, geopolygons=None, showfig=True, vmin=None, vmax=None, stations=False, event=False):
         """Plot data with contour

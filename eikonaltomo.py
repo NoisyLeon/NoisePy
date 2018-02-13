@@ -158,7 +158,7 @@ class EikonalTomoDataSet(h5py.File):
                 outfname            = evid+'_'+fieldtype+'_'+channel+'.lst'
                 field2d.interp_surface(workingdir=working_per, outfname=outfname)
                 field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
-                field2d.gradient_qc(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
                 # save data to hdf5 dataset
                 event_group         = per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=lon1)
@@ -386,7 +386,7 @@ class EikonalTomoDataSet(h5py.File):
                 outfname=evid+'_'+fieldtype+'_'+channel+'.lst'
                 field2d.interp_surface(workingdir=working_per, outfname=outfname)
                 field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
-                field2d.gradient_qc(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
                 # save data to hdf5 dataset
                 event_group=per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=evlo)
@@ -1254,7 +1254,7 @@ def eikonal4mp(infield, workingdir, channel):
     outfname        = infield.evid+'_'+infield.fieldtype+'_'+channel+'.lst'
     infield.interp_surface(workingdir=working_per, outfname=outfname)
     infield.check_curvature(workingdir=working_per, outpfx=infield.evid+'_'+channel+'_')
-    infield.gradient_qc(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+    infield.eikonal_operator(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
     outfname_npz    = working_per+'/'+infield.evid+'_field2d'
     infield.write_binary(outfname=outfname_npz)
     return
@@ -1265,7 +1265,7 @@ def helmhotz4mp(infieldpair, workingdir, channel, amplplc):
     outfname=tfield.evid+'_'+tfield.fieldtype+'_'+channel+'.lst'
     tfield.interp_surface(workingdir=working_per, outfname=outfname)
     tfield.check_curvature(workingdir=working_per, outpfx=tfield.evid+'_'+channel+'_')
-    tfield.gradient_qc(workingdir=working_per, inpfx=tfield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+    tfield.eikonal_operator(workingdir=working_per, inpfx=tfield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
     outfname_npz=working_per+'/'+tfield.evid+'_field2d'
     if not amplplc: tfield.write_binary(outfname=outfname_npz)
     if amplplc:
