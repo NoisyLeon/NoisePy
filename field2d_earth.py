@@ -188,6 +188,30 @@ def _check_nearneighbor_station(fieldArr, reason_n, lons, lats, lonArrIn, latArr
         
     return fieldArr, reason_n
 
+@numba.jit(numba.float64[:, :](numba.float64[:, :, :], numba.float64[:, :, :], numba.float64[:, :, :], numba.float64[:, :, :], \
+        numba.float64[:, :, :],   numba.float64) )
+def _dist3D_check(dist3D, indexE, indexW, indexN, indexS, cdist):
+    Nlat, Nlon, Ndata   = dist3D.shape
+    reason_n            = np.zeros((Nlat, Nlon))
+    for ilat in xrange(Nlat):
+        for ilon in xrange(Nlon):
+            Eflag       = False
+            Wflag       = False
+            Nflag       = False
+            Sflag       = False
+            for idata in xrange(Ndata):
+                if indexE[ilat, ilon, idata] and dist3D[ilat, ilon, idata] < cdist:
+                    Eflag   = True
+                if indexW[ilat, ilon, idata] and dist3D[ilat, ilon, idata] < cdist:
+                    Wflag   = True
+                if indexN[ilat, ilon, idata] and dist3D[ilat, ilon, idata] < cdist:
+                    Nflag   = True
+                if indexS[ilat, ilon, idata] and dist3D[ilat, ilon, idata] < cdist:
+                    Sflag   = True
+            if Eflag*Wflag*Nflag*Sflag:
+                reason_n[ilat, ilon]    = 1.
+    return reason_n
+
 class Field2d(object):
     """
     An object to analyze 2D spherical field data on Earth
@@ -747,6 +771,225 @@ class Field2d(object):
                     if not tflag:
                         fieldArr[ilat, ilon]    = 0
                         reason_n[ilat, ilon]    = 2
+        # Start to Compute Gradient
+        tfield                      = self.copy()
+        tfield.Zarr                 = fieldArr
+        tfield.gradient('diff')
+        # if one field point has zero value, reason_n for four near neighbor points will all be set to 4
+        tempZarr                    = tfield.Zarr[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        index0                      = np.where(tempZarr==0.)
+        ilatArr                     = index0[0] + 1
+        ilonArr                     = index0[1] + 1
+        reason_n[ilatArr+1, ilonArr]= 4
+        reason_n[ilatArr-1, ilonArr]= 4
+        reason_n[ilatArr, ilonArr+1]= 4
+        reason_n[ilatArr, ilonArr-1]= 4
+        # reduce size of reason_n to be the same shape as gradient arrays
+        reason_n                    = reason_n[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        # if slowness is too large/small, reason_n will be set to 3
+        slowness                    = np.sqrt(tfield.grad[0]**2 + tfield.grad[1]**2)
+        if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
+            reason_n[(slowness>0.5)*(reason_n==0)]  = 3
+            reason_n[(slowness<0.2)*(reason_n==0)]  = 3
+        #-------------------------------------
+        # computing propagation deflection
+        #-------------------------------------
+        indexvalid                              = np.where(reason_n==0)
+        diffaArr                                = np.zeros(reason_n.shape, dtype = np.float64)
+        latinArr                                = self.lat[indexvalid[0] + 1]
+        loninArr                                = self.lon[indexvalid[1] + 1]
+        evloArr                                 = np.ones(loninArr.size, dtype=np.float64)*evlo
+        evlaArr                                 = np.ones(latinArr.size, dtype=np.float64)*evla
+        az, baz, distevent                      = geodist.inv(loninArr, latinArr, evloArr, evlaArr) # loninArr/latinArr are initial points
+        distevent                               = distevent/1000.
+        az                                      = az + 180.
+        az                                      = 90.-az
+        baz                                     = 90.-baz
+        az[az>180.]                             = az[az>180.] - 360.
+        az[az<-180.]                            = az[az<-180.] + 360.
+        baz[baz>180.]                           = baz[baz>180.] - 360.
+        baz[baz<-180.]                          = baz[baz<-180.] + 360.
+        # az azimuth receiver -> source 
+        diffaArr[indexvalid[0], indexvalid[1]]  = tfield.proAngle[indexvalid[0], indexvalid[1]] - az
+        self.az                                 = np.zeros(self.proAngle.shape, dtype=np.float64)
+        self.az[indexvalid[0], indexvalid[1]]   = az
+        self.baz                                = np.zeros(self.proAngle.shape, dtype=np.float64)
+        self.baz[indexvalid[0], indexvalid[1]]  = baz
+        # if epicentral distance is too small, reason_n will be set to 5, and diffaArr will be 0.
+        tempArr                                 = diffaArr[indexvalid[0], indexvalid[1]]
+        tempArr[distevent<cdist+50.]            = 0.
+        diffaArr[indexvalid[0], indexvalid[1]]  = tempArr
+        diffaArr[diffaArr>180.]                 = diffaArr[diffaArr>180.]-360.
+        diffaArr[diffaArr<-180.]                = diffaArr[diffaArr<-180.]+360.
+        tempArr                                 = reason_n[indexvalid[0], indexvalid[1]]
+        tempArr[distevent<cdist+50.]            = 5
+        reason_n[indexvalid[0], indexvalid[1]]  = tempArr
+        # final check of curvature, discard grid points with large curvature
+        self.Laplacian(method='green')
+        dnlat                                   = self.nlat_lplc - self.nlat_grad
+        dnlon                                   = self.nlon_lplc - self.nlon_grad
+        tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
+        if dnlat == 0 and dnlon == 0:
+            reason_n[tempind]                   = 6
+        elif dnlat == 0 and dnlon != 0:
+            (reason_n[:, dnlon:-dnlon])[tempind]= 6
+        elif dnlat != 0 and dnlon == 0:
+            (reason_n[dnlat:-dnlat, :])[tempind]= 6
+        else:
+            (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
+                                                = 6
+        # # near neighbor discard for large curvature
+        # indexlplc                               = np.where(reason_n==6.)
+        # ilatArr                                 = indexlplc[0] 
+        # ilonArr                                 = indexlplc[1]
+        # reason_n_temp                           = np.zeros(self.lonArr.shape)
+        # reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
+        #                                         = reason_n.copy()
+        # reason_n_temp[ilatArr+1, ilonArr]       = 6
+        # reason_n_temp[ilatArr-1, ilonArr]       = 6
+        # reason_n_temp[ilatArr, ilonArr+1]       = 6
+        # reason_n_temp[ilatArr, ilonArr-1]       = 6
+        # reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        # store final data
+        self.diffaArr                           = diffaArr
+        self.grad                               = tfield.grad
+        self.get_appV()
+        self.reason_n                           = reason_n
+        self.mask                               = np.ones((self.Nlat, self.Nlon), dtype=np.bool)
+        tempmask                                = reason_n != 0
+        self.mask[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]\
+                                                = tempmask
+        return
+    
+    
+    def eikonal_operator_new(self, workingdir, inpfx='', nearneighbor=True, cdist=None, lplcthresh=0.005):
+        """
+        Generate slowness maps from travel time maps using eikonal equation
+        Two interpolated travel time file with different tension will be used for quality control.
+        =====================================================================================================================
+        ::: input parameters :::
+        workingdir      - working directory
+        evlo, evla      - event location
+        nearneighbor    - do near neighbor quality control or not
+        cdist           - distance for quality control, default is 12*period
+        ::: output format :::
+        outdir/slow_azi_stacode.pflag.txt.HD.2.v2 - Slowness map
+        ---------------------------------------------------------------------------------------------------------------------
+        Note: edge has been cutting twice, one in check_curvature 
+        =====================================================================================================================
+        """
+        if cdist is None:
+            cdist   = 12.*self.period
+        evlo        = self.evlo
+        evla        = self.evla
+        # Read data,
+        # v1: data that pass check_curvature criterion
+        # v1HD and v1HD02: interpolated v1 data with tension = 0. and 0.2
+        fnamev1     = workingdir+'/'+inpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
+        fnamev1HD   = fnamev1+'.HD'
+        fnamev1HD02 = fnamev1HD+'_0.2'
+        InarrayV1   = np.loadtxt(fnamev1)
+        loninV1     = InarrayV1[:,0]
+        latinV1     = InarrayV1[:,1]
+        fieldin     = InarrayV1[:,2]
+        Inv1HD      = np.loadtxt(fnamev1HD)
+        lonv1HD     = Inv1HD[:,0]
+        latv1HD     = Inv1HD[:,1]
+        fieldv1HD   = Inv1HD[:,2]
+        Inv1HD02    = np.loadtxt(fnamev1HD02)
+        lonv1HD02   = Inv1HD02[:,0]
+        latv1HD02   = Inv1HD02[:,1]
+        fieldv1HD02 = Inv1HD02[:,2]
+        # Set field value to be zero if there is large difference between v1HD and v1HD02
+        diffArr     = fieldv1HD-fieldv1HD02
+        # fieldArr    = fieldv1HD*((diffArr<1.)*(diffArr>-1.))
+        # old
+        fieldArr    = fieldv1HD*((diffArr<2.)*(diffArr>-2.)) 
+        fieldArr    = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1, :]
+        # reason_n 
+        #   0: accepted point
+        #   1: data point the has large difference between v1HD and v1HD02
+        #   2: data point that does not have near neighbor points at all E/W/N/S directions
+        #   3: slowness is too large/small
+        #   4: near a zero field data point
+        #   5: epicentral distance is too small
+        reason_n    = np.ones(fieldArr.size, dtype=np.int32)
+        # reason_n1   = np.int32(reason_n*(diffArr>1.))
+        # reason_n2   = np.int32(reason_n*(diffArr<-1.))
+        # old
+        reason_n1   = np.int32(reason_n*(diffArr>2.))
+        reason_n2   = np.int32(reason_n*(diffArr<-2.))
+        
+        reason_n    = reason_n1+reason_n2
+        reason_n    = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
+        #-------------------------------------------------------------------------------------------------------
+        # check each data point if there are close-by four stations located at E/W/N/S directions respectively
+        #-------------------------------------------------------------------------------------------------------
+        if nearneighbor:
+            lon3D               = np.broadcast_to(self.lonArrIn, (self.Nlat, self.Nlon, self.lonArrIn.size))
+            lat3D               = np.broadcast_to(self.latArrIn, (self.Nlat, self.Nlon, self.latArrIn.size))
+            lon3Dgd             = np.swapaxes(np.broadcast_to(self.lon, (self.Nlat, self.lonArrIn.size, self.Nlon)), 1, 2)
+            lat3Dgd             = np.swapaxes(np.broadcast_to(self.lat, (self.latArrIn.size, self.Nlon, self.Nlat)), 0, 2)
+            size                = lon3D.size
+            azALL, bazALL, distALL  \
+                                = geodist.inv(lon3D.reshape(size), lat3D.reshape(size), lon3Dgd.reshape(size), lat3Dgd.reshape(size)) # loninArr/latinArr are initial points
+            dist3D              = distALL.reshape((self.Nlat, self.Nlon, self.lonArrIn.size))
+            
+            difflon3D           = lon3D - lon3Dgd
+            indexE              = (difflon3D>0.)*1
+            indexW              = (difflon3D<0.)*1
+            
+            difflat3D           = lat3D - lat3Dgd
+            indexN              = (difflat3D>0.)*1
+            indexS              = (difflat3D<0.)*1
+            treason_n           = _dist3D_check(dist3D, indexE, indexW, indexN, indexS, cdist)            
+            reason_n[treason_n!=1.]   = 2
+            fieldArr[treason_n!=1.]   = 0
+            # 
+            # 
+            # 
+            # 
+            # 
+            # for ilat in range(self.Nlat):
+            #     for ilon in range(self.Nlon):
+            #         if reason_n[ilat, ilon]==1:
+            #             continue
+            #         lon         = self.lon[ilon]
+            #         lat         = self.lat[ilat]
+            #         dlon_km     = self.dlon_km[ilat]
+            #         dlat_km     = self.dlat_km[ilat]
+            #         difflon     = abs(self.lonArrIn-lon)/self.dlon*dlon_km
+            #         difflat     = abs(self.latArrIn-lat)/self.dlat*dlat_km
+            #         index       = np.where((difflon<cdist)*(difflat<cdist))[0]
+            #         marker_EN   = np.zeros((2,2), dtype=np.bool)
+            #         marker_nn   = 4
+            #         tflag       = False
+            #         for iv1 in index:
+            #             lon2    = self.lonArrIn[iv1]
+            #             lat2    = self.latArrIn[iv1]
+            #             if lon2-lon<0:
+            #                 marker_E    = 0
+            #             else:
+            #                 marker_E    = 1
+            #             if lat2-lat<0:
+            #                 marker_N    = 0
+            #             else:
+            #                 marker_N    = 1
+            #             if marker_EN[marker_E , marker_N]:
+            #                 continue
+            #             az, baz, dist   = geodist.inv(lon, lat, lon2, lat2) # loninArr/latinArr are initial points
+            #             dist            = dist/1000.
+            #             if dist< cdist*2 and dist >= 1:
+            #                 marker_nn   = marker_nn-1
+            #                 if marker_nn==0:
+            #                     tflag   = True
+            #                     break
+            #                 marker_EN[marker_E, marker_N]   = True
+            #         if not tflag:
+            #             fieldArr[ilat, ilon]    = 0
+            #             reason_n[ilat, ilon]    = 2
+                        
+            
         # Start to Compute Gradient
         tfield                      = self.copy()
         tfield.Zarr                 = fieldArr
