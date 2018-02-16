@@ -28,4 +28,5 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_A
 # inftan.tmax = 100.
 # inftan.tmin = 5.
 # dset.quake_aftan(prephdir='/scratch/summit/life9360/ALASKA_work/quake_working_dir/pre_disp_R', inftan=inftan)
-dset.interp_disp(verbose=True)
+# dset.interp_disp(verbose=True)
+dset.quake_get_field()

@@ -328,100 +328,121 @@ class EikonalTomoDataSet(h5py.File):
             raise ValueError('Wrong field type: '+fieldtype+' !')
         if merge:
             try:
-                group=self.create_group( name = 'Eikonal_run_'+str(runid) )
+                group           = self.create_group( name = 'Eikonal_run_'+str(runid) )
                 group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
             except ValueError:
                 print 'Merging Eikonal run id: ',runid
                 pass
         else:
-            create_group=False
+            create_group        = False
             while (not create_group):
                 try:
-                    group=self.create_group( name = 'Eikonal_run_'+str(runid) )
-                    create_group=True
+                    group       = self.create_group( name = 'Eikonal_run_'+str(runid) )
+                    create_group= True
                 except:
-                    runid+=1
+                    runid       +=1
                     continue
             group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
-        inDbase=pyasdf.ASDFDataSet(inasdffname)
-        pers = self.attrs['period_array']
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        dlon=self.attrs['dlon']
-        dlat=self.attrs['dlat']
-        fdict={ 'Tph': 2, 'Tgr': 3, 'Amp': 4}
-        evLst=inDbase.events
+        inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        pers                = self.attrs['period_array']
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        dlon                = self.attrs['dlon']
+        dlat                = self.attrs['dlat']
+        nlat_grad           = self.attrs['nlat_grad']
+        nlon_grad           = self.attrs['nlon_grad']
+        nlat_lplc           = self.attrs['nlat_lplc']
+        nlon_lplc           = self.attrs['nlon_lplc']
+        fdict               = { 'Tph': 2, 'Tgr': 3, 'amp': 4}
+        cat                 = inDbase.events
+        datalst             = self.auxiliary_data[data_type].list()
         for per in pers:
             print 'Computing gradient for: '+str(per)+' sec'
-            del_per=per-int(per)
+            del_per         = per-int(per)
             if del_per==0.:
-                persfx=str(int(per))+'sec'
+                persfx      = str(int(per))+'sec'
             else:
-                dper=str(del_per)
-                persfx=str(int(per))+'sec'+dper.split('.')[1]
-            working_per=workingdir+'/'+str(per)+'sec'
-            per_group=group.require_group( name='%g_sec'%( per ) )
-            evnumb=0
-            for event in evLst:
-                evnumb+=1
-                evid='E%05d' % evnumb
-                try:
-                    subdset = inDbase.auxiliary_data[data_type][evid+'_'+channel][persfx]
-                except KeyError:
-                    print 'No travel time field for: '+evid
+                dper        = str(del_per)
+                persfx      = str(int(per))+'sec'+dper.split('.')[1]
+            working_per     = workingdir+'/'+str(per)+'sec'
+            per_group       = group.require_group( name='%g_sec'%( per ) )
+            evnumb          = 0
+            for event in cat:
+                evnumb          += 1
+                evid            = 'E%05d' % evnumb
+                Ndata           = 0
+                outstr          = ''
+                porigin         = event.preferred_origin()
+                evlo            = porigin.longitude
+                evla            = porigin.latitude
+                evdp            = porigin.depth
+                otime           = porigin.time
+                pmag            = event.preferred_magnitude()
+                magnitude       = pmag.mag
+                Mtype           = pmag.magnitude_type
+                event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+                print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+                dataid          = evid+'_'+channel
+                if not dataid in datalst:
+                    print('No field data for eikonal/Helmholtz tomography')
                     continue
-                magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-                event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
-                evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-                if verbose: print 'Event: '+event_descrip+', '+Mtype+' = '+str(magnitude) 
-                if evlo<0.: evlo+=360.
-                dataArr = subdset.data.value
-                field2d=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
-                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype=fieldtype)
-                Zarr=dataArr[:, fdict[fieldtype]]
-                distArr=dataArr[:, 6] # Note amplitude in added!!!
-                field2d.read_array(lonArr=np.append(evlo, dataArr[:,0]), latArr=np.append(evla, dataArr[:,1]), ZarrIn=np.append(0., distArr/Zarr) )
-                outfname=evid+'_'+fieldtype+'_'+channel+'.lst'
+                try:
+                    subdset     = inDbase.auxiliary_data[data_type][evid+'_'+channel][persfx]
+                except KeyError:
+                    print('No field data for eikonal/Helmholtz tomography')
+                    continue
+                if evlo<0.:
+                    evlo        +=360.
+                dataArr         = subdset.data.value
+                field2d         = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                                    minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype=fieldtype,\
+                                        nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
+                Zarr            = dataArr[:, fdict[fieldtype]]
+                distArr         = dataArr[:, 6] # Note amplitude in added!!!
+                field2d.read_array(lonArr=np.append(evlo, dataArr[:, 0]), latArr=np.append(evla, dataArr[:, 1]), ZarrIn=np.append(0., distArr/Zarr) )
+                outfname        = evid+'_'+fieldtype+'_'+channel+'.lst'
                 field2d.interp_surface(workingdir=working_per, outfname=outfname)
                 field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
                 field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
                 # save data to hdf5 dataset
-                event_group=per_group.create_group(name=evid)
+                event_group     = per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=evlo)
                 event_group.attrs.create(name = 'evla', data=evla)
-                appVdset     = event_group.create_dataset(name='appV', data=field2d.appV)
-                reason_ndset = event_group.create_dataset(name='reason_n', data=field2d.reason_n)
-                proAngledset = event_group.create_dataset(name='proAngle', data=field2d.proAngle)
-                azdset       = event_group.create_dataset(name='az', data=field2d.az)
-                bazdset      = event_group.create_dataset(name='baz', data=field2d.baz)
-                Tdset        = event_group.create_dataset(name='travelT', data=field2d.Zarr)
+                appVdset        = event_group.create_dataset(name='appV', data=field2d.appV)
+                reason_ndset    = event_group.create_dataset(name='reason_n', data=field2d.reason_n)
+                proAngledset    = event_group.create_dataset(name='proAngle', data=field2d.proAngle)
+                azdset          = event_group.create_dataset(name='az', data=field2d.az)
+                bazdset         = event_group.create_dataset(name='baz', data=field2d.baz)
+                Tdset           = event_group.create_dataset(name='travelT', data=field2d.Zarr)
                 if amplplc:
-                    field2dAmp=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
-                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype='Amp')
-                    field2dAmp.read_array(lonArr=dataArr[:,0], latArr=dataArr[:,1], ZarrIn=dataArr[:, fdict['Amp']] )
-                    outfnameAmp=evid+'_Amp_'+channel+'.lst'
+                    field2dAmp  = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype='amp', \
+                                        nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
+                    field2dAmp.read_array(lonArr=dataArr[:,0], latArr=dataArr[:,1], ZarrIn=dataArr[:, fdict['amp']] )
+                    outfnameAmp = evid+'_Amp_'+channel+'.lst'
                     field2dAmp.interp_surface(workingdir=working_per, outfname=outfnameAmp)
+                    
+                    
                     field2dAmp.gradient()
                     field2dAmp.cut_edge(1,1)
                     field2dAmp.Laplacian()
                     field2dAmp.cut_edge(1,1)
                     field2dAmp.get_lplc_amp()
-                    lplc_ampdset = event_group.create_dataset(name='lplc_amp', data=field2dAmp.lplc_amp)
+                    lplc_ampdset= event_group.create_dataset(name='lplc_amp', data=field2dAmp.lplc_amp)
                     field2dAmp.lplc_amp[field2dAmp.lplc_amp > 2e-2]=0
                     field2dAmp.lplc_amp[field2dAmp.lplc_amp < -2e-2]=0
-                    slownessApp=-np.ones(field2d.appV.shape)
+                    slownessApp = -np.ones(field2d.appV.shape)
                     slownessApp[field2d.appV!=0]=1./field2d.appV[field2d.appV!=0]
-                    temp=slownessApp**2-field2dAmp.lplc_amp
-                    temp[temp<0]=0
-                    slownessCor=np.sqrt(temp)
-                    corV=np.zeros(slownessCor.shape)
+                    temp        = slownessApp**2-field2dAmp.lplc_amp
+                    temp[temp<0]= 0
+                    slownessCor = np.sqrt(temp)
+                    corV        = np.zeros(slownessCor.shape)
                     corV[slownessCor!=0]=1./slownessCor[slownessCor!=0]
-                    corV_ampdset = event_group.create_dataset(name='corV', data=corV)
-                # field2d.appV=corV
-                return field2d
-        if deletetxt: shutil.rmtree(workingdir)
+                    corV_ampdset= event_group.create_dataset(name='corV', data=corV)
+        if deletetxt:
+            shutil.rmtree(workingdir)
         return
     
     def quake_eikonal_mp(self, inasdffname, workingdir, fieldtype='Tph', channel='Z', data_type='FieldDISPpmf2interp', runid=0,
@@ -1260,32 +1281,33 @@ def eikonal4mp(infield, workingdir, channel):
     return
 
 def helmhotz4mp(infieldpair, workingdir, channel, amplplc):
-    tfield=infieldpair[0]
-    working_per=workingdir+'/'+str(tfield.period)+'sec'
-    outfname=tfield.evid+'_'+tfield.fieldtype+'_'+channel+'.lst'
+    tfield          = infieldpair[0]
+    working_per     = workingdir+'/'+str(tfield.period)+'sec'
+    outfname        = tfield.evid+'_'+tfield.fieldtype+'_'+channel+'.lst'
     tfield.interp_surface(workingdir=working_per, outfname=outfname)
     tfield.check_curvature(workingdir=working_per, outpfx=tfield.evid+'_'+channel+'_')
     tfield.eikonal_operator(workingdir=working_per, inpfx=tfield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
-    outfname_npz=working_per+'/'+tfield.evid+'_field2d'
-    if not amplplc: tfield.write_binary(outfname=outfname_npz)
+    outfname_npz    = working_per+'/'+tfield.evid+'_field2d'
+    if not amplplc:
+        tfield.write_binary(outfname=outfname_npz)
     if amplplc:
-        field2dAmp=infieldpair[1]
-        outfnameAmp=field2dAmp.evid+'_Amp_'+channel+'.lst'
+        field2dAmp          = infieldpair[1]
+        outfnameAmp         = field2dAmp.evid+'_Amp_'+channel+'.lst'
         field2dAmp.interp_surface(workingdir=working_per, outfname=outfnameAmp)
         field2dAmp.gradient()
         field2dAmp.cut_edge(1,1)
         field2dAmp.Laplacian()
         field2dAmp.cut_edge(1,1)
         field2dAmp.get_lplc_amp()
-        slownessApp=-np.ones(tfield.appV.shape)
+        slownessApp         = -np.ones(tfield.appV.shape)
         slownessApp[tfield.appV!=0]=1./tfield.appV[tfield.appV!=0]
-        temp=slownessApp**2-field2dAmp.lplc_amp
-        temp[temp<0]=0
-        slownessCor=np.sqrt(temp)
-        corV=np.zeros(slownessCor.shape)
-        corV[slownessCor!=0]=1./slownessCor[slownessCor!=0]
-        tfield.corV=corV
-        tfield.lplc_amp=field2dAmp.lplc_amp
+        temp                = slownessApp**2-field2dAmp.lplc_amp
+        temp[temp<0]        = 0
+        slownessCor         = np.sqrt(temp)
+        corV                = np.zeros(slownessCor.shape)
+        corV[slownessCor!=0]= 1./slownessCor[slownessCor!=0]
+        tfield.corV         = corV
+        tfield.lplc_amp     = field2dAmp.lplc_amp
         tfield.write_binary(outfname=outfname_npz, amplplc=amplplc)
     return 
 

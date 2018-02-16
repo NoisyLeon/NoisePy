@@ -669,7 +669,7 @@ class Field2d(object):
         os.remove(tempGMT)
         return 
         
-    def eikonal_operator(self, workingdir, inpfx='', nearneighbor=True, cdist=None, lplcthresh=0.005):
+    def eikonal_operator(self, workingdir, inpfx='', nearneighbor=True, cdist=None, lplcthresh=0.002, lplcnearneighbor=True):
         """
         Generate slowness maps from travel time maps using eikonal equation
         Two interpolated travel time file with different tension will be used for quality control.
@@ -824,7 +824,7 @@ class Field2d(object):
         tempArr                                 = reason_n[indexvalid[0], indexvalid[1]]
         tempArr[distevent<cdist+50.]            = 5
         reason_n[indexvalid[0], indexvalid[1]]  = tempArr
-        # final check of curvature, discard grid points with large curvature
+        # # final check of curvature, discard grid points with large curvature
         self.Laplacian(method='green')
         dnlat                                   = self.nlat_lplc - self.nlat_grad
         dnlon                                   = self.nlon_lplc - self.nlon_grad
@@ -839,17 +839,18 @@ class Field2d(object):
             (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
                                                 = 6
         # # near neighbor discard for large curvature
-        # indexlplc                               = np.where(reason_n==6.)
-        # ilatArr                                 = indexlplc[0] 
-        # ilonArr                                 = indexlplc[1]
-        # reason_n_temp                           = np.zeros(self.lonArr.shape)
-        # reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
-        #                                         = reason_n.copy()
-        # reason_n_temp[ilatArr+1, ilonArr]       = 6
-        # reason_n_temp[ilatArr-1, ilonArr]       = 6
-        # reason_n_temp[ilatArr, ilonArr+1]       = 6
-        # reason_n_temp[ilatArr, ilonArr-1]       = 6
-        # reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        if lplcnearneighbor:
+            indexlplc                               = np.where(reason_n==6.)
+            ilatArr                                 = indexlplc[0] 
+            ilonArr                                 = indexlplc[1]
+            reason_n_temp                           = np.zeros(self.lonArr.shape)
+            reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
+                                                    = reason_n.copy()
+            reason_n_temp[ilatArr+1, ilonArr]       = 6
+            reason_n_temp[ilatArr-1, ilonArr]       = 6
+            reason_n_temp[ilatArr, ilonArr+1]       = 6
+            reason_n_temp[ilatArr, ilonArr-1]       = 6
+            reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
         # store final data
         self.diffaArr                           = diffaArr
         self.grad                               = tfield.grad

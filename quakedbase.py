@@ -1761,7 +1761,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 print(str(Nhs)+'/'+str(Nraw)+' receiver function traces ')
             A0_0, A0_1, A1_1, phi1_1, A0_2, A2_2, phi2_2, \
                 A0, A1, A2, phi1, phi2, mfArr0, mfArr1, mfArr2, mfArr3,\
-                    Aavg, Astd, gbaz, gdat, gun = qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
+                    Aavg, Astd, Asem, gbaz, gdat, gun = qcLst.harmonic_stripping(outdir=outsta, stacode=staid)
             #------------------------------------------
             # store data
             #------------------------------------------
@@ -1789,7 +1789,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.add_auxiliary_data(data=gbaz, data_type='Ref'+reftype+'HSbindata',
                     path=staid_aux+'/baz', parameters=binheader)
             self.add_auxiliary_data(data=gun, data_type='Ref'+reftype+'HSbindata',
-                    path=staid_aux+'/std', parameters=binheader)
+                    path=staid_aux+'/sem', parameters=binheader)
             # average data
             avgheader           = {'npts': npts, 'delta': delta}
             self.add_auxiliary_data(data=Aavg[ind], data_type='Ref'+reftype+'HSavgdata',
@@ -1857,13 +1857,13 @@ class quakeASDF(pyasdf.ASDFDataSet):
             # misfit between A0 and R[i]
             self.add_auxiliary_data(data=mfArr0[ind], data_type='Ref'+reftype+'HSmodel',
                     path=staid_aux+'/A0_A1_A2/mf_A0_obs', parameters={})
-            # misfit between A0+A1+A2 and R[i]
+            # misfit between A0+A1+A2 and R[i], can be used as uncertainties
             self.add_auxiliary_data(data=mfArr1[ind], data_type='Ref'+reftype+'HSmodel',
                     path=staid_aux+'/A0_A1_A2/mf_A0_A1_A2_obs', parameters={})
-            # misfit between A0+A1+A2 and binned data
+            # misfit between A0+A1+A2 and binned data, can be used as uncertainties
             self.add_auxiliary_data(data=mfArr2[ind], data_type='Ref'+reftype+'HSmodel',
                     path=staid_aux+'/A0_A1_A2/mf_A0_A1_A2_bin', parameters={})
-            # weighted misfit between A0+A1+A2 and binned data
+            # weighted misfit between A0+A1+A2 and binned data, can be used as uncertainties
             self.add_auxiliary_data(data=mfArr3[ind], data_type='Ref'+reftype+'HSmodel',
                     path=staid_aux+'/A0_A1_A2/wmf_A0_A1_A2_bin', parameters={})
         return
@@ -2393,7 +2393,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         else:
             ntype   = 5
         if pers.size==0:
-            np.append( np.arange(16.)*2.+10., np.arange(10.)*5.+45.)
+            pers    = np.append( np.arange(16.)*2.+10., np.arange(10.)*5.+45.)
         try:
             print self.cat
         except AttributeError:
@@ -2455,7 +2455,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 Ndata               += 1
                 outstr              += staid
                 outstr              += ' '
-            print(str(Ndata)+' data streams processed disp interpolation')
+            print(str(Ndata)+' data streams processed for disp interpolation')
             if verbose:
                 print('STATION CODE: '+outstr)
             print('-----------------------------------------------------------------------------------------------------------')
@@ -2474,7 +2474,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         ============================================================================================================================
         """
         if pers.size==0:
-            pers    = np.append( np.arange(7.)*2.+28., np.arange(6.)*5.+45.)
+            pers    = np.append( np.arange(16.)*2.+10., np.arange(10.)*5.+45.)
         outindex    = { 'longitude': 0, 'latitude': 1, 'C': 2,  'U':3, 'amp': 4, 'snr': 5, 'dist': 6 }
         staLst      = self.waveforms.list()
         evnumb      = 0
@@ -2552,6 +2552,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     field_lst[iper] = np.append(field_lst[iper], snr)
                     field_lst[iper] = np.append(field_lst[iper], dist)
                     Nfplst[iper]    += 1
+                Ndata               += 1
+                outstr              += staid
+                outstr              += ' '
+            print(str(Ndata)+' data streams processed for field data')
+            if verbose:
+                print('STATION CODE: '+outstr)
             if outdir is not None:
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir)
@@ -2579,20 +2585,24 @@ class quakeASDF(pyasdf.ASDFDataSet):
     def get_limits_lonlat(self):
         """Get the geographical limits of the stations
         """
-        staLst=self.waveforms.list()
-        minlat=90.
-        maxlat=-90.
-        minlon=360.
-        maxlon=0.
+        staLst  = self.waveforms.list()
+        minlat  = 90.
+        maxlat  = -90.
+        minlon  = 360.
+        maxlon  = 0.
         for staid in staLst:
-            lat, elv, lon=self.waveforms[staid].coordinates.values()
-            if lon<0: lon+=360.
-            minlat=min(lat, minlat)
-            maxlat=max(lat, maxlat)
-            minlon=min(lon, minlon)
-            maxlon=max(lon, maxlon)
+            lat, elv, lon   = self.waveforms[staid].coordinates.values()
+            if lon<0:
+                lon         +=360.
+            minlat  = min(lat, minlat)
+            maxlat  = max(lat, maxlat)
+            minlon  = min(lon, minlon)
+            maxlon  = max(lon, maxlon)
         print 'latitude range: ', minlat, '-', maxlat, 'longitude range:', minlon, '-', maxlon
-        self.minlat=minlat; self.maxlat=maxlat; self.minlon=minlon; self.maxlon=maxlon
+        self.minlat = minlat
+        self.maxlat = maxlat
+        self.minlon = minlon
+        self.maxlon = maxlon
         return
     
     def get_ms(self, Vgr=None, period=10., wfactor=20., channel='Z', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True, \
