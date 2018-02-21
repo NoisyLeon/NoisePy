@@ -383,6 +383,10 @@ class EikonalTomoDataSet(h5py.File):
                 magnitude       = pmag.mag
                 Mtype           = pmag.magnitude_type
                 event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+                # debug
+                if otime != obspy.core.utcdatetime.UTCDateTime('2009-04-07T04:23:34.100000Z'):
+                    continue
+                # 
                 print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
                 dataid          = evid+'_'+channel
                 if not dataid in datalst:
@@ -405,7 +409,7 @@ class EikonalTomoDataSet(h5py.File):
                 outfname        = evid+'_'+fieldtype+'_'+channel+'.lst'
                 field2d.interp_surface(workingdir=working_per, outfname=outfname)
                 field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
-                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=150.)
                 # save data to hdf5 dataset
                 event_group     = per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=evlo)
@@ -417,30 +421,18 @@ class EikonalTomoDataSet(h5py.File):
                 bazdset         = event_group.create_dataset(name='baz', data=field2d.baz)
                 Tdset           = event_group.create_dataset(name='travelT', data=field2d.Zarr)
                 if amplplc:
-                    field2dAmp  = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                    field2dAmp      = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
                             minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype='amp', \
                                         nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
                     field2dAmp.read_array(lonArr=dataArr[:,0], latArr=dataArr[:,1], ZarrIn=dataArr[:, fdict['amp']] )
-                    outfnameAmp = evid+'_Amp_'+channel+'.lst'
+                    outfnameAmp     = evid+'_Amp_'+channel+'.lst'
                     field2dAmp.interp_surface(workingdir=working_per, outfname=outfnameAmp)
-                    
-                    
-                    field2dAmp.gradient()
-                    field2dAmp.cut_edge(1,1)
-                    field2dAmp.Laplacian()
-                    field2dAmp.cut_edge(1,1)
-                    field2dAmp.get_lplc_amp()
-                    lplc_ampdset= event_group.create_dataset(name='lplc_amp', data=field2dAmp.lplc_amp)
-                    field2dAmp.lplc_amp[field2dAmp.lplc_amp > 2e-2]=0
-                    field2dAmp.lplc_amp[field2dAmp.lplc_amp < -2e-2]=0
-                    slownessApp = -np.ones(field2d.appV.shape)
-                    slownessApp[field2d.appV!=0]=1./field2d.appV[field2d.appV!=0]
-                    temp        = slownessApp**2-field2dAmp.lplc_amp
-                    temp[temp<0]= 0
-                    slownessCor = np.sqrt(temp)
-                    corV        = np.zeros(slownessCor.shape)
-                    corV[slownessCor!=0]=1./slownessCor[slownessCor!=0]
-                    corV_ampdset= event_group.create_dataset(name='corV', data=corV)
+                    field2dAmp.check_curvature_amp(workingdir=workingdir, threshold=0.5)
+                    field2dAmp.helmholtz_operator(workingdir=workingdir, lplcthresh=0.5)
+                    field2d.get_lplc_amp(fieldamp=field2dAmp)
+                    lplc_ampdset    = event_group.create_dataset(name='lplc_amp', data=field2d.lplc_amp)
+                    corV_ampdset    = event_group.create_dataset(name='corV', data=field2d.corV)
+                    reason_nhelmdset= event_group.create_dataset(name='reason_n_helm', data=field2d.reason_n_helm)
         if deletetxt:
             shutil.rmtree(workingdir)
         return
@@ -586,9 +578,9 @@ class EikonalTomoDataSet(h5py.File):
                 if amplplc:
                     lplc_ampdset = event_group.create_dataset(name='lplc_amp', data=lplc_amp)
                     corV_dset = event_group.create_dataset(name='corV', data=corV)
-        if deletetxt: shutil.rmtree(workingdir)
+        if deletetxt:
+            shutil.rmtree(workingdir)
         return
-    
     
     def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=15, anisotropic=False, helmholtz=False, use_numba=True):
         """
@@ -1275,7 +1267,7 @@ def eikonal4mp(infield, workingdir, channel):
     outfname        = infield.evid+'_'+infield.fieldtype+'_'+channel+'.lst'
     infield.interp_surface(workingdir=working_per, outfname=outfname)
     infield.check_curvature(workingdir=working_per, outpfx=infield.evid+'_'+channel+'_')
-    infield.eikonal_operator(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+    infield.eikonal_operator(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=150.)
     outfname_npz    = working_per+'/'+infield.evid+'_field2d'
     infield.write_binary(outfname=outfname_npz)
     return
@@ -1286,7 +1278,7 @@ def helmhotz4mp(infieldpair, workingdir, channel, amplplc):
     outfname        = tfield.evid+'_'+tfield.fieldtype+'_'+channel+'.lst'
     tfield.interp_surface(workingdir=working_per, outfname=outfname)
     tfield.check_curvature(workingdir=working_per, outpfx=tfield.evid+'_'+channel+'_')
-    tfield.eikonal_operator(workingdir=working_per, inpfx=tfield.evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+    tfield.eikonal_operator(workingdir=working_per, inpfx=tfield.evid+'_'+channel+'_', nearneighbor=True, cdist=150.)
     outfname_npz    = working_per+'/'+tfield.evid+'_field2d'
     if not amplplc:
         tfield.write_binary(outfname=outfname_npz)

@@ -2558,6 +2558,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print(str(Ndata)+' data streams processed for field data')
             if verbose:
                 print('STATION CODE: '+outstr)
+            print('-----------------------------------------------------------------------------------------------------------')
             if outdir is not None:
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir)
