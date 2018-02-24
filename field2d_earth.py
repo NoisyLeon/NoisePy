@@ -984,7 +984,7 @@ class Field2d(object):
         cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.ax.tick_params(labelsize=10)
         if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
-            cb.set_label('sec', fontsize=12, rotation=0)
+            cb.set_label('C (km/s)', fontsize=12, rotation=0)
         if self.fieldtype=='amp':
             cb.set_label('nm', fontsize=12, rotation=0)
         # if contour:
@@ -1032,24 +1032,34 @@ class Field2d(object):
     # # #         plt.show()
     # # #     return m
     # # # 
-    # # # def plot_lplc(self, projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
-    # # #     """Plot data with contour
-    # # #     """
-    # # #     plt.figure()
-    # # #     m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
-    # # #     x, y    = m(self.lonArr, self.latArr)
-    # # #     x       = x[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
-    # # #     y       = y[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
-    # # #     # cmap =discrete_cmap(int(vmax-vmin)/2+1, 'seismic')
-    # # #     m.pcolormesh(x, y, self.lplc, cmap='seismic', shading='gouraud', vmin=vmin, vmax=vmax)
-    # # #     cb      = m.colorbar()
-    # # #     cb.ax.tick_params(labelsize=15) 
-    # # #     levels  = np.linspace(self.lplc.min(), self.lplc.max(), 100)
-    # # #     if contour:
-    # # #         plt.contour(x, y, self.lplc, colors='k', levels=levels)
-    # # #     if showfig:
-    # # #         plt.show()
-    # # #     return
+    def plot_lplc(self, projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """Plot data with contour
+        """
+        plt.figure()
+        m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y    = m(self.lonArr, self.latArr)
+        # x       = x[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # y       = y[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # cmap =discrete_cmap(int(vmax-vmin)/2+1, 'seismic')
+        data        = np.zeros(self.lonArr.shape)
+        data[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                        = self.lplc
+        tempmask    = np.ones(self.lonArr.shape, dtype=np.bool)
+        tempmask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                    = self.mask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        mdata       = ma.masked_array(data, mask=tempmask)
+        im          =m.pcolormesh(x, y, mdata, cmap='seismic', shading='gouraud', vmin=vmin, vmax=vmax)
+        # cb      = m.colorbar()
+        # cb.ax.tick_params(labelsize=15)
+        cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.ax.tick_params(labelsize=10)
+        cb.set_label('Travel time Laplacian (s/km^2)', fontsize=12, rotation=0)
+        # # levels  = np.linspace(self.lplc.min(), self.lplc.max(), 100)
+        # # if contour:
+        # #     plt.contour(x, y, self.lplc, colors='k', levels=levels)
+        if showfig:
+            plt.show()
+        return
     # # # 
     # # # def plot_lplc_amp(self, projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
     # # #     """Plot data with contour

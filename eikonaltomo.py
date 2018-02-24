@@ -626,8 +626,6 @@ class EikonalTomoDataSet(h5py.File):
         group_out.attrs.create(name = 'fieldtype', data=group.attrs['fieldtype'])
         for per in pers:
             print 'Stacking Eikonal results for: '+str(per)+' sec'
-            # if per != 24.:
-            #     continue
             per_group   = group['%g_sec'%( per )]
             Nevent      = len(per_group.keys())
             Nmeasure    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
@@ -656,13 +654,17 @@ class EikonalTomoDataSet(h5py.File):
                 slowness                = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.float32)
                 slowness[velocity!=0]   = 1./velocity[velocity!=0]
                 slownessALL[iev, :, :]  = slowness
+                # # # if (reason_n[reason_n==0]).size < 0.05*reason_n.size:
+                # # #     reason_nALL[iev, :, :]  = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                # # # else:
+                # # #     reason_nALL[iev, :, :]  = reason_n
                 reason_nALL[iev, :, :]  = reason_n
                 aziALL[iev, :, :]       = az
                 
                 # ## debug
                 # Ndebug = (velocity[(reason_n==0)*(velocity< 1.)]).size
                 # if Ndebug != 0: 
-                #     print evid, Ndebug 
+                #     print evid, Ndebug
             if Nmeasure.max()< threshmeasure:
                 print ('No enough measurements for: '+str(per)+' sec')
                 continue
@@ -1100,23 +1102,23 @@ class EikonalTomoDataSet(h5py.File):
             distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
             m               = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
                                 lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=10)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=10)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=0.5, dashes=[2,2], labels=[1,0,0,0], fontsize=5)
             # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=0.5, dashes=[2,2], labels=[0,0,0,1], fontsize=5)
         m.drawcoastlines(linewidth=1.0)
         m.drawcountries(linewidth=1.)
         # m.drawmapboundary(fill_color=[1.0,1.0,1.0])
-        m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        # m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         m.drawstates()
-        m.drawmapboundary(fill_color="white")
+        # m.drawmapboundary(fill_color="white")
         try:
             geopolygons.PlotPolygon(inbasemap=m)
         except:
             pass
         return m
     
-    def plot(self, runid, datatype, period, clabel='', cmap='cv', projection='lambert', geopolygons=None, vmin=None, vmax=None, showfig=True):
+    def plot(self, runid, datatype, period, clabel='', cmap='cv', projection='lambert', hillshade=False, geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True):
         """plot maps from the tomographic inversion
         =================================================================================================================
         ::: input parameters :::
@@ -1168,11 +1170,12 @@ class EikonalTomoDataSet(h5py.File):
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        try:
-            shapefname  = '/scratch/summit/life9360/ALASKA_work/fault_maps/qfaults'
-            m.readshapefile(shapefname, 'faultline', linewidth=2)
-        except:
-            pass
+        if mfault:
+            try:
+                shapefname  = '/scratch/summit/life9360/ALASKA_work/fault_maps/qfaults'
+                m.readshapefile(shapefname, 'faultline', linewidth=2, color='r')
+            except:
+                pass
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
@@ -1182,7 +1185,31 @@ class EikonalTomoDataSet(h5py.File):
         elif os.path.isfile(cmap):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
-        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+                ################################3
+        if hillshade:
+            from netCDF4 import Dataset
+            from matplotlib.colors import LightSource
+        
+            etopodata   = Dataset('/projects/life9360/station_map/grd_dir/ETOPO2v2g_f4.nc')
+            etopo       = etopodata.variables['z'][:]
+            lons        = etopodata.variables['x'][:]
+            lats        = etopodata.variables['y'][:]
+            ls          = LightSource(azdeg=315, altdeg=45)
+            # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
+            etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
+            # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
+            ny, nx      = etopo.shape
+            topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
+            m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
+        ###################################################################
+        if hillshade:
+            m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
+        else:
+            m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        if hillshade:
+            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
+        else:
+            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label(clabel, fontsize=12, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
@@ -1190,6 +1217,76 @@ class EikonalTomoDataSet(h5py.File):
         if showfig:
             plt.show()
         return
+    
+    def compare_raytomo(self, inraytomofname, rayruntype, rayrunid, runid, period, showfig=True, projection='lambert', cmap='cv', clabel='C (km/s)'):
+        # raytomo data
+        dset_ray    = h5py.File(inraytomofname)
+        rundict     = {0: 'smooth_run', 1: 'qc_run'}
+        dataid      = rundict[rayruntype]+'_'+str(rayrunid)
+        ingroup     = dset_ray['reshaped_'+dataid]
+        pers        = dset_ray.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the raytomo database')
+        if rayruntype == 1:
+            isotropic   = ingroup.attrs['isotropic']
+        else:
+            isotropic   = True
+        pergrp  = ingroup['%g_sec'%( period )]
+        if isotropic:
+            datatype    = 'velocity'
+        else:
+            datatype    = 'vel_iso'
+        raydata     = pergrp[datatype].value
+        raymask     = ingroup['mask1']
+        # Eikonal data
+        dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup     = self[dataid]
+        pergrp      = ingroup['%g_sec'%( period )]
+        datatype    = 'vel_iso'
+        data        = pergrp[datatype].value
+        mask        = pergrp['mask'].value
+        #
+        self._get_lon_lat_arr()
+        
+        diffdata    = raydata - data
+        mdata       = ma.masked_array(diffdata, mask=mask + raymask )
+        
+        #-----------
+        # plot data
+        #-----------
+        m           = self._get_basemap(projection=projection)
+        x, y        = m(self.lonArr, self.latArr)
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+        elif os.path.isfile(cmap):
+            import pycpt
+            cmap    = pycpt.load.gmtColormap(cmap)
+                ################################
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=-0.4, vmax=0.4)
+        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.set_label(clabel, fontsize=12, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=15)
+        cb.solids.set_edgecolor("face")
+        plt.show()
+        
+        ax      = plt.subplot()
+        data    = diffdata[np.logical_not(mask + raymask)]
+        plt.hist(data, bins=100)
+        outstd  = data.std()
+        outmean = data.mean()
+        plt.xlim(-.4, .4)
+        plt.ylabel('Phase velocity measurements', fontsize=20)
+        plt.xlabel('Difference (km/s)', fontsize=20)
+        plt.title(str(period)+' sec, mean = %g m/s, std = %g m/s' %(outmean*1000., outstd*1000.), fontsize=30)
+        ax.tick_params(axis='x', labelsize=20)
+        ax.tick_params(axis='y', labelsize=20)
+        if showfig:
+            plt.show()
     
     def plot_vel_iso(self, projection='lambert', fastaxis=False, geopolygons=None, showfig=True, vmin=2.9, vmax=3.5):
         """Plot isotropic velocity

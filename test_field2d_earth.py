@@ -42,16 +42,18 @@ field.interp_surface(workingdir=workingdir, outfname='Tph_10sec')
 # # field3.Laplacian('convolve', order=2)
 # 
 field.check_curvature(workingdir=workingdir, threshold=0.005)
-field.eikonal_operator(workingdir=workingdir, lplcthresh=0.5)
-
-fieldamp            = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.2, period=10.)
-fieldamp.fieldtype  = 'amp'
-fieldamp.read(fname='./stf_10sec_all/Amp_10.0.txt')
-workingdir          = './field_working'
-fieldamp.interp_surface(workingdir=workingdir, outfname='Amp_10sec')
-fieldamp.check_curvature_amp(workingdir=workingdir, threshold=0.5)
-fieldamp.helmholtz_operator(workingdir=workingdir, lplcthresh=0.5)
-
-field.get_lplc_amp(fieldamp)
+field.eikonal_operator(workingdir=workingdir, lplcthresh=0.005)
+# field.Laplacian('green')
+# field.plot_lplc(vmin=-0.06, vmax=0.06,showfig=True)
+# 
+# fieldamp            = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.2, period=10.)
+# fieldamp.fieldtype  = 'amp'
+# fieldamp.read(fname='./stf_10sec_all/Amp_10.0.txt')
+# workingdir          = './field_working'
+# fieldamp.interp_surface(workingdir=workingdir, outfname='Amp_10sec')
+# fieldamp.check_curvature_amp(workingdir=workingdir, threshold=0.5)
+# fieldamp.helmholtz_operator(workingdir=workingdir, lplcthresh=0.5)
+# 
+# field.get_lplc_amp(fieldamp)
 
 
