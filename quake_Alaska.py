@@ -7,8 +7,6 @@ import pyaftan
 # Initialize ASDF dataset
 dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5')
 # dset.add_quakeml('/scratch/summit/life9360/ALASKA_work/quakeml/alaska_2017_aug.ml')
-
-
 # print dset.events[0]
 # Retrieving earthquake catalog
 # ISC catalog

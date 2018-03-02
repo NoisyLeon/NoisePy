@@ -86,7 +86,8 @@ class EikonalTomoDataSet(h5py.File):
         self.attrs.create(name = 'nlon_lplc', data=nlon_lplc)
         return
     
-    def xcorr_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, deletetxt=True, verbose=False):
+    def xcorr_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, \
+                      deletetxt=True, verbose=False, cdist=150.):
         """
         Compute gradient of travel time for cross-correlation data
         =================================================================================================================
@@ -158,7 +159,7 @@ class EikonalTomoDataSet(h5py.File):
                 outfname            = evid+'_'+fieldtype+'_'+channel+'.lst'
                 field2d.interp_surface(workingdir=working_per, outfname=outfname)
                 field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
-                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=None)
+                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=cdist)
                 # save data to hdf5 dataset
                 event_group         = per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=lon1)
@@ -174,7 +175,7 @@ class EikonalTomoDataSet(h5py.File):
         return
     
     def xcorr_eikonal_mp(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0,
-                deletetxt=True, verbose=True, subsize=1000, nprocess=None):
+                deletetxt=True, verbose=True, subsize=1000, nprocess=None, cdist=150.):
         """
         Compute gradient of travel time for cross-correlation data with multiprocessing
         =================================================================================================================
@@ -257,19 +258,19 @@ class EikonalTomoDataSet(h5py.File):
             for isub in range(Nsub):
                 print 'Subset:', isub,'in',Nsub,'sets'
                 cfieldLst           = fieldLst[isub*subsize:(isub+1)*subsize]
-                EIKONAL             = partial(eikonal4mp, workingdir=workingdir, channel=channel)
+                EIKONAL             = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
                 pool                = multiprocessing.Pool(processes=nprocess)
                 pool.map(EIKONAL, cfieldLst) #make our results with a map call
                 pool.close() #we are not adding any more processes
                 pool.join() #tell it to wait until all threads are done before going on
             cfieldLst               = fieldLst[(isub+1)*subsize:]
-            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel)
+            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
             pool                    = multiprocessing.Pool(processes=nprocess)
             pool.map(EIKONAL, cfieldLst) #make our results with a map call
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
-            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel)
+            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
             pool                    = multiprocessing.Pool(processes=nprocess)
             pool.map(EIKONAL, fieldLst) #make our results with a map call
             pool.close() #we are not adding any more processes
@@ -308,7 +309,7 @@ class EikonalTomoDataSet(h5py.File):
         return
     
     def quake_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='Z', data_type='FieldDISPpmf2interp',
-            runid=0, merge=False, deletetxt=False, verbose=True, amplplc=False):
+            runid=0, merge=False, deletetxt=False, verbose=True, amplplc=False, cdist=150.):
         """
         Compute gradient of travel time for earthquake data
         =================================================================================================================
@@ -344,6 +345,8 @@ class EikonalTomoDataSet(h5py.File):
                     continue
             group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
         inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        cat                 = inDbase.events
+        L                   = len(cat)
         pers                = self.attrs['period_array']
         minlon              = self.attrs['minlon']
         maxlon              = self.attrs['maxlon']
@@ -356,8 +359,7 @@ class EikonalTomoDataSet(h5py.File):
         nlat_lplc           = self.attrs['nlat_lplc']
         nlon_lplc           = self.attrs['nlon_lplc']
         fdict               = { 'Tph': 2, 'Tgr': 3, 'amp': 4}
-        cat                 = inDbase.events
-        datalst             = self.auxiliary_data[data_type].list()
+        datalst             = inDbase.auxiliary_data[data_type].list()
         for per in pers:
             print 'Computing gradient for: '+str(per)+' sec'
             del_per         = per-int(per)
@@ -384,7 +386,13 @@ class EikonalTomoDataSet(h5py.File):
                 Mtype           = pmag.magnitude_type
                 event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
                 # debug
-                if otime != obspy.core.utcdatetime.UTCDateTime('2009-04-07T04:23:34.100000Z'):
+                # if otime != obspy.core.utcdatetime.UTCDateTime('2009-04-07T04:23:34.100000Z'):
+                #     continue
+                # if otime != obspy.core.utcdatetime.UTCDateTime('2007-02-14T01:29:07.450000Z'):
+                #     # if otime < obspy.core.utcdatetime.UTCDateTime('2007-02-14') or otime > obspy.core.utcdatetime.UTCDateTime('2007-02-15'):
+                #     continue
+                if otime != obspy.core.utcdatetime.UTCDateTime('2007-09-28T01:35:53.060000Z'):
+                    # if otime < obspy.core.utcdatetime.UTCDateTime('2007-02-14') or otime > obspy.core.utcdatetime.UTCDateTime('2007-02-15'):
                     continue
                 # 
                 print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
@@ -409,7 +417,7 @@ class EikonalTomoDataSet(h5py.File):
                 outfname        = evid+'_'+fieldtype+'_'+channel+'.lst'
                 field2d.interp_surface(workingdir=working_per, outfname=outfname)
                 field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
-                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=150.)
+                field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=cdist)
                 # save data to hdf5 dataset
                 event_group     = per_group.create_group(name=evid)
                 event_group.attrs.create(name = 'evlo', data=evlo)
@@ -460,69 +468,82 @@ class EikonalTomoDataSet(h5py.File):
             raise ValueError('Wrong field type: '+fieldtype+' !')
         if merge:
             try:
-                group=self.create_group( name = 'Eikonal_run_'+str(runid) )
+                group           = self.create_group( name = 'Eikonal_run_'+str(runid) )
                 group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
             except ValueError:
                 print 'Merging Eikonal run id: ',runid
                 pass
         else:
-            create_group=False
+            create_group        = False
             while (not create_group):
                 try:
-                    group=self.create_group( name = 'Eikonal_run_'+str(runid) )
-                    create_group=True
+                    group       = self.create_group( name = 'Eikonal_run_'+str(runid) )
+                    create_group= True
                 except:
-                    runid+=1
+                    runid       += 1
                     continue
             group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
-        inDbase=pyasdf.ASDFDataSet(inasdffname)
-        pers = self.attrs['period_array']
-        minlon=self.attrs['minlon']
-        maxlon=self.attrs['maxlon']
-        minlat=self.attrs['minlat']
-        maxlat=self.attrs['maxlat']
-        dlon=self.attrs['dlon']
-        dlat=self.attrs['dlat']
-        fdict={ 'Tph': 2, 'Tgr': 3, 'Amp': 4}
-        evLst=inDbase.events
-        fieldLst=[]
+        inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        cat                 = inDbase.events
+        L                   = len(cat)
+        pers                = self.attrs['period_array']
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        dlon                = self.attrs['dlon']
+        dlat                = self.attrs['dlat']
+        nlat_grad           = self.attrs['nlat_grad']
+        nlon_grad           = self.attrs['nlon_grad']
+        nlat_lplc           = self.attrs['nlat_lplc']
+        nlon_lplc           = self.attrs['nlon_lplc']
+        fdict               = { 'Tph': 2, 'Tgr': 3, 'amp': 4}
+        fieldLst            = []
         # prepare data
         for per in pers:
             print 'Computing gradient for: '+str(per)+' sec'
-            del_per=per-int(per)
+            del_per         = per-int(per)
             if del_per==0.:
-                persfx=str(int(per))+'sec'
+                persfx      = str(int(per))+'sec'
             else:
-                dper=str(del_per)
-                persfx=str(int(per))+'sec'+dper.split('.')[1]
-            working_per=workingdir+'/'+str(per)+'sec'
-            per_group=group.require_group( name='%g_sec'%( per ) )
-            evnumb=0
-            for event in evLst:
-                evnumb+=1
-                evid='E%05d' % evnumb
+                dper        = str(del_per)
+                persfx      = str(int(per))+'sec'+dper.split('.')[1]
+            working_per     = workingdir+'/'+str(per)+'sec'
+            per_group       = group.require_group( name='%g_sec'%( per ) )
+            evnumb          = 0
+            for event in cat:
+                evnumb      +=1
+                evid        = 'E%05d' % evnumb
                 try:
                     subdset = inDbase.auxiliary_data[data_type][evid+'_'+channel][persfx]
                 except KeyError:
                     print 'No travel time field for: '+evid
                     continue
-                magnitude=event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-                event_descrip=event.event_descriptions[0].text+', '+event.event_descriptions[0].type
-                evlo=event.origins[0].longitude; evla=event.origins[0].latitude
-                if verbose: print 'Event: '+event_descrip+', '+Mtype+' = '+str(magnitude) 
-                if evlo<0.: evlo+=360.
-                dataArr = subdset.data.value
-                fieldpair=[]
-                field2d=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
-                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype=fieldtype, evid=evid)
-                Zarr=dataArr[:, fdict[fieldtype]]
-                distArr=dataArr[:, 6] # Note amplitude in added!!!
+                porigin         = event.preferred_origin()
+                evlo            = porigin.longitude
+                evla            = porigin.latitude
+                evdp            = porigin.depth
+                otime           = porigin.time
+                pmag            = event.preferred_magnitude()
+                magnitude       = pmag.mag
+                Mtype           = pmag.magnitude_type
+                event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+                if verbose:
+                    print 'Event: '+event_descrip+', '+Mtype+' = '+str(magnitude) 
+                if evlo<0.:
+                    evlo        += 360.
+                dataArr         = subdset.data.value
+                fieldpair       = []
+                field2d         = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                                    minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype=fieldtype, evid=evid)
+                Zarr            = dataArr[:, fdict[fieldtype]]
+                distArr         = dataArr[:, 6] # Note amplitude in added!!!
                 field2d.read_array(lonArr=np.append(evlo, dataArr[:,0]), latArr=np.append(evla, dataArr[:,1]), ZarrIn=np.append(0., distArr/Zarr) )
                 fieldpair.append(field2d)
                 if amplplc:
-                    field2dAmp=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
-                        minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype='Amp', evid=evid)
-                    field2dAmp.read_array(lonArr=dataArr[:,0], latArr=dataArr[:,1], ZarrIn=dataArr[:, fdict['Amp']] )
+                    field2dAmp  = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                                minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype='amp', evid=evid)
+                    field2dAmp.read_array(lonArr=dataArr[:,0], latArr=dataArr[:,1], ZarrIn=dataArr[:, fdict['amp']] )
                     fieldpair.append(field2dAmp)
                 fieldLst.append(fieldpair)
         # Computing gradient with multiprocessing
@@ -1359,12 +1380,12 @@ class EikonalTomoDataSet(h5py.File):
         return
         
 
-def eikonal4mp(infield, workingdir, channel):
+def eikonal4mp(infield, workingdir, channel, cdist):
     working_per     = workingdir+'/'+str(infield.period)+'sec'
     outfname        = infield.evid+'_'+infield.fieldtype+'_'+channel+'.lst'
     infield.interp_surface(workingdir=working_per, outfname=outfname)
     infield.check_curvature(workingdir=working_per, outpfx=infield.evid+'_'+channel+'_')
-    infield.eikonal_operator(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=150.)
+    infield.eikonal_operator(workingdir=working_per, inpfx=infield.evid+'_'+channel+'_', nearneighbor=True, cdist=cdist)
     outfname_npz    = working_per+'/'+infield.evid+'_field2d'
     infield.write_binary(outfname=outfname_npz)
     return

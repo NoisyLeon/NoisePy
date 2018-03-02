@@ -570,7 +570,7 @@ class Field2d(object):
         os.remove(tempGMT)
         return
         
-    def eikonal_operator(self, workingdir, inpfx='', nearneighbor=True, cdist=150., lplcthresh=0.002, lplcnearneighbor=True):
+    def eikonal_operator(self, workingdir, inpfx='', nearneighbor=True, cdist=150., lplcthresh=0.002, lplcnearneighbor=False):
         """
         Generate slowness maps from travel time maps using eikonal equation
         Two interpolated travel time file with different tension will be used for quality control.
@@ -586,8 +586,8 @@ class Field2d(object):
         Note: edge has been cutting twice, one in check_curvature 
         =====================================================================================================================
         """
-        # if cdist is None:
-        #     cdist   = min(12.*self.period, 150.)
+        if cdist is None:
+            cdist   = max(12.*self.period/3., 150.)
         evlo        = self.evlo
         evla        = self.evla
         # Read data,
@@ -725,33 +725,33 @@ class Field2d(object):
         tempArr                                 = reason_n[indexvalid[0], indexvalid[1]]
         tempArr[distevent<cdist+50.]            = 5
         reason_n[indexvalid[0], indexvalid[1]]  = tempArr
-        # # final check of curvature, discard grid points with large curvature
-        self.Laplacian(method='green')
-        dnlat                                   = self.nlat_lplc - self.nlat_grad
-        dnlon                                   = self.nlon_lplc - self.nlon_grad
-        tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
-        if dnlat == 0 and dnlon == 0:
-            reason_n[tempind]                   = 6
-        elif dnlat == 0 and dnlon != 0:
-            (reason_n[:, dnlon:-dnlon])[tempind]= 6
-        elif dnlat != 0 and dnlon == 0:
-            (reason_n[dnlat:-dnlat, :])[tempind]= 6
-        else:
-            (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
-                                                = 6
-        # # near neighbor discard for large curvature
-        if lplcnearneighbor:
-            indexlplc                               = np.where(reason_n==6.)
-            ilatArr                                 = indexlplc[0] 
-            ilonArr                                 = indexlplc[1]
-            reason_n_temp                           = np.zeros(self.lonArr.shape)
-            reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
-                                                    = reason_n.copy()
-            reason_n_temp[ilatArr+1, ilonArr]       = 6
-            reason_n_temp[ilatArr-1, ilonArr]       = 6
-            reason_n_temp[ilatArr, ilonArr+1]       = 6
-            reason_n_temp[ilatArr, ilonArr-1]       = 6
-            reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        # final check of curvature, discard grid points with large curvature
+        # self.Laplacian(method='green')
+        # dnlat                                   = self.nlat_lplc - self.nlat_grad
+        # dnlon                                   = self.nlon_lplc - self.nlon_grad
+        # tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
+        # if dnlat == 0 and dnlon == 0:
+        #     reason_n[tempind]                   = 6
+        # elif dnlat == 0 and dnlon != 0:
+        #     (reason_n[:, dnlon:-dnlon])[tempind]= 6
+        # elif dnlat != 0 and dnlon == 0:
+        #     (reason_n[dnlat:-dnlat, :])[tempind]= 6
+        # else:
+        #     (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
+        #                                         = 6
+        # # # near neighbor discard for large curvature
+        # if lplcnearneighbor:
+        #     indexlplc                               = np.where(reason_n==6.)
+        #     ilatArr                                 = indexlplc[0] 
+        #     ilonArr                                 = indexlplc[1]
+        #     reason_n_temp                           = np.zeros(self.lonArr.shape)
+        #     reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
+        #                                             = reason_n.copy()
+        #     reason_n_temp[ilatArr+1, ilonArr]       = 6
+        #     reason_n_temp[ilatArr-1, ilonArr]       = 6
+        #     reason_n_temp[ilatArr, ilonArr+1]       = 6
+        #     reason_n_temp[ilatArr, ilonArr-1]       = 6
+        #     reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
         # store final data
         self.diffaArr                           = diffaArr
         self.grad                               = tfield.grad

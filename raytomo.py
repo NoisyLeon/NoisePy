@@ -857,9 +857,9 @@ class RayTomoDataSet(h5py.File):
         x, y        = m(self.lonArr, self.latArr)
         # shapefname  = '/scratch/summit/life9360/ALASKA_work/fault_maps/qfaults'
         # m.readshapefile(shapefname, 'faultline', linewidth=2, color='red')
-        shapefname  = '/scratch/summit/life9360/ALASKA_work/geological_maps/akecoregions'
-        m.readshapefile(shapefname, 'faultline', linewidth=2, color='red')
-        
+        shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolpoly_generalized_WGS84'
+        m.readshapefile(shapefname, 'faultline', linewidth=0.5, color='gray')
+    
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
@@ -912,7 +912,6 @@ class RayTomoDataSet(h5py.File):
         # # cb.solids.set_rasterized(True)
         cb.solids.set_edgecolor("face")
         # m.shadedrelief(scale=1., origin='lower')
-
         if showfig:
             plt.show()
         return
