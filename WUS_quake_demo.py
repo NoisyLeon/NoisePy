@@ -40,6 +40,8 @@ dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers
 # dset.xcorr_eikonal_mp(inasdffname='../COR_WUS.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
 field=dset.quake_eikonal(inasdffname='/scratch/summit/life9360/WUS_quake.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='Z',
             data_type='FieldDISPpmf2interp', amplplc=True)
+# field=dset.quake_eikonal_mp(inasdffname='/scratch/summit/life9360/WUS_quake.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='Z',
+#             data_type='FieldDISPpmf2interp', amplplc=True)
 # dset2.quake_eikonal_mp(inasdffname='../WUS_quake_eikonal.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='Z',
 #         data_type='FieldDISPpmf2interp', amplplc=True)
 

@@ -34,8 +34,10 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Al
 # except: pass
 # 
 # # Harmonic analysis
-dset.harmonic_stripping()
+# dset.harmonic_stripping()
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
 # dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')
 # plt.show()
+
+dset.plot_all_ref(outdir='/scratch/summit/life9360/ALASKA_work/ref_figs', outtxt='ref_log')

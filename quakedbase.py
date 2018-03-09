@@ -1868,7 +1868,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     path=staid_aux+'/A0_A1_A2/wmf_A0_A1_A2_bin', parameters={})
         return
     
-    def plot_ref(self, network, station, phase='P', datatype='RefRHSdata'):
+    def plot_ref(self, network, station, phase='P', datatype='RefRHSdata', outdir=None):
         """plot receiver function
         ====================================================================================================================
         ::: input parameters :::
@@ -1913,8 +1913,36 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 return
         self.hsdbase    = CURefPy.hsdatabase(obsST=obsHSst, diffST=diffHSst, repST=repHSst,\
                             repST0=rep0HSst, repST1=rep1HSst, repST2=rep2HSst)
-        self.hsdbase.plot(stacode=network+'.'+station, longitude=stlo, latitude=stla)
+        if outdir is None:
+            self.hsdbase.plot(stacode=network+'.'+station, longitude=stlo, latitude=stla)
+        else:
+            self.hsdbase.plot(stacode=network+'.'+station, longitude=stlo, latitude=stla, outdir = outdir)
         return
+    
+    def plot_all_ref(self, outdir, phase='P', outtxt=None):
+        
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+        print 'Plotting ref results !'
+        if outtxt != None:
+            fid     = open(outtxt, 'w')
+        for staid in self.waveforms.list():
+            netcode, stacode    = staid.split('.')
+            try:
+                Ndata               = len(self.auxiliary_data.RefRHSdata[netcode+'_'+stacode+'_'+phase]['obs'].list())
+            except KeyError:
+                Ndata               = 0
+            print staid+': '+str(Ndata)
+            fid.writelines(staid+'  '+str(Ndata)+'\n')
+            if Ndata == 0:
+                continue
+            self.plot_ref(network=netcode, station=stacode, phase=phase, outdir=outdir)
+        fid.close()
+            
+            
+            
+    
+    
 
     def array_processing(self, evnumb=1, win_len=20., win_frac=0.2, sll_x=-3.0, slm_x=3.0, sll_y=-3.0, slm_y=3.0, sl_s=0.03,
             frqlow=0.0125, frqhigh=0.02, semb_thres=-1e9, vel_thres=-1e9, prewhiten=0, verbose=True, coordsys='lonlat', timestamp='mlabday',

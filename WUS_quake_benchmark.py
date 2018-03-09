@@ -36,29 +36,38 @@ import matplotlib.pyplot as plt
 
 import eikonaltomo
 # # # 
-dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_quake.h5')
-# dset2=eikonaltomo.EikonalTomoDataSet('../eikonal_tomo_quake_mp.h5')
-dset.set_input_parameters(minlon=235., maxlon=260., minlat=31., maxlat=50., pers=np.array([60.]))
-field=dset.quake_eikonal(inasdffname='/scratch/summit/life9360/WUS_quake.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='Z',
-            data_type='FieldDISPpmf2interp', amplplc=True, cdist=None)
+dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_quake_debug.h5')
+# # dset2=eikonaltomo.EikonalTomoDataSet('../eikonal_tomo_quake_mp.h5')
+# dset.set_input_parameters(minlon=235., maxlon=260., minlat=31., maxlat=50., pers=np.array([60.]))
+# dset.quake_eikonal(inasdffname='/scratch/summit/life9360/WUS_quake.h5', workingdir='/scratch/summit/life9360/eikonal_working', fieldtype='Tph', channel='Z',
+#             data_type='FieldDISPpmf2interp', amplplc=True, cdist=None)
+
+# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_quake_mp.h5')
+# dset.set_input_parameters(minlon=235., maxlon=260., minlat=31., maxlat=50., pers=np.array([60.]))
+# dset.quake_eikonal_mp(inasdffname='/scratch/summit/life9360/WUS_quake.h5', workingdir='/scratch/summit/life9360/eikonal_working_mp', fieldtype='Tph', channel='Z',
+#             data_type='FieldDISPpmf2interp', amplplc=True, cdist=None)
 
 # reason_n    = dset['Eikonal_run_0/60_sec/E00979/reason_n'].value
 # reason_n_helm    = dset['Eikonal_run_0/60_sec/E00979/reason_n_helm'].value
 # appV        = dset['Eikonal_run_0/60_sec/E00979/appV'].value
 # corV        = dset['Eikonal_run_0/60_sec/E00979/corV'].value
 # lplc_amp    = dset['Eikonal_run_0/60_sec/E00979/lplc_amp'].value
+# amp         = dset['Eikonal_run_0/60_sec/E00979/amp'].value
 # 
-# reason_n    = dset['Eikonal_run_0/60_sec/E01678/reason_n'].value
-# reason_n_helm    = dset['Eikonal_run_0/60_sec/E01678/reason_n_helm'].value
-# appV        = dset['Eikonal_run_0/60_sec/E01678/appV'].value
-# corV        = dset['Eikonal_run_0/60_sec/E01678/corV'].value
-# lplc_amp    = dset['Eikonal_run_0/60_sec/E01678/lplc_amp'].value
-
-reason_n    = dset['Eikonal_run_0/60_sec/E01461/reason_n'].value
-reason_n_helm    = dset['Eikonal_run_0/60_sec/E01461/reason_n_helm'].value
-appV        = dset['Eikonal_run_0/60_sec/E01461/appV'].value
-corV        = dset['Eikonal_run_0/60_sec/E01461/corV'].value
-lplc_amp    = dset['Eikonal_run_0/60_sec/E01461/lplc_amp'].value
+reason_n    = dset['Eikonal_run_0/60_sec/E01678/reason_n'].value
+reason_n_helm    = dset['Eikonal_run_0/60_sec/E01678/reason_n_helm'].value
+appV        = dset['Eikonal_run_0/60_sec/E01678/appV'].value
+corV        = dset['Eikonal_run_0/60_sec/E01678/corV'].value
+lplc_amp    = dset['Eikonal_run_0/60_sec/E01678/lplc_amp'].value
+amp         = dset['Eikonal_run_0/60_sec/E01678/amp'].value
+# 
+# # 
+# reason_n    = dset['Eikonal_run_0/60_sec/E01461/reason_n'].value
+# reason_n_helm    = dset['Eikonal_run_0/60_sec/E01461/reason_n_helm'].value
+# appV        = dset['Eikonal_run_0/60_sec/E01461/appV'].value
+# corV        = dset['Eikonal_run_0/60_sec/E01461/corV'].value
+# lplc_amp    = dset['Eikonal_run_0/60_sec/E01461/lplc_amp'].value
+# amp         = dset['Eikonal_run_0/60_sec/E01461/amp'].value
 # # 
 # ##
 # # header
@@ -112,8 +121,10 @@ m.drawcountries(linewidth=1.)
 m.fillcontinents(lake_color='#99ffff',zorder=0.2)
 m.drawmapboundary(fill_color="white")
 dset._get_lon_lat_arr()
+m.drawstates()
+#
 
-# plot app V
+# # plot app V
 # data        = np.zeros(dset.lonArr.shape)
 # mask        = np.ones(dset.lonArr.shape, dtype=np.bool)
 # data[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
@@ -130,52 +141,68 @@ dset._get_lon_lat_arr()
 # im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
 # cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
 # cb.ax.tick_params(labelsize=10)
-
-
-# data        = np.zeros(dset.lonArr.shape)
-# mask        = np.ones(dset.lonArr.shape, dtype=np.bool)
-# data[nlat_lplc:-nlat_lplc, nlat_lplc:-nlat_lplc]\
-#                         = lplc_amp
-# mask[nlat_lplc:-nlat_lplc, nlat_lplc:-nlat_lplc]\
-#                         = reason_n_helm != 0.
-# mdata       = ma.masked_array(data, mask=mask )
-# x, y    = m(dset.lonArr, dset.latArr)
 # 
-# vmin=-7e-3
-# vmax=7e-3
-# import pycpt
-# cmap    = pycpt.load.gmtColormap('./cv.cpt')
-# im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-# cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
-# cb.ax.tick_params(labelsize=10)
 # 
 data        = np.zeros(dset.lonArr.shape)
 mask        = np.ones(dset.lonArr.shape, dtype=np.bool)
 data[nlat_lplc:-nlat_lplc, nlat_lplc:-nlat_lplc]\
-                        = corV
+                        = lplc_amp
 mask[nlat_lplc:-nlat_lplc, nlat_lplc:-nlat_lplc]\
                         = reason_n_helm != 0.
 mdata       = ma.masked_array(data, mask=mask )
 x, y    = m(dset.lonArr, dset.latArr)
-m.drawstates()
-vmin=3.5
-vmax=4.3
+
+vmin=-7e-3
+vmax=7e-3
 import pycpt
 cmap    = pycpt.load.gmtColormap('./cv.cpt')
 im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
 cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
 cb.ax.tick_params(labelsize=10)
 
+# data        = np.zeros(dset.lonArr.shape)
+# mask        = np.ones(dset.lonArr.shape, dtype=np.bool)
+# data[nlat_lplc:-nlat_lplc, nlat_lplc:-nlat_lplc]\
+#                         = corV
+# mask[nlat_lplc:-nlat_lplc, nlat_lplc:-nlat_lplc]\
+#                         = reason_n_helm != 0.
+# mdata       = ma.masked_array(data, mask=mask )
+# x, y    = m(dset.lonArr, dset.latArr)
+# m.drawstates()
+# vmin=3.5
+# vmax=4.3
+# import pycpt
+# cmap    = pycpt.load.gmtColormap('./cv.cpt')
+# im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+# cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+# cb.ax.tick_params(labelsize=10)
 
-# if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
-# cb.set_label('C (km/s)', fontsize=12, rotation=0)
-# if self.fieldtype=='amp':
-# cb.set_label('nm', fontsize=12, rotation=0)
-# dset2.quake_eikonal_mp(inasdffname='../WUS_quake_eikonal.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='Z',
-#         data_type='FieldDISPpmf2interp', amplplc=True)
+
+# plot app V
+# data        = np.zeros(dset.lonArr.shape)
+# mask        = np.ones(dset.lonArr.shape, dtype=np.bool)
+# data        = amp
+# mask[nlat_lplc:-nlat_lplc, nlat_lplc:-nlat_lplc]\
+#                         = reason_n_helm != 0.
+# mdata       = ma.masked_array(data, mask=mask )
+# x, y    = m(dset.lonArr, dset.latArr)
+# # 
+# vmin=2e-7
+# vmax=4e-7
+# import pycpt
+# cmap    = pycpt.load.gmtColormap('./cv.cpt')
+# im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+# # im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud')
+# cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+# cb.ax.tick_params(labelsize=10)
 
 # t1=timeit.default_timer()
-# dset.eikonal_stack()
+# dset.vel_stack(helmholtz=False)
+# dset1=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_quake_eik.h5')
+# dset1.vel_stack(runid=0, helmholtz=False)
+# 
+# dset2=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_quake_helm.h5')
+# dset2.vel_stack(runid=0, helmholtz=True)
 # # t2=timeit.default_timer()
 # # print t2-t1
 # # dset.eikonal_stack()
