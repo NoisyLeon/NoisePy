@@ -13,4 +13,5 @@ dset = noisedbase.noiseASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/xcor
 # 
 # dset.interp_disp()
 # dset.xcorr_raytomoinput(outdir='/scratch/summit/life9360/ALASKA_work/xcorr_working_dir/raytomo_input')
-dset.xcorr_get_field(outdir='../eikonal_working_dir')
+dset.xcorr_get_field(outdir='../eikonal_working_dir', staxml='/projects/life9360/code/DataRequest/ALASKA_TA_AK.xml')
+

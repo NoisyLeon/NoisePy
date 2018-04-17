@@ -1,0 +1,23 @@
+#!/bin/csh
+if ($#argv != 5) then
+  echo "USAGE: C_plot_westUS_wk [data infile] [lon1, lon2, lat1, lat2]"
+  exit 1
+endif
+set input_map = $argv[1]
+#set REG = -R235/270/25/50
+set lon1 = $2
+set lon2 = $3
+set lat1 = $4
+set lat2 = $5
+
+#set v1v2 = `echo $input_map | cut -d. -f3`
+#set out_name = `echo $input_map | cut -d. -f1`
+set out_name = ${input_map}
+set output_am = $out_name"_am"
+awk '{if ($7>0) print $1,$2,$5}' $input_map > $output_am
+
+set REG = -R${lon1}/${lon2}/${lat1}/${lat2}
+gmtset BASEMAP_TYPE fancy
+surface $output_am -T0.0 -Gtomo.grd -I0.2 $REG
+grd2xyz tomo.grd $REG > $output_am".HD"
+

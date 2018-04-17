@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pyaftan
 
 # Initialize ASDF dataset
-dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5')
+# dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5')
 # dset.add_quakeml('/scratch/summit/life9360/ALASKA_work/quakeml/alaska_2017_aug.ml')
 # print dset.events[0]
 # Retrieving earthquake catalog
@@ -27,4 +27,15 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_A
 # inftan.tmin = 5.
 # dset.quake_aftan(prephdir='/scratch/summit/life9360/ALASKA_work/quake_working_dir/pre_disp_R', inftan=inftan)
 # dset.interp_disp(verbose=True)
-dset.quake_get_field()
+# dset.quake_get_field()
+
+import eikonaltomo
+# # # 
+dset    = eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_quake_001.h5')
+# pers    = np.append( np.arange(16.)*2.+10., np.arange(10.)*5.+45.)
+# dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=pers)
+# dset.quake_eikonal(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5', workingdir='/scratch/summit/life9360/Alaska_quake_eikonal_working', fieldtype='Tph', channel='Z',
+#             data_type='FieldDISPpmf2interp', amplplc=True, cdist=None)
+
+dset.eikonal_stack()
+dset.helm_stack()

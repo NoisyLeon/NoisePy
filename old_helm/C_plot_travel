@@ -1,0 +1,19 @@
+#!/bin/csh
+if ($#argv != 5) then
+  echo "USAGE: C_plot_westUS_wk [data infile] [lon1] [lon2] [lat1] [lat2]"
+  exit 1
+endif
+set input_map = $argv[1]
+
+set lon1 = $2
+set lon2 = $3
+set lat1 = $4
+set lat2 = $5
+
+#set REG = -R235/270/25/50
+set REG = -R${lon1}/${lon2}/${lat1}/${lat2}
+
+gmt gmtset MAP_FRAME_TYPE fancy
+gmt surface $input_map -T0.0 -Gtomo.grd -I0.2 $REG
+grd2xyz tomo.grd $REG > $input_map".HD"
+

@@ -33,8 +33,8 @@ import raytomo
 # 
 # #################################################################################
 import eikonaltomo
-dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
-dset.compare_raytomo('/scratch/summit/life9360/ray_tomo_WUS.h5', 1, 2, 0, 12.)
+# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
+# dset.compare_raytomo('/scratch/summit/life9360/ray_tomo_WUS.h5', 1, 2, 0, 12.)
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([24.]))
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)
 # dset.xcorr_eikonal_mp(inasdffname='../COR_WUS.h5', workingdir='/work3/leon/eikonal_working_WUS', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
@@ -51,3 +51,7 @@ dset.compare_raytomo('/scratch/summit/life9360/ray_tomo_WUS.h5', 1, 2, 0, 12.)
 # dset.plot_vel_iso(vmin=3.4, vmax=4.0)
 
 # out = dset.debug_plot_azimuth(40., 247.)
+
+
+dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS_limit_Nevent.h5')
+dset.eikonal_stack()

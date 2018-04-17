@@ -152,7 +152,6 @@ class RayTomoDataSet(h5py.File):
         =================================================================================================================
         """
         if pers.size==0:
-            # # # pers=np.arange(13.)*2.+6.
             pers    = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         self.attrs.create(name = 'period_array', data=pers, dtype='f')
         self.attrs.create(name = 'minlon', data=minlon, dtype='f')
@@ -716,12 +715,100 @@ class RayTomoDataSet(h5py.File):
                 readset.attrs.create(name='Nlat', data=self.Nlat)
                 readset.attrs.create(name='Nlon', data=self.Nlon)
         return
+    
+    def get_uncertainty(self, ineikfname, runid=0, percentage=None, num_thresh=None, inrunid=0, gausspercent=1.):
+        dataid      = 'reshaped_qc_run_'+str(runid)
+        pers        = self.attrs['period_array']
+        grp         = self[dataid]
+        isotropic   = grp.attrs['isotropic']
+        org_grp     = self['qc_run_'+str(runid)]
+        if isotropic:
+            print 'isotropic inversion results do not output gaussian std!'
+            return
+        indset      = h5py.File(ineikfname)
+        inpers      = indset.attrs['period_array']
+        indataid    = 'Eikonal_stack_'+str(inrunid)
+        ingrp       = indset[indataid]
+        if self.attrs['minlon'] != indset.attrs['minlon'] or \
+            self.attrs['maxlon'] != indset.attrs['maxlon'] or \
+                self.attrs['minlat'] != indset.attrs['minlat'] or \
+                    self.attrs['maxlat'] != indset.attrs['maxlat'] or \
+                        org_grp.attrs['dlon'] != indset.attrs['dlon'] or \
+                            org_grp.attrs['dlat'] != indset.attrs['dlat']:
+            raise ValueError('Incompatible input eikonal datasets!')
+        mask        = grp['mask2']
+        for per in pers:
+            #-------------------------------
+            # get data
+            #-------------------------------
+            pergrp      = grp['%g_sec'%( per )]
+            mgauss      = pergrp['gauss_std'].value
+            index       = np.logical_not(mask)
+            mgauss2     = mgauss[index]
+            gstdmin     = mgauss2.min()
+            ind_gstdmin = (mgauss==gstdmin*gausspercent)*index
+            #-------------------------------
+            # get data from eikonal dataset
+            #-------------------------------
+            inpergrp    = ingrp['%g_sec'%( per )]
+            inmask      = inpergrp['mask'].value
+            invel_sem   = inpergrp['vel_sem'].value
+            Nmeasure    = np.zeros(inmask.shape)
+            Nmeasure[1:-1, 1:-1]\
+                        = inpergrp['NmeasureQC'].value
+            index_in    = np.logical_not(inmask)
+            Nmeasure2   = Nmeasure[index_in]
+            if Nmeasure2.size==0:
+                print '--- T = '+str(per)+' sec ---'
+                print 'No uncertainty, step 1'
+                print '----------------------------'
+                continue
+            NMmax       = Nmeasure2.max()
+            if percentage is not None and num_thresh is None:
+                NMthresh    = NMmax*percentage
+            elif percentage is None and num_thresh is not None:
+                NMthresh    = num_thresh
+            elif percentage is not None and num_thresh is not None:
+                NMthresh    = min(NMmax*percentage, num_thresh)
+            else:
+                raise ValueError('at least one of percentage/num_thresh should be specified')
+            indstd      = (Nmeasure>=NMthresh)*index_in
+            #----------------------
+            #estimate uncertainties
+            #----------------------
+            index_all   = ind_gstdmin*indstd
+            temp_sem    = invel_sem[index_all]
+            if temp_sem.size == 0:
+                print '--- T = '+str(per)+' sec ---'
+                print 'No uncertainty, step 2'
+                print '----------------------------'
+                continue
+            sem_min     = temp_sem.mean()
+            print '--- T = '+str(per)+' sec ---'
+            print 'min uncertainty: '+str(sem_min*1000.)+' m/s, number of grids: '+str(temp_sem.size)
+            print '----------------------------'
+            est_sem     = (mgauss/gstdmin)*sem_min
+            undset      = pergrp.create_dataset(name='vel_sem', data=est_sem)
+            # print mgauss.shape, invel_sem.shape, inmask.shape
+            # 
+            # index   = np.logical_not(mask)
+            # mgauss2 = mgauss[index]
+            # gstdmin = mgauss2.min()
+            # gstdmax = mgauss2.max()
+            # if gaussstd is None:
+            #     Nmin    = mgauss2[mgauss2==gstdmin].size
+            #     print 'T = '+str(per)+' sec; min gauss_std: '+str(gstdmin)+' km, number of mins: '+str(Nmin)+'; max gauss_std: '+str(gstdmax)+' km'
+            # else:
+            #     Nmin    = mgauss2[mgauss2<=gaussstd].size    
+            #     print 'T = '+str(per)+' sec; min gauss_std: '+str(gstdmin)+' km, number of grids less than threhhold: '+str(Nmin)+'; max gauss_std: '+str(gstdmax)+' km'
+        return
 
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Get basemap for plotting results
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
+        plt.figure()
         minlon      = self.attrs['minlon']
         maxlon      = self.attrs['maxlon']
         minlat      = self.attrs['minlat']
@@ -855,10 +942,10 @@ class RayTomoDataSet(h5py.File):
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        # shapefname  = '/scratch/summit/life9360/ALASKA_work/fault_maps/qfaults'
-        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='red')
-        shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolpoly_generalized_WGS84'
-        m.readshapefile(shapefname, 'faultline', linewidth=0.5, color='gray')
+        shapefname  = '/projects/life9360/geological_maps/qfaults'
+        m.readshapefile(shapefname, 'faultline', linewidth=2, color='red')
+        shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        m.readshapefile(shapefname, 'faultline', linewidth=1, color='blue')
     
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
@@ -971,6 +1058,34 @@ class RayTomoDataSet(h5py.File):
                         print 'Large changes in regional map: \
                                 vel_glb = '+str(glb_C)+' km/s'+' vel_reg = '+str(reg_C)+' km/sec, '+str(reg_lon)+' '+str(reg_lat)
             np.savetxt(outfname, outArr, fmt='%g %g %.4f')
+        return
+    
+    def print_gauss_info(self, runid=0, gaussstd=None):
+        """
+        print the gauss standard deviation information
+        """
+        dataid      = 'reshaped_qc_run_'+str(runid)
+        pers        = self.attrs['period_array']
+        ingrp       = self[dataid]
+        isotropic   = ingrp.attrs['isotropic']
+        if isotropic:
+            print 'isotropic inversion results do not output gaussian std!'
+            return
+        mask        = ingrp['mask2']
+        for per in pers:
+            # get data
+            pergrp  = ingrp['%g_sec'%( per )]
+            mgauss  = pergrp['gauss_std'].value
+            index   = np.logical_not(mask)
+            mgauss2 = mgauss[index]
+            gstdmin = mgauss2.min()
+            gstdmax = mgauss2.max()
+            if gaussstd is None:
+                Nmin    = mgauss2[mgauss2==gstdmin].size
+                print 'T = '+str(per)+' sec; min gauss_std: '+str(gstdmin)+' km, number of mins: '+str(Nmin)+'; max gauss_std: '+str(gstdmax)+' km'
+            else:
+                Nmin    = mgauss2[mgauss2<=gaussstd].size    
+                print 'T = '+str(per)+' sec; min gauss_std: '+str(gstdmin)+' km, number of grids less than threhhold: '+str(Nmin)+'; max gauss_std: '+str(gstdmax)+' km'
         return
     
     def plot_hist(self, runtype, runid, period, datatype='res', clabel='', showfig=True):

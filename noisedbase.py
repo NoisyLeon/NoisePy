@@ -1590,7 +1590,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print ('End of generating Misha tomography input files!')
         return
     
-    def xcorr_get_field(self, outdir=None, channel='ZZ', pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
+    def xcorr_get_field(self, outdir=None, channel='ZZ', pers=np.array([]), data_type='DISPpmf2interp', verbose=True, staxml=None):
         """ Get the field data for Eikonal tomography
         ============================================================================================================================
         ::: input parameters :::
@@ -1598,21 +1598,43 @@ class noiseASDF(pyasdf.ASDFDataSet):
         channel     - channel name
         pers        - period array
         datatype    - dispersion data type (default = DISPpmf2interp, interpolated pmf aftan results after jump detection)
+        staxml      - input StationXML file (optional)
         ::: output :::
         self.auxiliary_data.FieldDISPpmf2interp
+        
         ============================================================================================================================
         """
         if pers.size==0:
             pers        = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         outindex        = { 'longitude': 0, 'latitude': 1, 'C': 2,  'U':3, 'snr': 4, 'dist': 5 }
-        staLst          = self.waveforms.list()
+        #--------------------------------------------------------------------------
+        # added the functionality of using stations from an input StationXML file
+        #--------------------------------------------------------------------------
+        try:
+            inv             = obspy.read_inventory(staxml)
+            waveformLst     = []
+            for network in inv:
+                netcode     = network.code
+                for station in network:
+                    stacode = station.code
+                    waveformLst.append(netcode+'.'+stacode)
+            staLst          = waveformLst
+            print 'Using stations from input StationXML file'
+        #--------------------------------------------------------------------------
+        except:
+            print 'Using all the stations from database'
+            staLst          = self.waveforms.list()
         for staid1 in staLst:
             field_lst   = []
             Nfplst      = []
             for per in pers:
                 field_lst.append(np.array([]))
                 Nfplst.append(0)
-            lat1, elv1, lon1    = self.waveforms[staid1].coordinates.values()
+            try:
+                lat1, elv1, lon1    = self.waveforms[staid1].coordinates.values()
+            except:
+                print 'No station:' +staid1+' in the database'
+                continue
             Ndata       = 0
             for staid2 in staLst:
                 if staid1==staid2:
@@ -1688,6 +1710,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     header          = 'evlo='+str(lon1)+' evla='+str(lat1)
                     np.savetxt( txtfname, field_lst[iper], fmt='%g', header=header )
         return
+    
+    
             
 def stack4mp(inv, datadir, outdir, ylst, mlst, pfx, fnametype):
     stackedST   = []

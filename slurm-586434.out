@@ -1,3 +1,0 @@
-slurmstepd: error: Job 586434 exceeded memory limit (5452108 > 5376000), being killed
-slurmstepd: error: Exceeded job memory limit
-slurmstepd: error: *** JOB 586434 ON shas0613 CANCELLED AT 2018-02-06T12:03:55 ***

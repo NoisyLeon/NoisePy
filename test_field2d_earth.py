@@ -1,5 +1,5 @@
 import field2d_earth
-
+import numpy as np
 
 minlat=23.
 maxlat=52.
@@ -42,12 +42,33 @@ maxlon=133.
 # field.check_curvature(workingdir=workingdir, threshold=0.005)
 # field.eikonal_operator(workingdir=workingdir, lplcthresh=0.005)
 
-field=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.2, period=10.)
+field       = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.2, period=10.)
 field.read(fname='./stf_10sec_all/Tph_10.0.txt')
-workingdir='./field_working'
+lat0        = (minlat + maxlat)/2.
+lon0        = (minlon + maxlon)/2.
+# field.synthetic_field(lat0=lat0, lon0=lon0, v=3.5)
+
+workingdir  = './field_working_debug'
+# field.evla  = lat0
+# field.evlo  = lon0
 field.interp_surface(workingdir=workingdir, outfname='Tph_10sec')
-field.check_curvature(workingdir=workingdir, threshold=0.005)
-field.helmholtz_operator(workingdir=workingdir, lplcthresh=0.005)
+# field.check_curvature(workingdir=workingdir, threshold=0.005)
+# field.eikonal_operator(workingdir=workingdir, lplcthresh=0.005)
+
+field.read_HD('./old_helm/EA_am_laplace.txt.HD')
+
+# 
+field.Laplacian('diff2')
+field.lplc_diff = field.lplc - field.lplc_gmt
+field.mask      = np.zeros((field.Nlat, field.Nlon), dtype=np.bool)
+# 
+# 
+# field.diff_debug(lon0=lon0, lat0=lat0)
+# field.check_curvature(workingdir=workingdir, threshold=0.005)
+# field.helmholtz_operator(workingdir=workingdir, lplcthresh=0.005)
+
+
+
 
 # field.Laplacian('green')
 # field.plot_lplc(vmin=-0.06, vmax=0.06,showfig=True)

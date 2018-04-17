@@ -129,22 +129,39 @@ class Field2d(object):
         """read field file
         """
         try:
-            Inarray=np.loadtxt(fname)
+            Inarray         = np.loadtxt(fname)
             with open(fname) as f:
-                inline = f.readline()
+                inline      = f.readline()
                 if inline.split()[0] =='#':
                     evlostr = inline.split()[1]
                     evlastr = inline.split()[2]
                     if evlostr.split('=')[0] =='evlo':
-                        self.evlo = float(evlostr.split('=')[1])
+                        self.evlo   = float(evlostr.split('=')[1])
                     if evlastr.split('=')[0] =='evla':
-                        self.evla = float(evlastr.split('=')[1])
+                        self.evla   = float(evlastr.split('=')[1])
         except:
-            Inarray=np.load(fname)
-        self.lonArrIn=Inarray[:,0]
-        self.latArrIn=Inarray[:,1]
-        self.ZarrIn=Inarray[:,2]
+            Inarray     = np.load(fname)
+        self.lonArrIn   = Inarray[:,0]
+        self.latArrIn   = Inarray[:,1]
+        self.ZarrIn     = Inarray[:,2]
         return
+    
+    def read_HD(self, fname):
+        Inarray         = np.loadtxt(fname)
+        self.lplc_gmt   = (Inarray[:, 2].reshape(self.lonArr.shape))[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        return
+    
+    def synthetic_field(self, lat0, lon0, v=3.0):
+        az, baz, distevent  = geodist.inv( np.ones(self.lonArrIn.size)*lon0, np.ones(self.lonArrIn.size)*lat0, self.lonArrIn, self.latArrIn)
+        self.ZarrIn         = distevent/v/1000.
+        return
+    
+    def diff_debug(self, lat0, lon0, v=3.0):
+        lonArr              = self.lonArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        latArr              = self.latArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        az, baz, distevent  = geodist.inv( np.ones(lonArr.shape)*lon0, np.ones(lonArr.shape)*lat0, lonArr, latArr)
+        self.lplc_diff      = 1./distevent*1000./v - self.lplc
+        self.lplc_theo      = 1./distevent*1000./v
     
     def read_ind(self, fname, zindex=2, dindex=None):
         """read field file
@@ -388,6 +405,73 @@ class Field2d(object):
                 self.lplc       = lplc[dnlat:-dnlat, :]
             else:
                 self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
+        elif method == 'diff2':
+            dlat_km         = self.dlat_kmArr[2:-2, 2:-2]
+            dlon_km         = self.dlon_kmArr[2:-2, 2:-2]
+            Zarr_latp       = Zarr[4:, 2:-2]
+            Zarr_latn       = Zarr[:-4, 2:-2]
+            Zarr_lonp       = Zarr[2:-2, 4:]
+            Zarr_lonn       = Zarr[2:-2, :-4]
+            Zarr            = Zarr[2:-2, 2:-2]
+            lplc            = (Zarr_latp+Zarr_latn-2*Zarr) / (4.*dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (4.*dlon_km**2)
+            dnlat           = self.nlat_lplc - 2
+            dnlon           = self.nlon_lplc - 2
+            if dnlat == 0 and dnlon == 0:
+                self.lplc       = lplc
+            elif dnlat == 0 and dnlon != 0:
+                self.lplc       = lplc[:, dnlon:-dnlon]
+            elif dnlat != 0 and dnlon == 0:
+                self.lplc       = lplc[dnlat:-dnlat, :]
+            else:
+                self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
+        elif method == 'diff3':
+            self.gradient('diff')
+            grad_y          = self.grad[0]
+            grad_x          = self.grad[1]
+            grad_xp         = grad_x[1:-1, 2:]
+            grad_xn         = grad_x[1:-1, :-2]
+            grad_yp         = grad_y[2:, 1:-1]
+            grad_yn         = grad_y[:-2, 1:-1]
+            dlat_km         = self.dlat_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            dlon_km         = self.dlon_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            temp1           = (grad_xp - grad_xn)/2./dlon_km
+            temp2           = (grad_yp - grad_yn)/2./dlat_km
+            lplc            = temp1 + temp2
+            #-----------------------------------------------
+            # cut edges according to nlat_lplc, nlon_lplc
+            #-----------------------------------------------
+            dnlat               = self.nlat_lplc - self.nlat_grad - 1
+            if dnlat < 0:
+                self.nlat_lplc  = self.nlat_grad + 1
+            dnlon               = self.nlon_lplc - self.nlon_grad - 1
+            if dnlon < 0:
+                self.nlon_lplc  = self.nlon_grad + 1
+            if dnlat == 0 and dnlon == 0:
+                self.lplc       = lplc
+            elif dnlat == 0 and dnlon != 0:
+                self.lplc       = lplc[:, dnlon:-dnlon]
+            elif dnlat != 0 and dnlon == 0:
+                self.lplc       = lplc[dnlat:-dnlat, :]
+            else:
+                self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
+        elif method == 'diff4':
+            dlat_km         = self.dlat_kmArr[1:-1, 1:-1]
+            dlon_km         = self.dlon_kmArr[1:-1, 1:-1]
+            Zarr_latp       = Zarr[2:, 1:-1]
+            Zarr_latn       = Zarr[:-2, 1:-1]
+            Zarr_lonp       = Zarr[1:-1, 2:]
+            Zarr_lonn       = Zarr[1:-1, :-2]
+            grad_y          = (Zarr_latp - Zarr_latn)/dlat_km/2.
+            grad_x          = (Zarr_lonp - Zarr_lonn)/dlon_km/2.
+            grad_xp         = grad_x[1:-1, 2:]
+            grad_xn         = grad_x[1:-1, :-2]
+            grad_yp         = grad_y[2:, 1:-1]
+            grad_yn         = grad_y[:-2, 1:-1]
+            dlat_km         = self.dlat_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            dlon_km         = self.dlon_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            temp1           = (grad_xp - grad_xn)/2./dlon_km
+            temp2           = (grad_yp - grad_yn)/2./dlat_km
+            self.lplc       = temp1 + temp2
         elif method == 'convolve':
             dlat_km         = self.dlat_kmArr
             dlon_km         = self.dlon_kmArr
@@ -712,6 +796,7 @@ class Field2d(object):
         baz[baz<-180.]                          = baz[baz<-180.] + 360.
         # az azimuth receiver -> source 
         diffaArr[indexvalid[0], indexvalid[1]]  = tfield.proAngle[indexvalid[0], indexvalid[1]] - az
+        self.gradient('diff')
         self.az                                 = np.zeros(self.proAngle.shape, dtype=np.float64)
         self.az[indexvalid[0], indexvalid[1]]   = az
         self.baz                                = np.zeros(self.proAngle.shape, dtype=np.float64)
@@ -725,33 +810,35 @@ class Field2d(object):
         tempArr                                 = reason_n[indexvalid[0], indexvalid[1]]
         tempArr[distevent<cdist+50.]            = 5
         reason_n[indexvalid[0], indexvalid[1]]  = tempArr
+        #------------------------------------------------------------------------
         # final check of curvature, discard grid points with large curvature
-        self.Laplacian(method='green')
-        dnlat                                   = self.nlat_lplc - self.nlat_grad
-        dnlon                                   = self.nlon_lplc - self.nlon_grad
-        tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
-        if dnlat == 0 and dnlon == 0:
-            reason_n[tempind]                   = 6
-        elif dnlat == 0 and dnlon != 0:
-            (reason_n[:, dnlon:-dnlon])[tempind]= 6
-        elif dnlat != 0 and dnlon == 0:
-            (reason_n[dnlat:-dnlat, :])[tempind]= 6
-        else:
-            (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
-                                                = 6
-        # near neighbor discard for large curvature
-        if lplcnearneighbor:
-            indexlplc                               = np.where(reason_n==6.)
-            ilatArr                                 = indexlplc[0] 
-            ilonArr                                 = indexlplc[1]
-            reason_n_temp                           = np.zeros(self.lonArr.shape)
-            reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
-                                                    = reason_n.copy()
-            reason_n_temp[ilatArr+1, ilonArr]       = 6
-            reason_n_temp[ilatArr-1, ilonArr]       = 6
-            reason_n_temp[ilatArr, ilonArr+1]       = 6
-            reason_n_temp[ilatArr, ilonArr-1]       = 6
-            reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        #------------------------------------------------------------------------
+        # self.Laplacian(method='green')
+        # dnlat                                   = self.nlat_lplc - self.nlat_grad
+        # dnlon                                   = self.nlon_lplc - self.nlon_grad
+        # tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
+        # if dnlat == 0 and dnlon == 0:
+        #     reason_n[tempind]                   = 6
+        # elif dnlat == 0 and dnlon != 0:
+        #     (reason_n[:, dnlon:-dnlon])[tempind]= 6
+        # elif dnlat != 0 and dnlon == 0:
+        #     (reason_n[dnlat:-dnlat, :])[tempind]= 6
+        # else:
+        #     (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
+        #                                         = 6
+        # # near neighbor discard for large curvature
+        # if lplcnearneighbor:
+        #     indexlplc                               = np.where(reason_n==6.)
+        #     ilatArr                                 = indexlplc[0] 
+        #     ilonArr                                 = indexlplc[1]
+        #     reason_n_temp                           = np.zeros(self.lonArr.shape)
+        #     reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
+        #                                             = reason_n.copy()
+        #     reason_n_temp[ilatArr+1, ilonArr]       = 6
+        #     reason_n_temp[ilatArr-1, ilonArr]       = 6
+        #     reason_n_temp[ilatArr, ilonArr+1]       = 6
+        #     reason_n_temp[ilatArr, ilonArr-1]       = 6
+        #     reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
         # store final data
         self.diffaArr                           = diffaArr
         self.grad                               = tfield.grad
@@ -761,6 +848,9 @@ class Field2d(object):
         tempmask                                = reason_n != 0
         self.mask[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]\
                                                 = tempmask
+        # added 04/05/2018
+        self.Nvalid_grd                         = (np.where(reason_n==0.)[0]).size
+        self.Ntotal_grd                         = reason_n.size
         return
     
     def helmholtz_operator(self, workingdir, inpfx='', lplcthresh=0.2):
@@ -796,20 +886,22 @@ class Field2d(object):
         # Set field value to be zero if there is large difference between v1HD and v1HD02
         diffArr     = fieldv1HD-fieldv1HD02
         med_amp     = np.median(self.Zarr)
-        fieldArr    = fieldv1HD*((diffArr<0.1*med_amp)*(diffArr>-0.1*med_amp)) 
+        # # fieldArr    = fieldv1HD*((diffArr<0.01*med_amp)*(diffArr>-0.01*med_amp))
+        fieldArr    = fieldv1HD*((diffArr<0.01*med_amp)*(diffArr>-0.01*med_amp))
+        # # fieldArr    = fieldv1HD.copy()
         fieldArr    = (fieldArr.reshape(self.Nlat, self.Nlon))[::-1, :]
         # reason_n 
         #   0: accepted point
         #   1: data point the has large difference between v1HD and v1HD02
         reason_n    = np.ones(fieldArr.size, dtype=np.int32)
-        reason_n1   = np.int32(reason_n*(diffArr>0.1*med_amp))
-        reason_n2   = np.int32(reason_n*(diffArr<-0.1*med_amp))
+        reason_n1   = np.int32(reason_n*(diffArr>0.01*med_amp))
+        reason_n2   = np.int32(reason_n*(diffArr<-0.01*med_amp))
         reason_n    = reason_n1+reason_n2
         reason_n    = (reason_n.reshape(self.Nlat, self.Nlon))[::-1,:]
-        # Start to Compute Gradient
+        # Start to compute Laplacian
         tfield                      = self.copy()
         tfield.Zarr                 = fieldArr
-        tfield.Laplacian(method='green')
+        tfield.Laplacian(method='green') ## schemes
         # if one field point has zero value, reason_n for four near neighbor points will all be set to 4
         tempZarr                    = tfield.Zarr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
         index0                      = np.where(tempZarr==0.)
@@ -833,6 +925,11 @@ class Field2d(object):
         reason_n[(lplc_corr<-lplcthresh)*(reason_n==0.)]  \
                                     = 3
         self.reason_n               = reason_n
+        self.lplc                   = tfield.lplc.copy()
+        self.mask                   = np.ones((self.Nlat, self.Nlon), dtype=np.bool)
+        tempmask                    = reason_n != 0
+        self.mask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                                    = tempmask
         return
     
     
@@ -873,7 +970,8 @@ class Field2d(object):
         omega                       = 2.*np.pi/self.period
         tamp                        = fieldamp.Zarr[fieldamp.nlat_lplc:-fieldamp.nlat_lplc, fieldamp.nlon_lplc:-fieldamp.nlon_lplc]
         self.lplc_amp               = fieldamp.lplc.copy()
-        self.lplc_amp[tamp!=0.]     = self.lplc_amp[tamp!=0.]/tamp[tamp!=0.]/omega**2
+        # # # print omega
+        self.lplc_amp[tamp!=0.]     = self.lplc_amp[tamp!=0.]/(tamp[tamp!=0.]*omega**2)
         temp                        = 1./appV**2 - self.lplc_amp
         ind                         = temp<0.
         temp[ind]                   = 1./3**2.
@@ -891,9 +989,10 @@ class Field2d(object):
     def write_binary(self, outfname, amplplc=False):
         if amplplc:
             np.savez( outfname, self.appV, self.reason_n, self.proAngle, self.az, self.baz, self.Zarr,\
-                     self.lplc_amp, self.corV, self.reason_n_helm )
+                     self.lplc_amp, self.corV, self.reason_n_helm, np.array([self.Ntotal_grd, self.Nvalid_grd]))
         else:
-            np.savez( outfname, self.appV, self.reason_n, self.proAngle, self.az, self.baz, self.Zarr )
+            np.savez( outfname, self.appV, self.reason_n, self.proAngle, self.az, self.baz, self.Zarr,\
+                        np.array([self.Ntotal_grd, self.Nvalid_grd]))
         return
 
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
@@ -938,7 +1037,7 @@ class Field2d(object):
             pass
         return m
     
-    def plot(self, datatype, projection='lambert', cmap='cv', contour=False, geopolygons=None, showfig=True, vmin=None, vmax=None, stations=False, event=False):
+    def plot(self, datatype, title='', projection='lambert', cmap='cv', contour=False, geopolygons=None, showfig=True, vmin=None, vmax=None, stations=False, event=False):
         """Plot data with contour
         """
         m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
@@ -971,6 +1070,12 @@ class Field2d(object):
             data[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
                         = self.corV
             mdata       = ma.masked_array(data, mask=self.mask_helm )
+        elif datatype == 'z':
+            data        = self.Zarr
+            try:
+                mdata   = ma.masked_array(data, mask=self.mask )
+            except:
+                mdata   = data.copy()
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
@@ -991,12 +1096,98 @@ class Field2d(object):
         #     # levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 20)
         #     levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 60)
         #     m.contour(x, y, self.Zarr, colors='k', levels=levels, linewidths=0.5)
+        plt.suptitle(title, fontsize=30)
         if showfig:
             plt.show()
         return m
     
     
-    
+    def get_fit(self, lon=None, lat=None, dlon = 0.2, dlat = 0.2, plotfig=False):
+        if lon is None and lat is None:
+            raise ValueError('longitude or lattitude should be specified!')
+            return
+        if lon is None:
+            ind_in      = (self.latArrIn < lat + dlat)*((self.latArrIn > lat - dlat))
+            datain      = self.ZarrIn[ind_in]
+            lonin       = self.lonArrIn[ind_in]
+            #
+            ind_interp  = (self.latArr < lat + self.dlat/2.)*((self.latArr > lat - self.dlat/2.))
+            data        = self.Zarr[ind_interp]
+            lon         = self.lonArr[ind_interp]
+            if plotfig:
+                plt.plot(lonin, datain, 'o', ms=5)
+                plt.plot(lon, data, '-', lw=3)
+                # plt.yabel()
+                plt.xlabel('longitude(deg)', fontsize=30)
+                plt.show()
+            return lonin, datain, lon, data
+        if lat is None:
+            ind_in      = (self.lonArrIn < lon + dlon)*((self.lonArrIn > lon - dlon))
+            datain      = self.ZarrIn[ind_in]
+            latin       = self.latArrIn[ind_in]
+            #
+            ind_interp  = (self.lonArr < lon + self.dlon/2.)*((self.lonArr > lon - self.dlon/2.))
+            data        = self.Zarr[ind_interp]
+            lat         = self.latArr[ind_interp]
+            if plotfig:
+                plt.plot(latin, datain, 'o', ms=5)
+                plt.plot(lat, data, '-', lw=3)
+                # plt.yabel()
+                plt.xlabel('latitude(deg)', fontsize=30)
+                plt.show()
+            return latin, datain, lat, data
+        
+    def get_line_lplc(self, lon=None, lat=None, dlon = 0.2, dlat = 0.2, plotfig=False):
+        if lon is None and lat is None:
+            raise ValueError('longitude or lattitude should be specified!')
+            return
+        latArr      = self.latArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        lonArr      = self.lonArr[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        if lon is None:
+            #
+            ind_interp  = (latArr < lat + self.dlat/2.)*(latArr > lat - self.dlat/2.)
+            data        = self.lplc[ind_interp]
+            lon         = lonArr[ind_interp]
+            if plotfig:
+                plt.plot(lonin, datain, 'o', ms=5)
+                plt.plot(lon, data, '-', lw=3)
+                # plt.yabel()
+                plt.xlabel('longitude(deg)', fontsize=30)
+                plt.show()
+            return lon, data
+        if lat is None:
+            #
+            ind_interp  = (lonArr < lon + self.dlon/2.)*(lonArr > lon - self.dlon/2.)
+            data        = self.lplc[ind_interp]
+            lat         = latArr[ind_interp]
+            if plotfig:
+                plt.plot(latin, datain, 'o', ms=5)
+                plt.plot(lat, data, '-', lw=3)
+                # plt.yabel()
+                plt.xlabel('latitude(deg)', fontsize=30)
+                plt.show()
+            return lat, data
+        
+    def coarse_data(self, dlon=1., dlat=1.):
+        minlon          = self.minlon - (self.minlon % 1.)
+        minlat          = self.minlat - (self.minlat % 1.)
+        maxlon          = self.maxlon - (self.maxlon % 1.)
+        maxlat          = self.maxlat - (self.maxlat % 1.)
+        Nlon            = int(round((maxlon-minlon)/dlon)+1)
+        Nlat            = int(round((maxlat-minlat)/dlat)+1)
+        lons            = np.arange(Nlon)*dlon + minlon
+        lats            = np.arange(Nlat)*dlat+minlat
+        lonArr, latArr  = np.meshgrid(lons, lats)
+        L               = lonArr.size
+        self.lonArrIn   = lonArr.reshape(L)
+        self.latArrIn   = latArr.reshape(L)
+        self.ZarrIn     = np.zeros(L, dtype=np.float64)
+        for i in range(L):
+            lon             = self.lonArrIn[i]
+            lat             = self.latArrIn[i]
+            ind             = np.where((self.lonArr==lon)*(self.latArr==lat))
+            self.ZarrIn[i]  = self.Zarr[ind[0], ind[1]]
+            
     # # # 
     # # # def plot_field(self, projection='lambert', contour=True, geopolygons=None, showfig=True, vmin=None, vmax=None, stations=False, event=False):
     # # #     """Plot data with contour
@@ -1032,7 +1223,7 @@ class Field2d(object):
     # # #         plt.show()
     # # #     return m
     # # # 
-    def plot_lplc(self, projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
+    def plot_lplc(self, cmap='seismic', projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
         """Plot data with contour
         """
         plt.figure()
@@ -1048,18 +1239,107 @@ class Field2d(object):
         tempmask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
                     = self.mask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
         mdata       = ma.masked_array(data, mask=tempmask)
-        im          =m.pcolormesh(x, y, mdata, cmap='seismic', shading='gouraud', vmin=vmin, vmax=vmax)
+        im          =m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         # cb      = m.colorbar()
         # cb.ax.tick_params(labelsize=15)
         cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.ax.tick_params(labelsize=10)
-        cb.set_label('Travel time Laplacian (s/km^2)', fontsize=12, rotation=0)
+        cb.ax.tick_params(labelsize=20)
+        cb.set_label('Travel time Laplacian (s/km^2)', fontsize=25, rotation=0)
         # # levels  = np.linspace(self.lplc.min(), self.lplc.max(), 100)
         # # if contour:
         # #     plt.contour(x, y, self.lplc, colors='k', levels=levels)
         if showfig:
             plt.show()
         return
+    
+    
+    def plot_diff_lplc(self, cmap='seismic', projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """Plot data with contour
+        """
+        plt.figure()
+        m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y    = m(self.lonArr, self.latArr)
+        # x       = x[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # y       = y[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # cmap =discrete_cmap(int(vmax-vmin)/2+1, 'seismic')
+        data        = np.zeros(self.lonArr.shape)
+        data[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                        = self.lplc_diff
+        tempmask    = np.ones(self.lonArr.shape, dtype=np.bool)
+        tempmask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                    = self.mask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        mdata       = ma.masked_array(data, mask=tempmask)
+        im          =m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        # cb      = m.colorbar()
+        # cb.ax.tick_params(labelsize=15)
+        cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.ax.tick_params(labelsize=20)
+        cb.set_label('Travel time Laplacian (s/km^2)', fontsize=25, rotation=0)
+        # # levels  = np.linspace(self.lplc.min(), self.lplc.max(), 100)
+        # # if contour:
+        # #     plt.contour(x, y, self.lplc, colors='k', levels=levels)
+        if showfig:
+            plt.show()
+        return
+    
+    def plot_theo_lplc(self, cmap='seismic', projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """Plot data with contour
+        """
+        plt.figure()
+        m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y    = m(self.lonArr, self.latArr)
+        # x       = x[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # y       = y[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # cmap =discrete_cmap(int(vmax-vmin)/2+1, 'seismic')
+        data        = np.zeros(self.lonArr.shape)
+        data[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                        = self.lplc_theo
+        tempmask    = np.ones(self.lonArr.shape, dtype=np.bool)
+        tempmask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                    = self.mask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        mdata       = ma.masked_array(data, mask=tempmask)
+        im          =m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        # cb      = m.colorbar()
+        # cb.ax.tick_params(labelsize=15)
+        cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.ax.tick_params(labelsize=20)
+        cb.set_label('Travel time Laplacian (s/km^2)', fontsize=25, rotation=0)
+        # # levels  = np.linspace(self.lplc.min(), self.lplc.max(), 100)
+        # # if contour:
+        # #     plt.contour(x, y, self.lplc, colors='k', levels=levels)
+        if showfig:
+            plt.show()
+        return
+    
+    def plot_gmt_lplc(self, cmap='seismic', projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """Plot data with contour
+        """
+        plt.figure()
+        m       = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y    = m(self.lonArr, self.latArr)
+        # x       = x[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # y       = y[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # cmap =discrete_cmap(int(vmax-vmin)/2+1, 'seismic')
+        data        = np.zeros(self.lonArr.shape)
+        data[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                        = self.lplc_gmt
+        tempmask    = np.ones(self.lonArr.shape, dtype=np.bool)
+        tempmask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]\
+                    = self.mask[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        mdata       = ma.masked_array(data, mask=tempmask)
+        im          =m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        # cb      = m.colorbar()
+        # cb.ax.tick_params(labelsize=15)
+        cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.ax.tick_params(labelsize=20)
+        cb.set_label('Travel time Laplacian (s/km^2)', fontsize=25, rotation=0)
+        # # levels  = np.linspace(self.lplc.min(), self.lplc.max(), 100)
+        # # if contour:
+        # #     plt.contour(x, y, self.lplc, colors='k', levels=levels)
+        if showfig:
+            plt.show()
+        return
+    
     # # # 
     # # # def plot_lplc_amp(self, projection='lambert', contour=False, geopolygons=None, vmin=None, vmax=None, showfig=True):
     # # #     """Plot data with contour
