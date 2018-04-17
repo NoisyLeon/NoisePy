@@ -916,6 +916,8 @@ class RayTomoDataSet(h5py.File):
                 datatype    = 'velocity'
             else:
                 datatype    = 'vel_iso'
+        if datatype == 'un' or datatype=='sem' or datatype == 'vel_sem':
+            datatype        = 'vel_sem'
         try:
             data    = pergrp[datatype].value
         except:
@@ -930,7 +932,7 @@ class RayTomoDataSet(h5py.File):
             data    = data*100.
         if not isotropic:
             if datatype == 'cone_radius' or datatype == 'gauss_std' or datatype == 'max_resp' or datatype == 'ncone' or \
-                         datatype == 'ngauss':
+                         datatype == 'ngauss' or datatype == 'vel_sem':
                 mask    = ingroup['mask2']
             else:
                 mask    = ingroup['mask1']
