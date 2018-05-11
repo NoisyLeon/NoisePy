@@ -33,7 +33,7 @@ import raytomo
 # 
 # #################################################################################
 import eikonaltomo
-# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
+dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
 # dset.compare_raytomo('/scratch/summit/life9360/ray_tomo_WUS.h5', 1, 2, 0, 12.)
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([24.]))
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)
@@ -53,5 +53,5 @@ import eikonaltomo
 # out = dset.debug_plot_azimuth(40., 247.)
 
 
-dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS_limit_Nevent.h5')
-dset.eikonal_stack()
+# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS_limit_Nevent.h5')
+# dset.eikonal_stack()

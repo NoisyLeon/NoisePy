@@ -886,7 +886,7 @@ class EikonalTomoDataSet(h5py.File):
             per_group   = group['%g_sec'%( per )]
             Nevent      = len(per_group.keys())
             #
-            # Nevent      = 110
+            # # Nevent      = 160
             #
             Nmeasure    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
             weightALL   = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
@@ -1864,9 +1864,9 @@ class EikonalTomoDataSet(h5py.File):
                 # shapefname  = '/scratch/summit/life9360/ALASKA_work/fault_maps/qfaults'
                 # m.readshapefile(shapefname, 'faultline', linewidth=2, color='r')
                 shapefname  = '/projects/life9360/geological_maps/qfaults'
-                m.readshapefile(shapefname, 'faultline', linewidth=2, color='red')
+                m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
                 shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-                m.readshapefile(shapefname, 'faultline', linewidth=1, color='blue')
+                m.readshapefile(shapefname, 'faultline', linewidth=1, color='grey')
             except:
                 pass
         if cmap == 'ses3d':
@@ -1906,6 +1906,7 @@ class EikonalTomoDataSet(h5py.File):
         cb.set_label(clabel, fontsize=12, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb.ax.tick_params(labelsize=15)
+        print 'plotting data from '+dataid
         if showfig:
             plt.show()
         return
