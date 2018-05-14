@@ -951,10 +951,14 @@ class RayTomoDataSet(h5py.File):
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        shapefname  = '/projects/life9360/geological_maps/qfaults'
-        m.readshapefile(shapefname, 'faultline', linewidth=2, color='blue')
-        shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-        m.readshapefile(shapefname, 'geolarc', linewidth=1, color='blue')
+        # shapefname  = '/projects/life9360/geological_maps/qfaults'
+        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='blue')
+        # shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='blue')
+        shapefname  = '../AKfaults/qfaults'
+        m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
+        shapefname  = '../AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
         # shapefname  = '/projects/life9360/AK_sediments/Cook_Inlet_sediments_WGS84'
         # m.readshapefile(shapefname, 'faultline', linewidth=1, color='blue')
         
@@ -993,24 +997,24 @@ class RayTomoDataSet(h5py.File):
             m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
             m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
         ###################################################################
-        # if hillshade:
-        #     m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
-        # else:
-        #     m.fillcontinents(lake_color='#99ffff',zorder=0.2)
-        # if hillshade:
-        #     im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
-        # else:
-        #     im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
-        # cb.set_label(clabel, fontsize=12, rotation=0)
-        # plt.suptitle(str(period)+' sec', fontsize=20)
-        # cb.ax.tick_params(labelsize=15)
-        # cb.set_alpha(1)
-        # cb.draw_all()
-        # print 'plotting data from '+dataid
-        # # # cb.solids.set_rasterized(True)
-        # cb.solids.set_edgecolor("face")
-        # m.shadedrelief(scale=1., origin='lower')
+        if hillshade:
+            m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
+        else:
+            m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        if hillshade:
+            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
+        else:
+            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.set_label(clabel, fontsize=12, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=15)
+        cb.set_alpha(1)
+        cb.draw_all()
+        print 'plotting data from '+dataid
+        # # cb.solids.set_rasterized(True)
+        cb.solids.set_edgecolor("face")
+        m.shadedrelief(scale=1., origin='lower')
         if showfig:
             plt.show()
         return
