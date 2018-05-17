@@ -858,19 +858,19 @@ class RayTomoDataSet(h5py.File):
             pass
         return m
     
-    def _get_lon_lat_arr(self, dataid, hd=False):
+    def _get_lon_lat_arr(self, dataid, sfx=''):
         """Get longitude/latitude array
         """
         minlon                  = self.attrs['minlon']
         maxlon                  = self.attrs['maxlon']
         minlat                  = self.attrs['minlat']
         maxlat                  = self.attrs['maxlat']
-        if not hd:
+        if sfx == '':
             dlon                = self[dataid].attrs['dlon']
             dlat                = self[dataid].attrs['dlat']
         else:
-            dlon                = self[dataid].attrs['dlon_HD']
-            dlat                = self[dataid].attrs['dlat_HD']
+            dlon                = self[dataid].attrs['dlon_'+sfx]
+            dlat                = self[dataid].attrs['dlat_'+sfx]
         self.lons               = np.arange(int((maxlon-minlon)/dlon)+1)*dlon+minlon
         self.lats               = np.arange(int((maxlat-minlat)/dlat)+1)*dlat+minlat
         self.Nlon               = self.lons.size
@@ -1129,8 +1129,14 @@ class RayTomoDataSet(h5py.File):
         if org_grp.attrs['dlon'] == dlon and org_grp.attrs['dlat'] == dlat:
             print 'No need for interpolation!'
             return
-        org_grp.attrs.create(name = 'dlon_HD', data=dlon)
-        org_grp.attrs.create(name = 'dlat_HD', data=dlat)
+        if org_grp.attrs['dlon'] > dlon and org_grp.attrs['dlat'] > dlat:
+            sfx         = 'HD'
+        elif org_grp.attrs['dlon'] < dlon and org_grp.attrs['dlat'] < dlat:
+            sfx         = 'LD'
+        else:
+            sfx         = 'interp'
+        org_grp.attrs.create(name = 'dlon_'+sfx, data=dlon)
+        org_grp.attrs.create(name = 'dlat_'+sfx, data=dlat)
         mask1           = grp['mask1']
         mask2           = grp['mask2']
         index1          = np.logical_not(mask1)
@@ -1157,7 +1163,7 @@ class RayTomoDataSet(h5py.File):
             field2d_v.read_array(lonArr = self.lonArr[index1], latArr = self.latArr[index1], ZarrIn = vel[index1])
             outfname    = 'interp_vel.lst'
             field2d_v.interp_surface(workingdir=working_per, outfname=outfname)
-            vHD_dset    = pergrp.create_dataset(name='vel_iso_HD', data=field2d_v.Zarr)
+            vHD_dset    = pergrp.create_dataset(name='vel_iso_'+sfx, data=field2d_v.Zarr)
             #-------------------------------
             # interpolation for uncertainties
             #-------------------------------
@@ -1166,13 +1172,13 @@ class RayTomoDataSet(h5py.File):
             field2d_un.read_array(lonArr = self.lonArr[index2], latArr = self.latArr[index2], ZarrIn = vel_sem[index2])
             outfname    = 'interp_un.lst'
             field2d_un.interp_surface(workingdir=working_per, outfname=outfname)
-            unHD_dset   = pergrp.create_dataset(name='vel_sem_HD', data=field2d_un.Zarr)
+            unHD_dset   = pergrp.create_dataset(name='vel_sem_'+sfx, data=field2d_un.Zarr)
         if deletetxt:
             shutil.rmtree(workingdir)
         return
     
-    def plot_HD(self, runid, datatype, period, shpfx=None, clabel='', cmap='cv', projection='lambert', hillshade=False,\
-             geopolygons=None, vmin=None, vmax=None, showfig=True):
+    def plot_interp(self, runid, datatype, period, shpfx=None, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+             geopolygons=None, vmin=None, vmax=None, showfig=True, sfx='HD'):
         """plot HD maps from the tomographic inversion
         =================================================================================================================
         ::: input parameters :::
@@ -1188,7 +1194,7 @@ class RayTomoDataSet(h5py.File):
         =================================================================================================================
         """
         dataid          = 'qc_run_'+str(runid)
-        self._get_lon_lat_arr(dataid, hd=True)
+        self._get_lon_lat_arr(dataid, sfx=sfx)
         try:
             ingroup     = self['reshaped_'+dataid]
         except KeyError:
@@ -1202,9 +1208,9 @@ class RayTomoDataSet(h5py.File):
             raise KeyError('period = '+str(period)+' not included in the database')
         pergrp          = ingroup['%g_sec'%( period )]
         if datatype == 'vel' or datatype=='velocity' or datatype == 'v':
-            datatype    = 'vel_iso_HD'
+            datatype    = 'vel_iso_'+sfx
         if datatype == 'un' or datatype=='sem' or datatype == 'vel_sem':
-            datatype    = 'vel_sem_HD'
+            datatype    = 'vel_sem_'+sfx
         try:
             data    = pergrp[datatype].value
         except:
