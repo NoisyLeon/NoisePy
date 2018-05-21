@@ -1141,6 +1141,32 @@ class RayTomoDataSet(h5py.File):
         mask2           = grp['mask2']
         index1          = np.logical_not(mask1)
         index2          = np.logical_not(mask2)
+        # get the mask array for the interpolated data
+        lons            = np.arange(int((maxlon-minlon)/dlon)+1)*dlon+minlon
+        lats            = np.arange(int((maxlat-minlat)/dlat)+1)*dlat+minlat
+        Nlon            = lons.size
+        Nlat            = lats.size
+        lonArr, latArr  = np.meshgrid(lons, lats)
+        mask            = np.ones((Nlat, Nlon), dtype=np.bool)
+        for i in range(Nlat):
+            for j in range(Nlon):
+                clat    = lats[i]
+                clon    = lons[j]
+                ind_lon = np.where(clon<=self.lons)[0][0]      
+                ind_lat = np.where(clat<=self.lats)[0][0]
+                if (clon - self.lons[ind_lon])< 0.001 and (clat - self.lats[ind_lat]):
+                    mask[i, j]  = mask1[ind_lat, ind_lon]
+                    continue
+                mask[i, j]      = mask[i, j]*mask1[ind_lat, ind_lon]
+                if ind_lat > 0:
+                    mask[i, j]      = mask[i, j]*mask1[ind_lat-1, ind_lon]
+                    if ind_lon > 0:
+                        mask[i, j]  = mask[i, j]*mask1[ind_lat-1, ind_lon-1]
+                if ind_lon > 0:
+                    mask[i, j]      = mask[i, j]*mask1[ind_lat, ind_lon-1]
+                    if ind_lat > 0:
+                        mask[i, j]  = mask[i, j]*mask1[ind_lat-1, ind_lon-1]
+        grp.create_dataset(name = 'mask_'+sfx, data=mask)
         for per in pers:
             working_per = workingdir+'/'+str(per)+'sec'
             if not os.path.isdir(working_per):
@@ -1221,15 +1247,17 @@ class RayTomoDataSet(h5py.File):
             outstr      = outstr[:-1]
             raise KeyError('Unexpected datatype: '+datatype+\
                            ', available datatypes are: '+outstr)
+        mask    = ingroup['mask_'+sfx]
+        mdata   = ma.masked_array(data, mask=mask )
         #-----------
         # plot data
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        shapefname  = '/projects/life9360/geological_maps/qfaults'
-        m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-        m.readshapefile(shapefname, 'faultline', linewidth=1, color='grey')
+        # shapefname  = '/projects/life9360/geological_maps/qfaults'
+        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
+        # shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'faultline', linewidth=1, color='grey')
         
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
@@ -1271,9 +1299,9 @@ class RayTomoDataSet(h5py.File):
         else:
             m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         if hillshade:
-            im          = m.pcolormesh(x, y, data, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
+            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
         else:
-            im          = m.pcolormesh(x, y, data, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label(clabel, fontsize=12, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
