@@ -39,9 +39,9 @@ def discrete_cmap(N, base_cmap=None):
     # Note that if base_cmap is a string or None, you can simply do
     #    return plt.cm.get_cmap(base_cmap, N)
     # The following works for string, None, or a colormap instance:
-    base = plt.cm.get_cmap(base_cmap)
-    color_list = base(np.linspace(0, 1, N))
-    cmap_name = base.name + str(N)
+    base        = plt.cm.get_cmap(base_cmap)
+    color_list  = base(np.linspace(0, 1, N))
+    cmap_name   = base.name + str(N)
     return base.from_list(cmap_name, color_list, N)
 
 class RayTomoDataSet(h5py.File):
@@ -718,6 +718,21 @@ class RayTomoDataSet(h5py.File):
         return
     
     def get_uncertainty(self, ineikfname, runid=0, percentage=None, num_thresh=None, inrunid=0, gausspercent=1.):
+        """
+        get the uncertainty (sem, standard error of the mean)
+        =================================================================================================================
+        ::: input parameters :::
+        ineikfname      - input hdf5 file name that include the eikonal tomography results
+        runid           - id of run for ray tomography
+        percentage      - used to determine the number of threshhold measurements used for determine uncertainty
+        num_thresh      - same as above
+                            - NMthresh    = NMmax*percentage, if only "percentage" is specified
+                            - NMthresh    = num_thresh, if only "num_thresh" is specified
+                            - NMthresh    = min(NMmax*percentage, num_thresh), if both are specified
+        inrunid         - input id of run for eikonal tomography
+        gausspercent    - do not change !
+        =================================================================================================================
+        """
         dataid      = 'reshaped_qc_run_'+str(runid)
         pers        = self.attrs['period_array']
         grp         = self[dataid]

@@ -339,6 +339,44 @@ class Field2d(object):
         self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
         return
     
+    def interp_nearneighbor(self, workingdir, outfname, radius=None):
+        """Interpolate input data to grid point with gmt surface command
+        =======================================================================================
+        ::: input parameters :::
+        workingdir  - working directory
+        outfname    - output file name for interpolation
+        tension     - input tension for gmt surface(0.0-1.0)
+        ---------------------------------------------------------------------------------------
+        ::: output :::
+        self.Zarr   - interpolated field data
+        =======================================================================================
+        """
+        if not os.path.isdir(workingdir):
+            os.makedirs(workingdir)
+        OutArr      = np.append(self.lonArrIn, self.latArrIn)
+        OutArr      = np.append(OutArr, self.ZarrIn)
+        OutArr      = OutArr.reshape(3, self.lonArrIn.size)
+        OutArr      = OutArr.T
+        np.savetxt(workingdir+'/'+outfname, OutArr, fmt='%g')
+        fnameHD     = workingdir+'/'+outfname+'.HD'
+        tempGMT     = workingdir+'/'+outfname+'_GMT.sh'
+        grdfile     = workingdir+'/'+outfname+'.grd'
+        if radius is None:
+            radius  = self.dlon
+        with open(tempGMT,'wb') as f:
+            REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
+            f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
+            f.writelines('gmt surface %s -S%gd -G%s -I%g %s \n' %( workingdir+'/'+outfname, radius, grdfile, self.dlon, REG ))
+            f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
+        call(['bash', tempGMT])
+        os.remove(grdfile)
+        # os.remove(tempGMT)
+        inArr       = np.loadtxt(fnameHD)
+        ZarrIn      = inArr[:, 2]
+        self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
+        return
+        
+    
     def gradient(self, method='diff', edge_order=1, order=2):
         """Compute gradient of the field
         =============================================================================================================
