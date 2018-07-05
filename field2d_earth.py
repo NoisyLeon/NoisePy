@@ -147,8 +147,18 @@ class Field2d(object):
         return
     
     def read_HD(self, fname):
-        Inarray         = np.loadtxt(fname)
-        self.lplc_gmt   = (Inarray[:, 2].reshape(self.lonArr.shape))[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        Inarray     = np.loadtxt(fname)
+        # self.lplc_gmt   = (Inarray[:, 2].reshape(self.lonArr.shape))[self.nlat_lplc:-self.nlat_lplc, self.nlon_lplc:-self.nlon_lplc]
+        # data        = Inarray[:, 2].reshape((self.lonArr.shape[0]-2*self.nlat_grad, self.lonArr.shape[1]-2*self.nlon_grad))
+        data        = Inarray[:, 2].reshape((self.lonArr.shape[1]-2*self.nlon_grad, self.lonArr.shape[0]-2*self.nlat_grad))
+        data        = data.T
+        self.appV   = data.copy()
+        self.mask   = np.zeros(self.lonArr.shape, dtype=bool)
+        mask        = data == 0.
+        self.mask[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
+                    = mask.copy()
+        self.appV[np.logical_not(mask)]   \
+                    = 1./self.appV[np.logical_not(mask)]
         return
     
     def synthetic_field(self, lat0, lon0, v=3.0):
@@ -338,6 +348,39 @@ class Field2d(object):
         ZarrIn      = inArr[:, 2]
         self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
         return
+    
+    def gauss_smoothing(self, workingdir, outfname, tension=0.0, width=50.):
+        """
+        Perform a Gaussian smoothing
+        """
+        if not os.path.isdir(workingdir):
+            os.makedirs(workingdir)
+        OutArr      = np.append(self.lonArrIn, self.latArrIn)
+        OutArr      = np.append(OutArr, self.ZarrIn)
+        OutArr      = OutArr.reshape(3, self.lonArrIn.size)
+        OutArr      = OutArr.T
+        np.savetxt(workingdir+'/'+outfname, OutArr, fmt='%g')
+        fnameHD     = workingdir+'/'+outfname+'.HD'
+        tempGMT     = workingdir+'/'+outfname+'_GMT.sh'
+        grdfile     = workingdir+'/'+outfname+'.grd'
+        outgrd      = workingdir+'/'+outfname+'_filtered.grd'
+        #
+        width       = 6.*width
+        with open(tempGMT,'wb') as f:
+            REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
+            f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
+            f.writelines('gmt surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
+            f.writelines('gmt grdfilter %s -D4 -Fg%g -G%s %s \n' %( grdfile, width, outgrd, REG))
+            f.writelines('gmt grd2xyz %s %s > %s \n' %( outgrd, REG, fnameHD ))
+        call(['bash', tempGMT])
+        os.remove(grdfile)
+        os.remove(outgrd)
+        os.remove(tempGMT)
+        inArr       = np.loadtxt(fnameHD)
+        ZarrIn      = inArr[:, 2]
+        self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
+        return
+        
     
     def interp_nearneighbor(self, workingdir, outfname, radius=None):
         """Interpolate input data to grid point with gmt surface command

@@ -17,10 +17,10 @@ import matplotlib.pyplot as plt
 # dset.xcorr_get_field()
 #################################################################################
 # 
-import raytomo
+# import raytomo
 # dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ray_tomo_WUS.h5')
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_')
-# dset.run_smooth(datadir='../ray_tomo_data', outdir='../ray_tomo_working_dir')
+# dset.run_smooth(datadir='../ray_tomo_data', outdir='../ray_tomo_working_dir', reshape=False)
 # dset.run_qc(outdir='../ray_tomo_working_dir', isotropic=False, anipara=1, alphaAni4=1000)
 # dset.run_qc(outdir='./ray_tomo_working_dir', isotropic=True, anipara=1, alphaAni4=1000)
 # 
@@ -32,8 +32,8 @@ import raytomo
 # dset.plot_global_map(period=50., inglbpfx='./MAPS/smpkolya_phv_R')
 # 
 # #################################################################################
-import eikonaltomo
-dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
+# import eikonaltomo
+# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
 # dset.compare_raytomo('/scratch/summit/life9360/ray_tomo_WUS.h5', 1, 2, 0, 12.)
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([24.]))
 # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)

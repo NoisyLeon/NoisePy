@@ -235,6 +235,7 @@ class RayTomoDataSet(h5py.File):
                 f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
             os.remove(temprunsh)
+            # return
         #-----------------------------------------
         # save results to hdf5 dataset
         #-----------------------------------------
@@ -432,6 +433,7 @@ class RayTomoDataSet(h5py.File):
                     f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
             os.remove(temprunsh)
+            # return
         #------------------------------------------------
         # save to hdf5 dataset
         #------------------------------------------------
