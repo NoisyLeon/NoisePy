@@ -20,37 +20,37 @@ import pyasdf
 import math
 import numba
 
-lon_diff_weight_2   = np.array([[1., 0., -1.]])/2.
-lat_diff_weight_2   = lon_diff_weight_2.T
-lon_diff_weight_4   = np.array([[-1., 8., 0., -8., 1.]])/12.
-lat_diff_weight_4   = lon_diff_weight_4.T
-lon_diff_weight_6   = np.array([[1./60., 	-3./20.,  3./4.,  0., -3./4., 3./20.,  -1./60.]])
-lat_diff_weight_6   = lon_diff_weight_6.T
+lon_diff_weight_2 = np.array([[1., 0., -1.]])/2.
+lat_diff_weight_2 = lon_diff_weight_2.T
+lon_diff_weight_4 = np.array([[-1., 8., 0., -8., 1.]])/12.
+lat_diff_weight_4 = lon_diff_weight_4.T
+lon_diff_weight_6 = np.array([[1./60., 	-3./20.,  3./4.,  0., -3./4., 3./20.,  -1./60.]])
+lat_diff_weight_6 = lon_diff_weight_6.T
 
-lon_diff2_weight_2  = np.array([[1., -2., 1.]])
-lat_diff2_weight_2  = lon_diff2_weight_2.T
-lon_diff2_weight_4  = np.array([[-1., 16., -30., 16., -1.]])/12.
-lat_diff2_weight_4  = lon_diff2_weight_4.T
-lon_diff2_weight_6  = np.array([[1./90., 	-3./20.,  3./2.,  -49./18., 3./2., -3./20.,  1./90.]])
-lat_diff2_weight_6  = lon_diff2_weight_6.T
+lon_diff2_weight_2 = np.array([[1., -2., 1.]])
+lat_diff2_weight_2 = lon_diff2_weight_2.T
+lon_diff2_weight_4 = np.array([[-1., 16., -30., 16., -1.]])/12.
+lat_diff2_weight_4 = lon_diff2_weight_4.T
+lon_diff2_weight_6 = np.array([[1./90., 	-3./20.,  3./2.,  -49./18., 3./2., -3./20.,  1./90.]])
+lat_diff2_weight_6 = lon_diff2_weight_6.T
 
-geodist             = Geod(ellps='WGS84')
+geodist = Geod(ellps='WGS84')
 
 def discrete_cmap(N, base_cmap=None):
     """Create an N-bin discrete colormap from the specified input map"""
     # Note that if base_cmap is a string or None, you can simply do
     #    return plt.cm.get_cmap(base_cmap, N)
     # The following works for string, None, or a colormap instance:
-    base        = plt.cm.get_cmap(base_cmap)
-    color_list  = base(np.linspace(0, 1, N))
-    cmap_name   = base.name + str(N)
+    base = plt.cm.get_cmap(base_cmap)
+    color_list = base(np.linspace(0, 1, N))
+    cmap_name = base.name + str(N)
     return base.from_list(cmap_name, color_list, N)
 
 def _write_txt(fname, outlon, outlat, outZ):
-    outArr      = np.append(outlon, outlat)
-    outArr      = np.append(outArr, outZ)
-    outArr      = outArr.reshape((3,outZ.size))
-    outArr      = outArr.T
+    outArr  = np.append(outlon, outlat)
+    outArr  = np.append(outArr, outZ)
+    outArr  = outArr.reshape((3,outZ.size))
+    outArr  = outArr.T
     np.savetxt(fname, outArr, fmt='%g')
     return
 
@@ -241,31 +241,31 @@ class Field2d(object):
         """Convert all the data array to masked array according to reason_n array.
         """
         try:
-            reason_n                = self.reason_n
+            reason_n=self.reason_n
         except:
             raise AttrictError('No reason_n array!')
-        self.Zarr                   = ma.masked_array(self.Zarr, mask=np.zeros(reason_n.shape) )
-        self.Zarr.mask[reason_n!=0] = 1 
+        self.Zarr=ma.masked_array(self.Zarr, mask=np.zeros(reason_n.shape) )
+        self.Zarr.mask[reason_n!=0]=1
         try:
-            self.diffaArr                   = ma.masked_array(self.diffaArr, mask=np.zeros(reason_n.shape) )
-            self.diffaArr.mask[reason_n!=0] = 1
+            self.diffaArr=ma.masked_array(self.diffaArr, mask=np.zeros(reason_n.shape) )
+            self.diffaArr.mask[reason_n!=0]=1
         except:
             pass
         try:
-            self.appV                       = ma.masked_array(self.appV, mask=np.zeros(reason_n.shape) )
-            self.appV.mask[reason_n!=0]     = 1
+            self.appV=ma.masked_array(self.appV, mask=np.zeros(reason_n.shape) )
+            self.appV.mask[reason_n!=0]=1
         except:
             pass
         try:
-            self.grad[0]                    = ma.masked_array(self.grad[0], mask=np.zeros(reason_n.shape) )
-            self.grad[0].mask[reason_n!=0]  = 1
-            self.grad[1]                    = ma.masked_array(self.grad[1], mask=np.zeros(reason_n.shape) )
-            self.grad[1].mask[reason_n!=0]  = 1
+            self.grad[0]=ma.masked_array(self.grad[0], mask=np.zeros(reason_n.shape) )
+            self.grad[0].mask[reason_n!=0]=1
+            self.grad[1]=ma.masked_array(self.grad[1], mask=np.zeros(reason_n.shape) )
+            self.grad[1].mask[reason_n!=0]=1
         except:
             pass
         try:
-            self.lplc                       = ma.masked_array(self.lplc, mask=np.zeros(reason_n.shape) )
-            self.lplc.mask[reason_n!=0]     = 1
+            self.lplc=ma.masked_array(self.lplc, mask=np.zeros(reason_n.shape) )
+            self.lplc.mask[reason_n!=0]=1
         except:
             print 'No Laplacian array!'
             pass
@@ -274,17 +274,17 @@ class Field2d(object):
     def ma2np(self):
         """Convert all the maksed data array to numpy array
         """
-        self.Zarr           = ma.getdata(self.Zarr)
+        self.Zarr=ma.getdata(self.Zarr)
         try:
-            self.diffaArr   = ma.getdata(self.diffaArr)
+            self.diffaArr=ma.getdata(self.diffaArr)
         except:
             pass
         try:
-            self.appV       = ma.getdata(self.appV)
+            self.appV=ma.getdata(self.appV)
         except:
             pass
         try:
-            self.lplc       = ma.getdata(self.lplc)
+            self.lplc=ma.getdata(self.lplc)
         except:
             pass
         return
@@ -323,9 +323,6 @@ class Field2d(object):
         ---------------------------------------------------------------------------------------
         ::: output :::
         self.Zarr   - interpolated field data
-        ---------------------------------------------------------------------------------------
-        version history
-            - 2018/07/06    : added the capability of interpolation for dlon != dlat
         =======================================================================================
         """
         if not os.path.isdir(workingdir):
@@ -344,10 +341,7 @@ class Field2d(object):
             # f.writelines('surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
             # f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
             f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
-            if self.dlon == self.dlat:
-                f.writelines('gmt surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
-            else:
-                f.writelines('gmt surface %s -T%g -G%s -I%g/%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, self.dlat, REG ))
+            f.writelines('gmt surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
             f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
         call(['bash', tempGMT])
         os.remove(grdfile)
@@ -377,10 +371,7 @@ class Field2d(object):
         with open(tempGMT,'wb') as f:
             REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
             f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
-            if self.dlon == self.dlat:
-                f.writelines('gmt surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
-            else:
-                f.writelines('gmt surface %s -T%g -G%s -I%g/%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, self.dlat, REG ))
+            f.writelines('gmt surface %s -T%g -G%s -I%g %s \n' %( workingdir+'/'+outfname, tension, grdfile, self.dlon, REG ))
             f.writelines('gmt grdfilter %s -D4 -Fg%g -G%s %s \n' %( grdfile, width, outgrd, REG))
             f.writelines('gmt grd2xyz %s %s > %s \n' %( outgrd, REG, fnameHD ))
         call(['bash', tempGMT])
@@ -391,10 +382,49 @@ class Field2d(object):
         ZarrIn      = inArr[:, 2]
         self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
         return
+        
+    
+    def interp_nearneighbor(self, workingdir, outfname, radius=None):
+        """Interpolate input data to grid point with gmt surface command
+        =======================================================================================
+        ::: input parameters :::
+        workingdir  - working directory
+        outfname    - output file name for interpolation
+        tension     - input tension for gmt surface(0.0-1.0)
+        ---------------------------------------------------------------------------------------
+        ::: output :::
+        self.Zarr   - interpolated field data
+        =======================================================================================
+        """
+        if not os.path.isdir(workingdir):
+            os.makedirs(workingdir)
+        OutArr      = np.append(self.lonArrIn, self.latArrIn)
+        OutArr      = np.append(OutArr, self.ZarrIn)
+        OutArr      = OutArr.reshape(3, self.lonArrIn.size)
+        OutArr      = OutArr.T
+        np.savetxt(workingdir+'/'+outfname, OutArr, fmt='%g')
+        fnameHD     = workingdir+'/'+outfname+'.HD'
+        tempGMT     = workingdir+'/'+outfname+'_GMT.sh'
+        grdfile     = workingdir+'/'+outfname+'.grd'
+        if radius is None:
+            radius  = self.dlon
+        with open(tempGMT,'wb') as f:
+            REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)
+            f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
+            f.writelines('gmt surface %s -S%gd -G%s -I%g %s \n' %( workingdir+'/'+outfname, radius, grdfile, self.dlon, REG ))
+            f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, fnameHD ))
+        call(['bash', tempGMT])
+        os.remove(grdfile)
+        # os.remove(tempGMT)
+        inArr       = np.loadtxt(fnameHD)
+        ZarrIn      = inArr[:, 2]
+        self.Zarr   = (ZarrIn.reshape(self.Nlat, self.Nlon))[::-1, :]
+        return
+        
     
     def gradient(self, method='diff', edge_order=1, order=2):
         """Compute gradient of the field
-        =============================================================================================
+        =============================================================================================================
         ::: input parameters :::
         edge_order  - edge_order : {1, 2}, optional, only has effect when method='default'
                         Gradient is calculated using Nth order accurate differences at the boundaries
@@ -402,7 +432,7 @@ class Field2d(object):
         order       - order of finite difference scheme, only has effect when method='convolve'
         ::: note :::
         gradient arrays are of shape Nlat-1, Nlon-1
-        =============================================================================================
+        =============================================================================================================
         """
         Zarr            = self.Zarr
         if method=='diff':
@@ -458,73 +488,73 @@ class Field2d(object):
                 self.lplc       = lplc[dnlat:-dnlat, :]
             else:
                 self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
-        # # # elif method == 'diff2':
-        # # #     dlat_km         = self.dlat_kmArr[2:-2, 2:-2]
-        # # #     dlon_km         = self.dlon_kmArr[2:-2, 2:-2]
-        # # #     Zarr_latp       = Zarr[4:, 2:-2]
-        # # #     Zarr_latn       = Zarr[:-4, 2:-2]
-        # # #     Zarr_lonp       = Zarr[2:-2, 4:]
-        # # #     Zarr_lonn       = Zarr[2:-2, :-4]
-        # # #     Zarr            = Zarr[2:-2, 2:-2]
-        # # #     lplc            = (Zarr_latp+Zarr_latn-2*Zarr) / (4.*dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (4.*dlon_km**2)
-        # # #     dnlat           = self.nlat_lplc - 2
-        # # #     dnlon           = self.nlon_lplc - 2
-        # # #     if dnlat == 0 and dnlon == 0:
-        # # #         self.lplc       = lplc
-        # # #     elif dnlat == 0 and dnlon != 0:
-        # # #         self.lplc       = lplc[:, dnlon:-dnlon]
-        # # #     elif dnlat != 0 and dnlon == 0:
-        # # #         self.lplc       = lplc[dnlat:-dnlat, :]
-        # # #     else:
-        # # #         self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
-        # # # elif method == 'diff3':
-        # # #     self.gradient('diff')
-        # # #     grad_y          = self.grad[0]
-        # # #     grad_x          = self.grad[1]
-        # # #     grad_xp         = grad_x[1:-1, 2:]
-        # # #     grad_xn         = grad_x[1:-1, :-2]
-        # # #     grad_yp         = grad_y[2:, 1:-1]
-        # # #     grad_yn         = grad_y[:-2, 1:-1]
-        # # #     dlat_km         = self.dlat_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
-        # # #     dlon_km         = self.dlon_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
-        # # #     temp1           = (grad_xp - grad_xn)/2./dlon_km
-        # # #     temp2           = (grad_yp - grad_yn)/2./dlat_km
-        # # #     lplc            = temp1 + temp2
-        # # #     #-----------------------------------------------
-        # # #     # cut edges according to nlat_lplc, nlon_lplc
-        # # #     #-----------------------------------------------
-        # # #     dnlat               = self.nlat_lplc - self.nlat_grad - 1
-        # # #     if dnlat < 0:
-        # # #         self.nlat_lplc  = self.nlat_grad + 1
-        # # #     dnlon               = self.nlon_lplc - self.nlon_grad - 1
-        # # #     if dnlon < 0:
-        # # #         self.nlon_lplc  = self.nlon_grad + 1
-        # # #     if dnlat == 0 and dnlon == 0:
-        # # #         self.lplc       = lplc
-        # # #     elif dnlat == 0 and dnlon != 0:
-        # # #         self.lplc       = lplc[:, dnlon:-dnlon]
-        # # #     elif dnlat != 0 and dnlon == 0:
-        # # #         self.lplc       = lplc[dnlat:-dnlat, :]
-        # # #     else:
-        # # #         self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
-        # # # elif method == 'diff4':
-        # # #     dlat_km         = self.dlat_kmArr[1:-1, 1:-1]
-        # # #     dlon_km         = self.dlon_kmArr[1:-1, 1:-1]
-        # # #     Zarr_latp       = Zarr[2:, 1:-1]
-        # # #     Zarr_latn       = Zarr[:-2, 1:-1]
-        # # #     Zarr_lonp       = Zarr[1:-1, 2:]
-        # # #     Zarr_lonn       = Zarr[1:-1, :-2]
-        # # #     grad_y          = (Zarr_latp - Zarr_latn)/dlat_km/2.
-        # # #     grad_x          = (Zarr_lonp - Zarr_lonn)/dlon_km/2.
-        # # #     grad_xp         = grad_x[1:-1, 2:]
-        # # #     grad_xn         = grad_x[1:-1, :-2]
-        # # #     grad_yp         = grad_y[2:, 1:-1]
-        # # #     grad_yn         = grad_y[:-2, 1:-1]
-        # # #     dlat_km         = self.dlat_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
-        # # #     dlon_km         = self.dlon_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
-        # # #     temp1           = (grad_xp - grad_xn)/2./dlon_km
-        # # #     temp2           = (grad_yp - grad_yn)/2./dlat_km
-        # # #     self.lplc       = temp1 + temp2
+        elif method == 'diff2':
+            dlat_km         = self.dlat_kmArr[2:-2, 2:-2]
+            dlon_km         = self.dlon_kmArr[2:-2, 2:-2]
+            Zarr_latp       = Zarr[4:, 2:-2]
+            Zarr_latn       = Zarr[:-4, 2:-2]
+            Zarr_lonp       = Zarr[2:-2, 4:]
+            Zarr_lonn       = Zarr[2:-2, :-4]
+            Zarr            = Zarr[2:-2, 2:-2]
+            lplc            = (Zarr_latp+Zarr_latn-2*Zarr) / (4.*dlat_km**2) + (Zarr_lonp+Zarr_lonn-2*Zarr) / (4.*dlon_km**2)
+            dnlat           = self.nlat_lplc - 2
+            dnlon           = self.nlon_lplc - 2
+            if dnlat == 0 and dnlon == 0:
+                self.lplc       = lplc
+            elif dnlat == 0 and dnlon != 0:
+                self.lplc       = lplc[:, dnlon:-dnlon]
+            elif dnlat != 0 and dnlon == 0:
+                self.lplc       = lplc[dnlat:-dnlat, :]
+            else:
+                self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
+        elif method == 'diff3':
+            self.gradient('diff')
+            grad_y          = self.grad[0]
+            grad_x          = self.grad[1]
+            grad_xp         = grad_x[1:-1, 2:]
+            grad_xn         = grad_x[1:-1, :-2]
+            grad_yp         = grad_y[2:, 1:-1]
+            grad_yn         = grad_y[:-2, 1:-1]
+            dlat_km         = self.dlat_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            dlon_km         = self.dlon_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            temp1           = (grad_xp - grad_xn)/2./dlon_km
+            temp2           = (grad_yp - grad_yn)/2./dlat_km
+            lplc            = temp1 + temp2
+            #-----------------------------------------------
+            # cut edges according to nlat_lplc, nlon_lplc
+            #-----------------------------------------------
+            dnlat               = self.nlat_lplc - self.nlat_grad - 1
+            if dnlat < 0:
+                self.nlat_lplc  = self.nlat_grad + 1
+            dnlon               = self.nlon_lplc - self.nlon_grad - 1
+            if dnlon < 0:
+                self.nlon_lplc  = self.nlon_grad + 1
+            if dnlat == 0 and dnlon == 0:
+                self.lplc       = lplc
+            elif dnlat == 0 and dnlon != 0:
+                self.lplc       = lplc[:, dnlon:-dnlon]
+            elif dnlat != 0 and dnlon == 0:
+                self.lplc       = lplc[dnlat:-dnlat, :]
+            else:
+                self.lplc       = lplc[dnlat:-dnlat, dnlon:-dnlon]
+        elif method == 'diff4':
+            dlat_km         = self.dlat_kmArr[1:-1, 1:-1]
+            dlon_km         = self.dlon_kmArr[1:-1, 1:-1]
+            Zarr_latp       = Zarr[2:, 1:-1]
+            Zarr_latn       = Zarr[:-2, 1:-1]
+            Zarr_lonp       = Zarr[1:-1, 2:]
+            Zarr_lonn       = Zarr[1:-1, :-2]
+            grad_y          = (Zarr_latp - Zarr_latn)/dlat_km/2.
+            grad_x          = (Zarr_lonp - Zarr_lonn)/dlon_km/2.
+            grad_xp         = grad_x[1:-1, 2:]
+            grad_xn         = grad_x[1:-1, :-2]
+            grad_yp         = grad_y[2:, 1:-1]
+            grad_yn         = grad_y[:-2, 1:-1]
+            dlat_km         = self.dlat_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            dlon_km         = self.dlon_kmArr[self.nlat_grad+1:-self.nlat_grad-1, self.nlon_grad+1:-self.nlon_grad-1]
+            temp1           = (grad_xp - grad_xn)/2./dlon_km
+            temp2           = (grad_yp - grad_yn)/2./dlat_km
+            self.lplc       = temp1 + temp2
         elif method == 'convolve':
             dlat_km         = self.dlat_kmArr
             dlon_km         = self.dlon_kmArr
@@ -605,9 +635,6 @@ class Field2d(object):
         workingdir/outpfx+fieldtype_per_v1.lst         - output field file with data point passing curvature checking
         workingdir/outpfx+fieldtype_per_v1.lst.HD      - interpolated travel time file 
         workingdir/outpfx+fieldtype_per_v1.lst.HD_0.2  - interpolated travel time file with tension=0.2
-        ---------------------------------------------------------------------------------------------------------------------
-        version history
-            - 2018/07/06    : added the capability of dealing with dlon != dlat
         =====================================================================================================================
         """
         # Compute Laplacian
@@ -641,15 +668,9 @@ class Field2d(object):
             # f.writelines('grd2xyz %s %s > %s \n' %( grdfile+'.T0.2', REG, TfnameHD+'_0.2' ))
             
             f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
-            if self.dlon == self.dlat:
-                f.writelines('gmt surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
-            else:
-                f.writelines('gmt surface %s -T0.0 -G%s -I%g/%g %s \n' %( outfname, grdfile, self.dlon, self.dlat, REG ))
+            f.writelines('gmt surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
             f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, TfnameHD ))
-            if self.dlon == self.dlat:
-                f.writelines('gmt surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
-            else:
-                f.writelines('gmt surface %s -T0.2 -G%s -I%g/%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, self.dlat, REG ))
+            f.writelines('gmt surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
             f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile+'.T0.2', REG, TfnameHD+'_0.2' ))
         call(['bash', tempGMT])
         os.remove(grdfile+'.T0.2')
@@ -671,9 +692,6 @@ class Field2d(object):
         workingdir/outpfx+fieldtype_per_v1.lst         - output field file with data point passing curvature checking
         workingdir/outpfx+fieldtype_per_v1.lst.HD      - interpolated travel time file 
         workingdir/outpfx+fieldtype_per_v1.lst.HD_0.2  - interpolated travel time file with tension=0.2
-        ---------------------------------------------------------------------------------------------------------------------
-        version history
-            - 2018/07/06    : added the capability of dealing with dlon != dlat
         =====================================================================================================================
         """
         # Compute Laplacian
@@ -709,15 +727,9 @@ class Field2d(object):
         with open(tempGMT,'wb') as f:
             REG     = '-R'+str(self.minlon)+'/'+str(self.maxlon)+'/'+str(self.minlat)+'/'+str(self.maxlat)            
             f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
-            if self.dlon == self.dlat:
-                f.writelines('gmt surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
-            else:
-                f.writelines('gmt surface %s -T0.0 -G%s -I%g/%g %s \n' %( outfname, grdfile, self.dlon, self.dlat, REG ))
+            f.writelines('gmt surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
             f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile, REG, AfnameHD ))
-            if self.dlon == self.dlat:
-                f.writelines('gmt surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
-            else:
-                f.writelines('gmt surface %s -T0.2 -G%s -I%g/%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, self.dlat, REG ))
+            f.writelines('gmt surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
             f.writelines('gmt grd2xyz %s %s > %s \n' %( grdfile+'.T0.2', REG, AfnameHD+'_0.2' ))
         call(['bash', tempGMT])
         os.remove(grdfile+'.T0.2')
@@ -745,8 +757,8 @@ class Field2d(object):
             cdist   = max(12.*self.period/3., 150.)
         evlo        = self.evlo
         evla        = self.evla
-        # Read data
-        # v1: data that passes check_curvature criterion
+        # Read data,
+        # v1: data that pass check_curvature criterion
         # v1HD and v1HD02: interpolated v1 data with tension = 0. and 0.2
         fnamev1     = workingdir+'/'+inpfx+self.fieldtype+'_'+str(self.period)+'_v1.lst'
         fnamev1HD   = fnamev1+'.HD'

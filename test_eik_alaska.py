@@ -7,7 +7,7 @@ minlon  = 180.
 maxlon  = 240.
 
 workingdir='./alaska_debug_eik_working'
-field=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.2, period=10.)
+field=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.1, period=10.)
 field.read(fname='./example_H23K/travel_time_H23K.txt')
 field.evla  = 65.83
 field.evlo  = -149.54 + 360.
@@ -18,6 +18,15 @@ field.eikonal_operator(workingdir=workingdir, lplcthresh=0.05)
 workingdir='./alaska_debug_eik_working'
 field2  = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.1, period=10.)
 field2.read_HD('./example_H23K/slow_azi_H23K.txt.HD')
+
+workingdir='./alaska_debug_eik_working_equal'
+field3=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.2, period=10.)
+field3.read(fname='./example_H23K/travel_time_H23K.txt')
+field3.evla  = 65.83
+field3.evlo  = -149.54 + 360.
+field3.interp_surface(workingdir=workingdir, outfname='Tph_10sec')
+field3.check_curvature(workingdir=workingdir, threshold=0.005)
+field3.eikonal_operator(workingdir=workingdir, lplcthresh=0.05)
 
 # field=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.2, period=10.)
 # # field.read_dbase(datadir='./output')
