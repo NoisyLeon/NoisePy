@@ -55,7 +55,7 @@ def _get_azi_weight(aziALL, validALL):
 class EikonalTomoDataSet(h5py.File):
     
     def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), dlon=0.2, dlat=0.2, \
-                             nlat_grad=1, nlon_grad=1, nlat_lplc=2, nlon_lplc=2):
+                             nlat_grad=1, nlon_grad=1, nlat_lplc=2, nlon_lplc=2, optimize_spacing=True):
         """
         Set input parameters for tomographic inversion.
         =================================================================================================================
@@ -64,6 +64,9 @@ class EikonalTomoDataSet(h5py.File):
         minlat, maxlat  - minimum/maximum latitude
         pers            - period array, default = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
         dlon, dlat      - longitude/latitude interval
+        optimize_spacing- optimize the grid spacing or not
+                            if True, the distance for input dlat/dlon will be calculated and dlat may be changed to
+                                make the distance of dlat as close to the distance of dlon as possible
         =================================================================================================================
         """
         if pers.size==0:
@@ -74,6 +77,12 @@ class EikonalTomoDataSet(h5py.File):
         self.attrs.create(name = 'maxlon', data=maxlon, dtype='f')
         self.attrs.create(name = 'minlat', data=minlat, dtype='f')
         self.attrs.create(name = 'maxlat', data=maxlat, dtype='f')
+        if optimize_spacing:
+            ratio   = field2d_earth.determine_interval(minlat=minlat, maxlat=maxlat, dlon=dlon, dlat = dlat)
+            print '----------------------------------------------------------'
+            print 'Changed dlat from dlat =',dlat,'to dlat =',dlat/ratio
+            print '----------------------------------------------------------'
+            dlat    = dlat/ratio
         self.attrs.create(name = 'dlon', data=dlon)
         self.attrs.create(name = 'dlat', data=dlat)
         Nlon        = int((maxlon-minlon)/dlon+1)

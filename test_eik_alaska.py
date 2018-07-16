@@ -6,6 +6,7 @@ maxlat  = 75.
 minlon  = 180.
 maxlon  = 240.
 
+
 workingdir='./alaska_debug_eik_working'
 field=field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=0.2, minlat=minlat, maxlat=maxlat, dlat=0.1, period=10.)
 field.read(fname='./example_H23K/travel_time_H23K.txt')

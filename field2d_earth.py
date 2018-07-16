@@ -54,6 +54,24 @@ def _write_txt(fname, outlon, outlat, outZ):
     np.savetxt(fname, outArr, fmt='%g')
     return
 
+def determine_interval(minlat=None, maxlat=None, dlon=0.2,  dlat=0.2, verbose=True):
+    # if (medlat is None) and (minlat is None and maxlat is None):
+    #     raise ValueError('medlat or minlat/maxlat need to be specified!')
+    # if minlat is not None and maxlat is not None:
+    medlat              = (minlat + maxlat)/2.
+    dist_lon_max,az,baz = obspy.geodetics.gps2dist_azimuth(minlat, 0., minlat, dlon)
+    dist_lon_min,az,baz = obspy.geodetics.gps2dist_azimuth(maxlat, 0., maxlat, dlon)
+    dist_lon_med,az,baz = obspy.geodetics.gps2dist_azimuth(medlat, 0., medlat, dlon)
+    dist_lat, az, baz   = obspy.geodetics.gps2dist_azimuth(medlat, 0., medlat+dlat, 0.)
+    ratio_min           = dist_lat / dist_lon_max
+    ratio_max           = dist_lat / dist_lon_min
+    index               = np.floor(np.log2((ratio_min+ratio_max)/2.))
+    final_ratio         = 2**index
+    if verbose:
+        print 'ratio_min =',ratio_min,',ration_max =',ratio_max,',final_ratio =',final_ratio 
+    return final_ratio
+    
+
 class Field2d(object):
     """
     An object to analyze 2D spherical field data on Earth
@@ -639,7 +657,6 @@ class Field2d(object):
             # f.writelines('grd2xyz %s %s > %s \n' %( grdfile, REG, TfnameHD ))
             # f.writelines('surface %s -T0.2 -G%s -I%g %s \n' %( outfname, grdfile+'.T0.2', self.dlon, REG ))
             # f.writelines('grd2xyz %s %s > %s \n' %( grdfile+'.T0.2', REG, TfnameHD+'_0.2' ))
-            
             f.writelines('gmt gmtset MAP_FRAME_TYPE fancy \n')
             if self.dlon == self.dlat:
                 f.writelines('gmt surface %s -T0.0 -G%s -I%g %s \n' %( outfname, grdfile, self.dlon, REG ))
@@ -884,32 +901,32 @@ class Field2d(object):
         #------------------------------------------------------------------------
         # final check of curvature, discard grid points with large curvature
         #------------------------------------------------------------------------
-        # self.Laplacian(method='green')
-        # dnlat                                   = self.nlat_lplc - self.nlat_grad
-        # dnlon                                   = self.nlon_lplc - self.nlon_grad
-        # tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
-        # if dnlat == 0 and dnlon == 0:
-        #     reason_n[tempind]                   = 6
-        # elif dnlat == 0 and dnlon != 0:
-        #     (reason_n[:, dnlon:-dnlon])[tempind]= 6
-        # elif dnlat != 0 and dnlon == 0:
-        #     (reason_n[dnlat:-dnlat, :])[tempind]= 6
-        # else:
-        #     (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
-        #                                         = 6
-        # # near neighbor discard for large curvature
-        # if lplcnearneighbor:
-        #     indexlplc                               = np.where(reason_n==6.)
-        #     ilatArr                                 = indexlplc[0] 
-        #     ilonArr                                 = indexlplc[1]
-        #     reason_n_temp                           = np.zeros(self.lonArr.shape)
-        #     reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
-        #                                             = reason_n.copy()
-        #     reason_n_temp[ilatArr+1, ilonArr]       = 6
-        #     reason_n_temp[ilatArr-1, ilonArr]       = 6
-        #     reason_n_temp[ilatArr, ilonArr+1]       = 6
-        #     reason_n_temp[ilatArr, ilonArr-1]       = 6
-        #     reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
+        self.Laplacian(method='green')
+        dnlat                                   = self.nlat_lplc - self.nlat_grad
+        dnlon                                   = self.nlon_lplc - self.nlon_grad
+        tempind                                 = (self.lplc > lplcthresh) + (self.lplc < -lplcthresh)
+        if dnlat == 0 and dnlon == 0:
+            reason_n[tempind]                   = 6
+        elif dnlat == 0 and dnlon != 0:
+            (reason_n[:, dnlon:-dnlon])[tempind]= 6
+        elif dnlat != 0 and dnlon == 0:
+            (reason_n[dnlat:-dnlat, :])[tempind]= 6
+        else:
+            (reason_n[dnlat:-dnlat, dnlon:-dnlon])[tempind]\
+                                                = 6
+        # near neighbor discard for large curvature
+        if lplcnearneighbor:
+            indexlplc                               = np.where(reason_n==6.)
+            ilatArr                                 = indexlplc[0] 
+            ilonArr                                 = indexlplc[1]
+            reason_n_temp                           = np.zeros(self.lonArr.shape)
+            reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad] \
+                                                    = reason_n.copy()
+            reason_n_temp[ilatArr+1, ilonArr]       = 6
+            reason_n_temp[ilatArr-1, ilonArr]       = 6
+            reason_n_temp[ilatArr, ilonArr+1]       = 6
+            reason_n_temp[ilatArr, ilonArr-1]       = 6
+            reason_n                                = reason_n_temp[self.nlat_grad:-self.nlat_grad, self.nlon_grad:-self.nlon_grad]
         # store final data
         self.diffaArr                           = diffaArr
         self.grad                               = tfield.grad
