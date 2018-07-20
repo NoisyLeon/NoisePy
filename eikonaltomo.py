@@ -191,6 +191,125 @@ class EikonalTomoDataSet(h5py.File):
             shutil.rmtree(workingdir)
         return
     
+    def xcorr_eikonal_raydbase(self, inh5fname, workingdir, rayruntype=0, rayrunid=0, period=None, crifactor=0.5, crilimit=10.,\
+            fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, deletetxt=True, verbose=False, cdist=150., mindp=10):
+        """
+        Compute gradient of travel time for cross-correlation data
+        =================================================================================================================
+        ::: input parameters :::
+        inasdffname - input ASDF data file
+        workingdir  - working directory
+        fieldtype   - fieldtype (Tph or Tgr)
+        channel     - channel for analysis
+        data_type   - data type
+                     (default='FieldDISPpmf2interp', aftan measurements with phase-matched filtering and jump correction)
+        runid       - run id
+        deletetxt   - delete output txt files in working directory
+        cdist       - distance for nearneighbor station criteria
+        mindp       - minnimum required number of data points for eikonal operator
+        =================================================================================================================
+        """
+        if fieldtype!='Tph' and fieldtype!='Tgr':
+            raise ValueError('Wrong field type: '+fieldtype+' !')
+        create_group        = False
+        while (not create_group):
+            try:
+                group       = self.create_group( name = 'Eikonal_run_'+str(runid) )
+                create_group= True
+            except:
+                runid       += 1
+                continue
+        group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
+        pers                = self.attrs['period_array']
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        dlon                = self.attrs['dlon']
+        dlat                = self.attrs['dlat']
+        nlat_grad           = self.attrs['nlat_grad']
+        nlon_grad           = self.attrs['nlon_grad']
+        nlat_lplc           = self.attrs['nlat_lplc']
+        nlon_lplc           = self.attrs['nlon_lplc']
+        fdict               = { 'Tph': 2, 'Tgr': 3}
+        if period is not None:
+            pers            = np.array([period])
+        inDbase             = h5py.File(inh5fname)
+        rundict             = {0: 'smooth_run', 1: 'qc_run'}
+        data_id             = rundict[rayruntype]+'_'+str(rayrunid)
+        ingroup             = inDbase[data_id]
+        ind_flag            = 1
+        if rayruntype == 0:
+            ind_flag        = 0
+        else:
+            if ingroup.attrs['isotropic']:
+                ind_flag    = 0
+        for per in pers:
+            print 'Computing gradient for: '+str(per)+' sec'
+            del_per         = per-int(per)
+            if del_per==0.:
+                persfx      = str(int(per))+'sec'
+            else:
+                dper        = str(del_per)
+                persfx      = str(int(per))+'sec'+dper.split('.')[1]
+            working_per     = workingdir+'/'+str(per)+'sec'
+            per_group       = group.create_group( name='%g_sec'%( per ) )
+            # get data array from ray tomography database
+            ray_per_id      = '%g_sec'%( per )
+            data            = ingroup[ray_per_id+'/residual'].value
+            res_tomo        = data[:,7+ind_flag]
+            cri_res         = min(crifactor*per, crilimit)
+            data            = data[ np.abs(res_tomo)<cri_res , :]
+            evlo            = 0.
+            evla            = 0.
+            Ndata           = data.shape[0]
+            i_event         = 0
+            for i in range(Ndata):
+                if evla != data[i, 1] or evlo != data[i, 2]:
+                    # compute
+                    if i != 0:
+                        field2d.read_array(lonArr   = np.append(evlo, stlos), latArr=np.append(evla, stlas), ZarrIn=np.append(0., Zarr) )
+                        outfname        = evid+'_'+fieldtype+'_'+channel+'.lst'
+                        print outfname, Zarr.size, stlos.size, stlas.size
+                        field2d.interp_surface(workingdir=working_per, outfname=outfname)
+                        field2d.check_curvature(workingdir=working_per, outpfx=evid+'_'+channel+'_')
+                        field2d.eikonal_operator(workingdir=working_per, inpfx=evid+'_'+channel+'_', nearneighbor=True, cdist=cdist)
+                        # save data to hdf5 dataset
+                        event_group     = per_group.create_group(name=evid)
+                        event_group.attrs.create(name = 'evlo', data=evlo)
+                        event_group.attrs.create(name = 'evla', data=evla)
+                        # added 04/05/2018
+                        event_group.attrs.create(name = 'Ntotal_grd', data=field2d.Ntotal_grd)
+                        event_group.attrs.create(name = 'Nvalid_grd', data=field2d.Nvalid_grd)
+                        #
+                        appVdset        = event_group.create_dataset(name='appV', data=field2d.appV)
+                        reason_ndset    = event_group.create_dataset(name='reason_n', data=field2d.reason_n)
+                        proAngledset    = event_group.create_dataset(name='proAngle', data=field2d.proAngle)
+                        azdset          = event_group.create_dataset(name='az', data=field2d.az)
+                        bazdset         = event_group.create_dataset(name='baz', data=field2d.baz)
+                        Tdset           = event_group.create_dataset(name='travelT', data=field2d.Zarr)
+                    evla    = data[i, 1]
+                    evlo    = data[i, 2]
+                    field2d = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                                minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype=fieldtype, \
+                                    nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
+                    stlas   = np.array([])
+                    stlos   = np.array([])
+                    Zarr    = np.array([])
+                    i_event += 1
+                    evid    = 'ALK'+str(i_event)
+                stla        = data[i, 3]
+                stlo        = data[i, 4]
+                stlas       = np.append(stlas, stla)
+                stlos       = np.append(stlos, stlo)
+                dist, az, baz   \
+                            = obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo)
+                travelT     = dist/data[i, 5]/1000.
+                Zarr        = np.append(Zarr, travelT)
+        if deletetxt:
+            shutil.rmtree(workingdir)
+        return
+    
     def xcorr_eikonal_mp(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, new_group=True,
                 deletetxt=True, verbose=False, subsize=1000, nprocess=None, cdist=150., mindp=10, pers=None):
         """
@@ -343,6 +462,185 @@ class EikonalTomoDataSet(h5py.File):
                 azdset          = event_group.create_dataset(name='az', data=az)
                 bazdset         = event_group.create_dataset(name='baz', data=baz)
                 Tdset           = event_group.create_dataset(name='travelT', data=Zarr)
+        if deletetxt:
+            shutil.rmtree(workingdir)
+        return
+    
+    def xcorr_eikonal_raydbase_mp(self, inh5fname, workingdir, rayruntype=0, rayrunid=0, period=None, crifactor=0.5, crilimit=10.,\
+            fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, new_group=True, \
+                deletetxt=True, verbose=False, subsize=1000, nprocess=None, cdist=150., mindp=10, pers=None):
+        """
+        Compute gradient of travel time for cross-correlation data with multiprocessing
+        =================================================================================================================
+        ::: input parameters :::
+        inasdffname - input ASDF data file
+        workingdir  - working directory
+        fieldtype   - fieldtype (Tph or Tgr)
+        channel     - channel for analysis
+        data_type   - data type
+                     (default='FieldDISPpmf2interp', aftan measurements with phase-matched filtering and jump correction)
+        runid       - run id
+        deletetxt   - delete output txt files in working directory
+        subsize     - subsize of processing list, use to prevent lock in multiprocessing process
+        nprocess    - number of processes
+        cdist       - distance for nearneighbor station criteria
+        mindp       - minnimum required number of data points for eikonal operator
+        =================================================================================================================
+        """
+        if fieldtype!='Tph' and fieldtype!='Tgr':
+            raise ValueError('Wrong field type: '+fieldtype+' !')
+        create_group        = False
+        while (not create_group):
+            try:
+                group       = self.create_group( name = 'Eikonal_run_'+str(runid) )
+                create_group= True
+            except:
+                runid       += 1
+                continue
+        group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
+        pers                = self.attrs['period_array']
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        dlon                = self.attrs['dlon']
+        dlat                = self.attrs['dlat']
+        nlat_grad           = self.attrs['nlat_grad']
+        nlon_grad           = self.attrs['nlon_grad']
+        nlat_lplc           = self.attrs['nlat_lplc']
+        nlon_lplc           = self.attrs['nlon_lplc']
+        fdict               = { 'Tph': 2, 'Tgr': 3}
+        if period is not None:
+            pers            = np.array([period])
+        inDbase             = h5py.File(inh5fname)
+        rundict             = {0: 'smooth_run', 1: 'qc_run'}
+        data_id             = rundict[rayruntype]+'_'+str(rayrunid)
+        ingroup             = inDbase[data_id]
+        ind_flag            = 1
+        if rayruntype == 0:
+            ind_flag        = 0
+        else:
+            if ingroup.attrs['isotropic']:
+                ind_flag    = 0
+        fieldLst            = []
+        evlst               = []
+        for per in pers:
+            print 'Computing gradient for: '+str(per)+' sec'
+            del_per         = per-int(per)
+            if del_per==0.:
+                persfx      = str(int(per))+'sec'
+            else:
+                dper        = str(del_per)
+                persfx      = str(int(per))+'sec'+dper.split('.')[1]
+            working_per     = workingdir+'/'+str(per)+'sec'
+            if not os.path.isdir(working_per):
+                os.makedirs(working_per)
+            # get data array from ray tomography database
+            ray_per_id      = '%g_sec'%( per )
+            data            = ingroup[ray_per_id+'/residual'].value
+            res_tomo        = data[:,7+ind_flag]
+            cri_res         = min(crifactor*per, crilimit)
+            
+            # # # data            = data[ np.abs(res_tomo)<cri_res , :]
+            ind             = (res_tomo > -cri_res)*(res_tomo < 20.)
+            data            = data[ind, :]
+            
+            evlo            = 0.
+            evla            = 0.
+            Ndata           = data.shape[0]
+            i_event         = 0
+            for i in range(Ndata):
+                if evla != data[i, 1] or evlo != data[i, 2]:
+                    # compute
+                    if i != 0:
+                        field2d.read_array(lonArr   = np.append(evlo, stlos), latArr=np.append(evla, stlas), ZarrIn=np.append(0., Zarr))
+                        fieldLst.append(field2d)
+                    evla    = data[i, 1]
+                    evlo    = data[i, 2]
+                    evlst.append(np.array([evla, evlo]))
+                    i_event += 1
+                    evid    = 'ALK'+str(i_event)
+                    field2d = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon, 
+                                minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evid=evid, evlo=evlo, evla=evla, fieldtype=fieldtype, \
+                                    nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
+                    stlas   = np.array([])
+                    stlos   = np.array([])
+                    Zarr    = np.array([])
+                stla        = data[i, 3]
+                stlo        = data[i, 4]
+                stlas       = np.append(stlas, stla)
+                stlos       = np.append(stlos, stlo)
+                dist, az, baz   \
+                            = obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo)
+                travelT     = dist/data[i, 5]/1000.
+                Zarr        = np.append(Zarr, travelT)
+                
+        #-----------------------------------------
+        # Computing gradient with multiprocessing
+        #-----------------------------------------
+        if len(fieldLst) > subsize:
+            Nsub                    = int(len(fieldLst)/subsize)
+            for isub in range(Nsub):
+                print 'Subset:', isub,'in',Nsub,'sets'
+                cfieldLst           = fieldLst[isub*subsize:(isub+1)*subsize]
+                EIKONAL             = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
+                pool                = multiprocessing.Pool(processes=nprocess)
+                pool.map(EIKONAL, cfieldLst) #make our results with a map call
+                pool.close() #we are not adding any more processes
+                pool.join() #tell it to wait until all threads are done before going on
+            cfieldLst               = fieldLst[(isub+1)*subsize:]
+            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
+            pool                    = multiprocessing.Pool(processes=nprocess)
+            pool.map(EIKONAL, cfieldLst) #make our results with a map call
+            pool.close() #we are not adding any more processes
+            pool.join() #tell it to wait until all threads are done before going on
+        else:
+            print 'Computing eikonal tomography'
+            EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
+            pool                    = multiprocessing.Pool(processes=nprocess)
+            pool.map(EIKONAL, fieldLst) #make our results with a map call
+            pool.close() #we are not adding any more processes
+            pool.join() #tell it to wait until all threads are done before going on
+        #-----------------------------------------
+        # Read data into hdf5 dataset
+        #-----------------------------------------
+        iper    = 0
+        for per in pers:
+            print 'Reading gradient data for: '+str(per)+' sec'
+            working_per         = workingdir+'/'+str(per)+'sec'
+            per_group           = group.create_group( name='%g_sec'%( per ) )
+            for ievent in range(len(evlst)):
+                evid            = 'ALK'+str(ievent)
+                infname         = working_per+'/'+evid+'_field2d.npz'
+                if not os.path.isfile(infname):
+                    if verbose:
+                        print 'No data for:', evid
+                    continue
+                InArr           = np.load(infname)
+                appV            = InArr['arr_0']
+                reason_n        = InArr['arr_1']
+                proAngle        = InArr['arr_2']
+                az              = InArr['arr_3']
+                baz             = InArr['arr_4']
+                Zarr            = InArr['arr_5']
+                Ngrd            = InArr['arr_6']
+                evla            = evlst[ievent][0]
+                evlo            = evlst[ievent][1]
+                # save data to hdf5 dataset
+                event_group     = per_group.create_group(name=evid)
+                event_group.attrs.create(name = 'evlo', data=evlo)
+                event_group.attrs.create(name = 'evla', data=evla)
+                # added 04/05/2018
+                event_group.attrs.create(name = 'Ntotal_grd', data=Ngrd[0])
+                event_group.attrs.create(name = 'Nvalid_grd', data=Ngrd[1])
+                #
+                appVdset        = event_group.create_dataset(name='appV', data=appV)
+                reason_ndset    = event_group.create_dataset(name='reason_n', data=reason_n)
+                proAngledset    = event_group.create_dataset(name='proAngle', data=proAngle)
+                azdset          = event_group.create_dataset(name='az', data=az)
+                bazdset         = event_group.create_dataset(name='baz', data=baz)
+                Tdset           = event_group.create_dataset(name='travelT', data=Zarr)
+            iper    += 1
         if deletetxt:
             shutil.rmtree(workingdir)
         return
@@ -2075,7 +2373,7 @@ class EikonalTomoDataSet(h5py.File):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
                 ################################
-        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=-0.4, vmax=0.4)
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=-0.2, vmax=0.2)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label(clabel, fontsize=12, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
@@ -2095,6 +2393,8 @@ class EikonalTomoDataSet(h5py.File):
         ax.tick_params(axis='y', labelsize=20)
         if showfig:
             plt.show()
+            
+        
     
     def plot_vel_iso(self, projection='lambert', fastaxis=False, geopolygons=None, showfig=True, vmin=2.9, vmax=3.5):
         """Plot isotropic velocity

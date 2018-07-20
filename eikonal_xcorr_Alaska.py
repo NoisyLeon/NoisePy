@@ -4,16 +4,26 @@ import timeit
 import matplotlib.pyplot as plt
 
 import eikonaltomo
+# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20180718_10sec.h5')
 dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20180712.h5')
+# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_raydbase_mp.h5')
+# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_raydbase.h5')
+
 # dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_all_T_10sec_only_20180712.h5')
 # dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20180411.h5')
 # dset.compare_raytomo('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_gr.h5', 1, 2, 1, 16.)
 # # 
-# dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=np.array([10.]))
-# # # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72)
-# # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=np.array([8., 10., 16., 20., 30., 40., 50., 60.]))
-# dset.xcorr_eikonal_mp_lowmem(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/xcorr_Alaska_all.h5', \
-#                 workingdir='/scratch/summit/life9360/ALASKA_work/eikonal_working_all_20180712', \
+# dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=np.array([12.]))
+# # dset.xcorr_eikonal_raydbase(inh5fname='/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180719_phase_test.h5', \
+# #         workingdir='/scratch/summit/life9360/ALASKA_work/eikonal_working_raydbase_20180719')
+# 
+# 
+# dset.xcorr_eikonal_raydbase_mp(inh5fname='/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180719_phase_test_03.h5', \
+#         workingdir='/scratch/summit/life9360/ALASKA_work/eikonal_working_raydbase_20180719_mp', nprocess=24)
+# # # # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72)
+# # # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=np.array([8., 10., 16., 20., 30., 40., 50., 60.]))
+# dset.xcorr_eikonal_mp_lowmem(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/xcorr_Alaska_TA_AK.h5', \
+#                 workingdir='/scratch/summit/life9360/ALASKA_work/eikonal_working_TA_AK_20180718', \
 #                    fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=24, subsize=1000, mindp=10.)
 
 # # dset.xcorr_eikonal(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/xcorr_Alaska.h5', \
@@ -51,5 +61,5 @@ dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_f
 # dset.xcorr_eikonal_mp(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/xcorr_Alaska.h5', \
 #                       workingdir='/scratch/summit/life9360/ALASKA_work/eikonal_working_gr', \
 #                    fieldtype='Tgr', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10, subsize=100)
-
+# dset.compare_raytomo('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180716_phase.h5', 1, 2, 0, 10.)
 

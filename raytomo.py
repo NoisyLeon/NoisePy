@@ -235,7 +235,6 @@ class RayTomoDataSet(h5py.File):
                 f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
             os.remove(temprunsh)
-            # return
         #-----------------------------------------
         # save results to hdf5 dataset
         #-----------------------------------------
@@ -395,8 +394,16 @@ class RayTomoDataSet(h5py.File):
             except:
                 raise AttributeError('Residual data: '+ str(per)+ ' sec does not exist!')
             res_tomo        = inArr[:,7]
+            #------------------------------------------------------
+            # quality control to discard data with large misfit
+            #------------------------------------------------------
             cri_res         = min(crifactor*per, crilimit)
-            QC_arr          = inArr[np.abs(res_tomo)<cri_res, :]
+            ###
+            # QC_arr          = inArr[np.abs(res_tomo)<cri_res, :]
+            ind             = (res_tomo > -cri_res)*(res_tomo < 25.)
+            QC_arr          = inArr[ind, :]
+            
+            
             outArr          = QC_arr[:,:8]
             outper          = outdir+'/'+'%g'%( per ) +'_'+datatype
             if not os.path.isdir(outper):
@@ -433,7 +440,6 @@ class RayTomoDataSet(h5py.File):
                     f.writelines('v \nq \ngo \nEOF \n' )
             call(['bash', temprunsh])
             os.remove(temprunsh)
-            # return
         #------------------------------------------------
         # save to hdf5 dataset
         #------------------------------------------------
@@ -968,14 +974,14 @@ class RayTomoDataSet(h5py.File):
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        # shapefname  = '/projects/life9360/geological_maps/qfaults'
-        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='blue')
-        # shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='blue')
-        shapefname  = '../AKfaults/qfaults'
+        shapefname  = '/projects/life9360/geological_maps/qfaults'
         m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        shapefname  = '../AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
         m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
+        # shapefname  = '../AKfaults/qfaults'
+        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
+        # shapefname  = '../AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
         # shapefname  = '/projects/life9360/AK_sediments/Cook_Inlet_sediments_WGS84'
         # m.readshapefile(shapefname, 'faultline', linewidth=1, color='blue')
         
@@ -1031,7 +1037,18 @@ class RayTomoDataSet(h5py.File):
         print 'plotting data from '+dataid
         # # cb.solids.set_rasterized(True)
         cb.solids.set_edgecolor("face")
-        m.shadedrelief(scale=1., origin='lower')
+        # m.shadedrelief(scale=1., origin='lower')
+        
+        
+        xc, yc      = m(np.array([-162]), np.array([69]))
+        m.plot(xc, yc,'o', ms=15)
+        xc, yc      = m(np.array([-148]), np.array([69]))
+        m.plot(xc, yc,'o', ms=15)
+        xc, yc      = m(np.array([-156]), np.array([71]))
+        m.plot(xc, yc,'o', ms=15)
+        xc, yc      = m(np.array([-156]), np.array([68]))
+        m.plot(xc, yc,'o', ms=15)
+        
         if showfig:
             plt.show()
         return
@@ -1342,6 +1359,12 @@ class RayTomoDataSet(h5py.File):
             ingroup     = self[dataid]
         except KeyError:
             raise KeyError(dataid+ ' not exists!')
+        ind_flag    = 1
+        if runtype == 0:
+            ind_flag= 0
+        else:
+            if ingroup.attrs['isotropic']:
+                ind_flag= 0
         pers        = self.attrs['period_array']
         if not period in pers:
             raise KeyError('period = '+str(period)+' not included in the database')
@@ -1352,12 +1375,12 @@ class RayTomoDataSet(h5py.File):
             isotropic   = True
         if datatype == 'res' or datatype=='residual':
             datatype    = 'residual'
-            dataind     = 8
+            dataind     = 7 + ind_flag # 7 for smooth run and isotropic qc_run, 8 for others
         data    = (pergrp[datatype].value)[:, dataind]
         ax      = plt.subplot()
         plt.hist(data, bins=200)
         outstd  = data.std()
-        plt.xlim(-7, 7)
+        plt.xlim(-15, 15)
         plt.ylabel('Phase velocity measurements', fontsize=20)
         plt.xlabel('Misfit (sec)', fontsize=20)
         plt.title(str(period)+' sec, std = %g sec' %outstd, fontsize=30)
@@ -1366,6 +1389,63 @@ class RayTomoDataSet(h5py.File):
         if showfig:
             plt.show()
         return data
+        
+    
+    def plot_discard_rays(self, period, runtype=0, runid=0, crifactor=0.5, crilimit=10., datatype='res', clabel='', \
+                          projection='lambert', showfig=True):
+        rundict     = {0: 'smooth_run', 1: 'qc_run'}
+        dataid      = rundict[runtype]+'_'+str(runid)
+        self._get_lon_lat_arr(dataid)
+        try:
+            ingroup     = self[dataid]
+        except KeyError:
+            raise KeyError(dataid+ ' not exists!')
+        ind_flag    = 1
+        if runtype == 0:
+            ind_flag= 0
+        else:
+            if ingroup.attrs['isotropic']:
+                ind_flag= 0
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        if runtype == 1:
+            isotropic   = ingroup.attrs['isotropic']
+        else:
+            isotropic   = True
+        if datatype == 'res' or datatype=='residual':
+            datatype    = 'residual'
+            dataind     = 7 + ind_flag # 7 for smooth run and isotropic qc_run, 8 for others
+        data_arr    = pergrp[datatype].value
+        residual    = data_arr[:, dataind]
+        cri_res     = min(crifactor*period, crilimit)
+        ind_outlier = np.where(np.logical_not(np.abs(residual)<cri_res))[0]
+        
+        evlas       = data_arr[ind_outlier, 1]
+        evlos       = data_arr[ind_outlier, 2]
+        stlas       = data_arr[ind_outlier, 3]
+        stlos       = data_arr[ind_outlier, 4]
+        #-----------
+        # plot data
+        #-----------
+        m           = self._get_basemap(projection=projection)
+        # x, y        = m(self.lonArr, self.latArr)
+        # shapefname  = '/projects/life9360/geological_maps/qfaults'
+        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
+        # shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
+        
+        for i in range(evlas.size):
+            evla    = evlas[i]
+            evlo    = evlos[i]
+            stla    = stlas[i]
+            stlo    = stlos[i]
+            x, y    = m(np.array([evlo, stlo]), np.array([evla, stla]))
+            m.plot(x, y, 'k-', alpha=0.1)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        if showfig:
+            plt.show()
         
     
     
