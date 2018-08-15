@@ -1,0 +1,3 @@
+slurmstepd: error: Job 1144610 exceeded memory limit (5699200 > 4964352), being killed
+slurmstepd: error: Exceeded job memory limit
+slurmstepd: error: *** JOB 1144610 ON shas0222 CANCELLED AT 2018-08-13T17:30:36 ***

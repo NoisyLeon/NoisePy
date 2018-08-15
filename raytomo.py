@@ -25,6 +25,7 @@ import os, shutil
 from subprocess import call
 from mpl_toolkits.basemap import Basemap, shiftgrid, cm
 import matplotlib.pyplot as plt
+import matplotlib
 from matplotlib.mlab import griddata
 import colormaps
 import obspy
@@ -43,6 +44,17 @@ def discrete_cmap(N, base_cmap=None):
     color_list  = base(np.linspace(0, 1, N))
     cmap_name   = base.name + str(N)
     return base.from_list(cmap_name, color_list, N)
+
+def to_percent(y, position):
+    # Ignore the passed in position. This has the effect of scaling the default
+    # tick locations.
+    s = str(100 * y)
+
+    # The percent symbol needs escaping in latex
+    if matplotlib.rcParams['text.usetex'] is True:
+        return s + r'$\%$'
+    else:
+        return s + '%'
 
 class RayTomoDataSet(h5py.File):
     """
@@ -293,7 +305,7 @@ class RayTomoDataSet(h5py.File):
         print('================================= End mooth run of surface wave tomography ===============================')
         return
     
-    def run_qc(self, outdir, runid=0, smoothid=0, datatype='ph', wavetype='R', crifactor=0.5, crilimit=10.,
+    def run_qc(self, outdir, runid=0, smoothid=0, datatype='ph', wavetype='R', crifactor=0.5, crilimit=10., usemad=True, madfactor=3.,
                dlon=0.5, dlat=0.5, stepinte=0.1, lengthcell=0.5,  isotropic=False, alpha=850, beta=1, sigma=175, \
                 lengthcellAni=1.0, anipara=0, xZone=2, alphaAni0=1200, betaAni0=1, sigmaAni0=200, alphaAni2=1000, sigmaAni2=100, alphaAni4=1200, sigmaAni4=500,\
                 comments='', deletetxt=False, contourfname='./contour.ctr',  IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', \
@@ -383,6 +395,11 @@ class RayTomoDataSet(h5py.File):
         if not os.path.isfile(contourfname):
             raise AttributeError('Contour file does not exist!')
         smoothgroup     = self['smooth_run_'+str(smoothid)]
+        ##
+        # positive bound
+        ##
+        bounds          = {18.: 10., 16.: 25., 14.: 25., 12.: 35., 10.: 35., 8.: 40.}
+        ##
         for per in pers:
             #------------------------------------------------
             # quality control based on smooth run results
@@ -397,12 +414,23 @@ class RayTomoDataSet(h5py.File):
             #------------------------------------------------------
             # quality control to discard data with large misfit
             #------------------------------------------------------
-            cri_res         = min(crifactor*per, crilimit)
+            if usemad:
+                from statsmodels import robust
+                mad         = robust.mad(res_tomo)
+                cri_res     = madfactor * mad
+            else:
+                cri_res     = min(crifactor*per, crilimit)
             ###
-            # QC_arr          = inArr[np.abs(res_tomo)<cri_res, :]
-            ind             = (res_tomo > -cri_res)*(res_tomo < 25.)
-            QC_arr          = inArr[ind, :]
+            if per in bounds.keys():
+                ind         = (res_tomo > -(cri_res))*(res_tomo < bounds[per])
+                QC_arr      = inArr[ind, :]
+            else:
+                QC_arr          = inArr[np.abs(res_tomo)<cri_res, :]
+                # ind             = (res_tomo > -(cri_res))*(res_tomo < 50.)
+                # QC_arr          = inArr[ind, :]
+            ####
             
+            ##
             
             outArr          = QC_arr[:,:8]
             outper          = outdir+'/'+'%g'%( per ) +'_'+datatype
@@ -814,7 +842,6 @@ class RayTomoDataSet(h5py.File):
             est_sem     = (mgauss/gstdmin)*sem_min
             undset      = pergrp.create_dataset(name='vel_sem', data=est_sem)
             # print mgauss.shape, invel_sem.shape, inmask.shape
-            # 
             # index   = np.logical_not(mask)
             # mgauss2 = mgauss[index]
             # gstdmin = mgauss2.min()
@@ -852,9 +879,9 @@ class RayTomoDataSet(h5py.File):
             # m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
         elif projection=='regional_ortho':
-            m1      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
-            m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
-                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
+            # m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
+            #             llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/2., urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             # m.drawparallels(np.arange(-90.0,90.0,30.0),labels=[1,0,0,0], dashes=[10, 5], linewidth=2,  fontsize=20)
             # m.drawmeridians(np.arange(10,180.0,30.0), dashes=[10, 5], linewidth=2)
@@ -984,7 +1011,6 @@ class RayTomoDataSet(h5py.File):
         # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
         # shapefname  = '/projects/life9360/AK_sediments/Cook_Inlet_sediments_WGS84'
         # m.readshapefile(shapefname, 'faultline', linewidth=1, color='blue')
-        
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
@@ -1029,7 +1055,7 @@ class RayTomoDataSet(h5py.File):
         else:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.set_label(clabel, fontsize=12, rotation=0)
+        cb.set_label(clabel, fontsize=20, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb.ax.tick_params(labelsize=15)
         cb.set_alpha(1)
@@ -1038,17 +1064,14 @@ class RayTomoDataSet(h5py.File):
         # # cb.solids.set_rasterized(True)
         cb.solids.set_edgecolor("face")
         # m.shadedrelief(scale=1., origin='lower')
-        
-        
-        xc, yc      = m(np.array([-162]), np.array([69]))
-        m.plot(xc, yc,'o', ms=15)
-        xc, yc      = m(np.array([-148]), np.array([69]))
-        m.plot(xc, yc,'o', ms=15)
-        xc, yc      = m(np.array([-156]), np.array([71]))
-        m.plot(xc, yc,'o', ms=15)
-        xc, yc      = m(np.array([-156]), np.array([68]))
-        m.plot(xc, yc,'o', ms=15)
-        
+        # xc, yc      = m(np.array([-162]), np.array([69]))
+        # m.plot(xc, yc,'o', ms=15)
+        # xc, yc      = m(np.array([-148]), np.array([69]))
+        # m.plot(xc, yc,'o', ms=15)
+        # xc, yc      = m(np.array([-156]), np.array([71]))
+        # m.plot(xc, yc,'o', ms=15)
+        # xc, yc      = m(np.array([-156]), np.array([68]))
+        # m.plot(xc, yc,'o', ms=15)
         if showfig:
             plt.show()
         return
@@ -1306,7 +1329,7 @@ class RayTomoDataSet(h5py.File):
                     cmap    = pycpt.load.gmtColormap(cmap)
             except:
                 pass
-        ################################3
+        ################################
         if hillshade:
             from netCDF4 import Dataset
             from matplotlib.colors import LightSource
@@ -1350,7 +1373,10 @@ class RayTomoDataSet(h5py.File):
             plt.show()
         return
     
-    def plot_hist(self, runtype, runid, period, datatype='res', clabel='', showfig=True):
+    def plot_hist(self, runtype, runid, period, d_ind=0, datatype='res', clabel='', fitmad=True, fitstd=True, showfig=True):
+        """
+        plot histogram and/or best fit Gaussian distribution using mad/std
+        """
         datatype    = datatype.lower()
         rundict     = {0: 'smooth_run', 1: 'qc_run'}
         dataid      = rundict[runtype]+'_'+str(runid)
@@ -1378,17 +1404,159 @@ class RayTomoDataSet(h5py.File):
             dataind     = 7 + ind_flag # 7 for smooth run and isotropic qc_run, 8 for others
         data    = (pergrp[datatype].value)[:, dataind]
         ax      = plt.subplot()
-        plt.hist(data, bins=200)
+        n, bins, patches\
+                = plt.hist(data, bins=500, normed=True)
+        ind     = n.argmax()
+        mu1     = bins[ind+d_ind]
+        mu2     = data.mean()
+        import matplotlib.mlab as mlab
+        from matplotlib.ticker import FuncFormatter
+        if fitmad:
+            from statsmodels import robust
+            mad     = robust.mad(data)
+            mad_fit = mlab.normpdf( bins, mu1, mad)
+            plt.plot(bins, mad_fit, 'r-', linewidth=3)
+        if fitstd:
+            std     = data.std()
+            std_fit = mlab.normpdf( bins, mu2, std)
+            plt.plot(bins, std_fit, 'g-', linewidth=3)
         outstd  = data.std()
         plt.xlim(-15, 15)
         plt.ylabel('Phase velocity measurements', fontsize=20)
         plt.xlabel('Misfit (sec)', fontsize=20)
-        plt.title(str(period)+' sec, std = %g sec' %outstd, fontsize=30)
+        plt.title(str(period)+' sec, std = %g sec, mad = %g sec' %(outstd,mad), fontsize=30)
         ax.tick_params(axis='x', labelsize=20)
         ax.tick_params(axis='y', labelsize=20)
+        formatter = FuncFormatter(to_percent)
+        # Set the formatter
+        plt.gca().yaxis.set_major_formatter(formatter)
         if showfig:
             plt.show()
         return data
+    
+    def plot_all_hist(self, runtype, runid):
+        pers        = self.attrs['period_array']
+        for period in pers:
+            self.plot_hist(runtype=runtype, runid=runid, period=period)
+        return
+    
+    def plot_avg_misfit_map(self, period, threshfactor=None, runtype=0, runid=0,\
+                vmin=None, vmax=None, absolute=True, projection='lambert', cmap='cv', showfig=True):
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+        else:
+            try:
+                if os.path.isfile(cmap):
+                    import pycpt
+                    cmap    = pycpt.load.gmtColormap(cmap)
+            except:
+                pass
+        rundict     = {0: 'smooth_run', 1: 'qc_run'}
+        dataid      = rundict[runtype]+'_'+str(runid)
+        self._get_lon_lat_arr(dataid)
+        try:
+            ingroup     = self[dataid]
+        except KeyError:
+            raise KeyError(dataid+ ' not exists!')
+        ind_flag    = 1
+        if runtype == 0:
+            ind_flag= 0
+        else:
+            if ingroup.attrs['isotropic']:
+                ind_flag= 0
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        if runtype == 1:
+            isotropic   = ingroup.attrs['isotropic']
+        else:
+            isotropic   = True
+        dataind         = 7 + ind_flag # 7 for smooth run and isotropic qc_run, 8 for others
+        data            = pergrp['residual'].value
+        from statsmodels import robust
+        residual        = data[:, dataind]
+        mad             = robust.mad(residual)
+        Ndata           = residual.size
+        i_event         = 0
+        misfit_arr      = []
+        evlo            = 0.
+        evla            = 0.
+        i_sta           = 0
+        misfit_all      = 0.
+        for i in range(Ndata):
+            if evla != data[i, 1] or evlo != data[i, 2]:
+                if i != 0:
+                    misfit_avg  = misfit_all/i_sta
+                    # print i_sta, misfit_all, misfit_avg
+                    misfit_arr.append(np.array([evla, evlo, misfit_all, misfit_avg, i_sta]))
+                    n_sta       = i_sta
+                    i_sta       = 0
+                    misfit_all\
+                                = 0.
+                    # # # if threshfactor is not None:
+                    # # #     if threshfactor*mad < abs(misfit_avg):
+                    # # #         print evlo, evla, misfit_avg, n_sta
+                    # # #         x, y= m(evlo, evla)
+                    # # #         im  = m.scatter(x, y, marker='^', s=200, c=misfit_avg, cmap=cmap, vmin=vmin, vmax=vmax)
+                    # # # if threshfactor is None:
+                    # # #     x, y    = m(evlo, evla)
+                    # # #     im      = m.scatter(x, y, marker='^', s=200, c=misfit_avg, cmap=cmap, vmin=vmin, vmax=vmax)
+                evla    = data[i, 1]
+                evlo    = data[i, 2]
+            if absolute:
+                misfit_all\
+                        += abs(residual[i])##/data[i, -1]/112.
+            else:
+                misfit_all\
+                        += residual[i]##/data[i, -1]/112.
+            i_sta       += 1
+        misfit_arr      = np.array(misfit_arr)
+        # return misfit_arr
+        for i in range(Ndata):
+            evla        = data[i, 3]
+            evlo        = data[i, 4]
+            ind         = np.where((evla == misfit_arr[:, 0])*(evlo == misfit_arr[:, 1]))[0]
+            if absolute:
+                misfit_arr[ind, 2]\
+                        += abs(residual[i])##/data[i, -1]/112.
+            else:
+                misfit_arr[ind, 2]\
+                        += residual[i]##/data[i, -1]/112.
+            misfit_arr[ind, 4]\
+                        += 1
+        misfit_arr[:, 3]= misfit_arr[:, 2]/misfit_arr[:, 4]
+        Nevent          = misfit_arr.shape[0]
+        
+        m               = self._get_basemap(projection=projection)
+        if threshfactor is not None:
+            ind_plot    = np.where(threshfactor*mad<np.abs(misfit_arr[:, 3]))[0]
+            evla_arr    = misfit_arr[ind_plot, 0]
+            evlo_arr    = misfit_arr[ind_plot, 1]
+            misfit_avg  = misfit_arr[ind_plot, 3]
+            np.set_printoptions(formatter={'float': '{: 0.3f}'.format})
+            print misfit_arr[ind_plot, :]
+        if threshfactor is None:
+            evla_arr    = misfit_arr[:, 0]
+            evlo_arr    = misfit_arr[:, 1]
+            misfit_avg  = misfit_arr[:, 3]
+        x, y            = m(evlo_arr, evla_arr)
+        im              = m.scatter(x, y, marker='^', s=200, c=misfit_avg, cmap=cmap, vmin=vmin, vmax=vmax)
+        
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb.set_label('avg misfit (sec)', fontsize=12, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=15)
+        # cb.set_alpha(1)
+        cb.draw_all()
+        if showfig:
+            plt.show()
+        
         
     
     def plot_discard_rays(self, period, runtype=0, runid=0, crifactor=0.5, crilimit=10., datatype='res', clabel='', \

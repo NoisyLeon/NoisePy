@@ -1,8 +1,8 @@
-import quakedbase
+# import quakedbase
 import numpy as np
 import timeit
-import matplotlib.pyplot as plt
-import pyaftan
+# import matplotlib.pyplot as plt
+# import pyaftan
 
 # Initialize ASDF dataset
 # dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5')
@@ -31,11 +31,22 @@ import pyaftan
 
 import eikonaltomo
 # # # 
-dset    = eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_quake_001.h5')
+dset    = eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/eikonal_quake_002.h5')
 # pers    = np.append( np.arange(16.)*2.+10., np.arange(10.)*5.+45.)
-# dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=pers)
-# dset.quake_eikonal(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5', workingdir='/scratch/summit/life9360/Alaska_quake_eikonal_working', fieldtype='Tph', channel='Z',
-#             data_type='FieldDISPpmf2interp', amplplc=True, cdist=None)
+dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=np.array([30., 40., 50.]))
 
-dset.eikonal_stack()
-dset.helm_stack()
+# dset.xcorr_eikonal_mp_lowmem(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/xcorr_Alaska_TA_AK.h5', \
+#                 workingdir='/scratch/summit/life9360/ALASKA_work/eikonal_working_TA_AK_20180718', \
+#                    fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=24, subsize=1000, mindp=10.)
+
+# dset.quake_eikonal_mp_lowmem(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5', \
+#     workingdir='/scratch/summit/life9360/Alaska_quake_eikonal_working', fieldtype='Tph', channel='Z', \
+#         data_type='FieldDISPpmf2interp', amplplc=True, cdist=None)
+
+
+dset.quake_eikonal(inasdffname='/scratch/summit/life9360/ALASKA_work/ASDF_data/surf_Alaska.h5', \
+    workingdir='/scratch/summit/life9360/Alaska_quake_eikonal_working', fieldtype='Tph', channel='Z', \
+        data_type='FieldDISPpmf2interp', amplplc=True, cdist=None)
+
+# dset.eikonal_stack()
+# dset.helm_stack()

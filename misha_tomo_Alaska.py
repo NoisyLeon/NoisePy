@@ -5,25 +5,36 @@ import GeoPolygon
 import raytomo
 
 # dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180716_phase.h5')
-dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180720_phase_test.h5')
+# dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180814.h5')
+
+dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180814_single_0.5.h5')
+# dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180806_all_001.h5')
 # dset=raytomo.RayTomoDataSet('/work3/leon/ray_tomo_Alaska_20180410.h5')
 # dset=raytomo.RayTomoDataSet('../ray_tomo_Alaska_20180410.h5')
 # dset=raytomo.RayTomoDataSet('/scratch/summit/life9360/ALASKA_work/hdf5_files/ray_tomo_Alaska_20180410_un_from_TA_AK.h5')
 # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72,  data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_')
-# dset.run_smooth(datadir='/scratch/summit/life9360/ALASKA_work/xcorr_working_dir/raytomo_input', outdir='../ray_tomo_working_dir')
-# dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=True, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-# dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-# dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=1, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-# dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=2, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-
-
-# dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72,  data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_', pers=np.array([12.]))
-# dset.run_smooth(datadir='/scratch/summit/life9360/ALASKA_work/xcorr_working_dir/raytomo_input', outdir='../ray_tomo_working_dir')
+# # # dset.run_smooth(datadir='/scratch/summit/life9360/ALASKA_work/xcorr_working_dir/raytomo_input', outdir='../ray_tomo_working_dir')
 # # # dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=True, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
 # # # dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
 # # # dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=1, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
 # # # dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=2, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
-# 
+# # 
+
+dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72,  data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_', pers=np.array([12.]))
+dset.run_smooth(datadir='/scratch/summit/life9360/ALASKA_work/xcorr_working_dir/raytomo_input_20180630', outdir='../ray_tomo_working_dir',\
+            lengthcell=1.)
+dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=True, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175,\
+            madfactor=3., lengthcell=0.5, lengthcellAni=.5)
+dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175,\
+            madfactor=3., lengthcell=0.5, lengthcellAni=.5)
+dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=1, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175, \
+            madfactor=3., lengthcell=0.5, lengthcellAni=.5)
+
+
+
+
+# dset.run_qc(outdir='../ray_tomo_working_dir', dlon=0.2, dlat=0.1, isotropic=False, anipara=2, alphaAni4=1000, alphaAni0=850, betaAni0=1, sigmaAni0=175)
+
 # dset.run_qc(outdir='../ray_tomo_working_dir', crifactor=2., crilimit=6., \
 #             dlon=0.2, dlat=0.1, isotropic=True, anipara=0, alphaAni4=1000, alphaAni0=850, betaAni0=1./1000., sigmaAni0=175)
 # dset.run_qc(outdir='../ray_tomo_working_dir', crifactor=2., crilimit=6., \

@@ -422,7 +422,24 @@ class noiseASDF(pyasdf.ASDFDataSet):
         tr.stats.sac.e      = subdset.parameters['e']
         tr.stats.sac.user0  = subdset.parameters['stackday']
         tr.stats.delta      = subdset.parameters['delta']
+        tr.stats.distance   = subdset.parameters['dist']*1000.
         return tr
+    
+    def get_xcorr_stream(self, netcode, stacode, chan1, chan2):
+        st                  = obspy.Stream()
+        stalst              = self.waveforms.list()
+        for staid in stalst:
+            netcode2, stacode2  \
+                            = staid.split('.')
+            try:
+                st          += self.get_xcorr_trace(netcode1=netcode, stacode1=stacode, netcode2=netcode2, stacode2=stacode2, chan1=chan1, chan2=chan2)
+            except KeyError:
+                try:
+                    st      += self.get_xcorr_trace(netcode1=netcode2, stacode1=stacode2, netcode2=netcode, stacode2=stacode, chan1=chan2, chan2=chan1)
+                except KeyError:
+                    pass
+        
+        return st
         
     def read_xcorr(self, datadir, pfx='COR', fnametype=2, inchannels=None, verbose=True):
         """Read cross-correlation data in ASDF database
@@ -900,6 +917,265 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print('End reading data into ASDF database')
         return
                     
+    def xcorr_append(self, inasdffname, datadir, startyear, startmonth, endyear, endmonth,\
+                        pfx='COR', outdir=None, inchannels=None, fnametype=2, verbose=False):
+        """Append cross-correlation data from monthly-stacked sac files to an existing ASDF database
+        ===========================================================================================================
+        ::: input parameters :::
+        inasdffname             - input ASDF file name
+        datadir                 - data directory
+        startyear, startmonth   - start date for stacking
+        endyear, endmonth       - end date for stacking
+        pfx                     - prefix
+        outdir                  - output directory (None is not to save sac files)
+        inchannels              - input channels, if None, will read channel information from obspy inventory
+        fnametype               - input sac file name type
+                                    =1: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
+                                    =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
+                                    =3: custom sac file name type, change corresponding line
+        -----------------------------------------------------------------------------------------------------------
+        ::: output :::
+        ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
+        sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
+        ===========================================================================================================
+        """
+        #----------------------------------------
+        # copy station inventory
+        #----------------------------------------
+        indset                  = noiseASDF(inasdffname)
+        stalst                  = indset.waveforms.list()
+        for staid in stalst:
+            self.add_stationxml(indset.waveforms[staid].StationXML)
+        #----------------------------------------
+        # prepare year/month list for stacking
+        #----------------------------------------
+        print('preparing month list for stacking')
+        utcdate                 = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
+        ylst                    = np.array([], dtype=int)
+        mlst                    = np.array([], dtype=int)
+        while (utcdate.year<endyear or (utcdate.year<=endyear and utcdate.month<=endmonth) ):
+            ylst                = np.append(ylst, utcdate.year)
+            mlst                = np.append(mlst, utcdate.month)
+            try:
+                utcdate.month   +=1
+            except ValueError:
+                utcdate.year    +=1
+                utcdate.month   = 1
+        mnumb                   = mlst.size
+        #--------------------------------------------------
+        # determine channels if inchannels is specified
+        #--------------------------------------------------
+        if inchannels is not None:
+            try:
+                if not isinstance(inchannels[0], obspy.core.inventory.channel.Channel):
+                    channels    = []
+                    for inchan in inchannels:
+                        channels.append(obspy.core.inventory.channel.Channel(code=inchan, location_code='',
+                                        latitude=0, longitude=0, elevation=0, depth=0) )
+                else:
+                    channels    = inchannels
+            except:
+                inchannels      = None
+        staLst                  = self.waveforms.list()
+        #--------------------------------------------------
+        # main loop for station pairs
+        #--------------------------------------------------
+        Nsta                    = len(staLst)
+        Ntotal_traces           = Nsta*(Nsta-1)/2
+        itrstack                = 0
+        Ntr_one_percent         = int(Ntotal_traces/100.)
+        ipercent                = 0
+        print('start stacking')
+        for staid1 in staLst:
+            for staid2 in staLst:
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if stacode1 >= stacode2:
+                    continue
+                itrstack            += 1
+                if np.fmod(itrstack, Ntr_one_percent) ==0:
+                    ipercent        += 1
+                    print ('Number of traces finished stacking: '+str(itrstack)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                stackedST           = []
+                cST                 = []
+                initflag            = True
+                if inchannels==None:
+                    channels1       = []
+                    channels2       = []
+                    tempchans1      = self.waveforms[staid1].StationXML.networks[0].stations[0].channels
+                    tempchans2      = self.waveforms[staid2].StationXML.networks[0].stations[0].channels
+                    # get non-repeated component channel list
+                    isZ             = False
+                    isN             = False
+                    isE             = False
+                    for tempchan in tempchans1:
+                        if tempchan.code[-1] == 'Z':
+                            if isZ:
+                                continue
+                            else:
+                                isZ         = True
+                        if tempchan.code[-1] == 'N':
+                            if isN:
+                                continue
+                            else:
+                                isN         = True
+                        if tempchan.code[-1] == 'E':
+                            if isE:
+                                continue
+                            else:
+                                isE         = True
+                        channels1.append(tempchan)
+                    isZ             = False
+                    isN             = False
+                    isE             = False
+                    for tempchan in tempchans2:
+                        if tempchan.code[-1] == 'Z':
+                            if isZ:
+                                continue
+                            else:
+                                isZ         = True
+                        if tempchan.code[-1] == 'N':
+                            if isN:
+                                continue
+                            else:
+                                isN         = True
+                        if tempchan.code[-1] == 'E':
+                            if isE:
+                                continue
+                            else:
+                                isE         = True
+                        channels2.append(tempchan)
+                else:
+                    channels1       = channels
+                    channels2       = channels
+                for im in range(mnumb):
+                    skipflag        = False
+                    for chan1 in channels1:
+                        if skipflag:
+                            break
+                        for chan2 in channels2:
+                            month       = monthdict[mlst[im]]
+                            yrmonth     = str(ylst[im])+'.'+month
+                            if fnametype    == 1:
+                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
+                            elif fnametype  == 2:
+                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
+                            #----------------------------------------------------------
+                            elif fnametype  == 3:
+                                fname   ='' # modify file name here
+                            #----------------------------------------------------------
+                            if not os.path.isfile(fname):
+                                skipflag= True
+                                break
+                            try:
+                                tr      = obspy.core.read(fname)[0]
+                            except TypeError:
+                                warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
+                                skipflag= True
+                            if np.isnan(tr.data).any() or abs(tr.data.max())>1e20:
+                                warnings.warn('NaN monthly SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
+                                skipflag= True
+                                break
+                            cST.append(tr)
+                    if len(cST)!=len(channels1)*len(channels2) or skipflag:
+                        cST             = []
+                        continue
+                    if initflag:
+                        stackedST       = copy.deepcopy(cST)
+                        initflag        = False
+                    else:
+                        for itr in range(len(cST)):
+                            mtr                             = cST[itr]
+                            stackedST[itr].data             += mtr.data
+                            stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
+                    cST                                     = []
+                if len(stackedST)==len(channels1)*len(channels2):
+                    if verbose:
+                        print('Finished stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2)
+                    # create sac output directory 
+                    if outdir!=None:
+                        if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
+                            os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
+                    # write cross-correlation header information
+                    xcorr_header            = xcorr_header_default.copy()
+                    xcorr_header['b']       = stackedST[0].stats.sac.b
+                    xcorr_header['e']       = stackedST[0].stats.sac.e
+                    xcorr_header['netcode1']= netcode1
+                    xcorr_header['netcode2']= netcode2
+                    xcorr_header['stacode1']= stacode1
+                    xcorr_header['stacode2']= stacode2
+                    xcorr_header['npts']    = stackedST[0].stats.npts
+                    xcorr_header['delta']   = stackedST[0].stats.delta
+                    xcorr_header['stackday']= stackedST[0].stats.sac.user0
+                    try:
+                        xcorr_header['dist']= stackedST[0].stats.sac.dist
+                        xcorr_header['az']  = stackedST[0].stats.sac.az
+                        xcorr_header['baz'] = stackedST[0].stats.sac.baz
+                    except AttributeError:
+                        lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+                        lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+                        lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                        lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                        dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                        dist                = dist/1000.
+                        xcorr_header['dist']= dist
+                        xcorr_header['az']  = az
+                        xcorr_header['baz'] = baz
+                    if staid1 > staid2:
+                        staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+                    else:
+                        staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                    itrace                  = 0
+                    if len(channels1)>1:
+                        print staid1
+                        return channels1
+                    if len(channels2)>1:
+                        print staid2
+                        return channels2
+                    for chan1 in channels1:
+                        for chan2 in channels2:
+                            stackedTr       = stackedST[itrace]
+                            if outdir!=None:
+                                outfname            = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
+                                                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
+                                stackedTr.write(outfname, format='SAC')
+                            xcorr_header['chan1']   = chan1.code
+                            xcorr_header['chan2']   = chan2.code
+                            try:
+                                #---------------------------------
+                                # get data from original database
+                                #---------------------------------
+                                indata              = indset.auxiliary_data['NoiseXcorr'][netcode1][stacode1][netcode2][stacode2][chan1.code][chan2.code]
+                                orig_sdays          = indata.parameters['stackday']
+                                orig_data           = indata.data.value
+                                xcorr_header['stackday']\
+                                                    += orig_sdays
+                                stackedTr.data      += orig_data
+                                self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+                                # # # print 'appending: '+staid1+' '+staid2
+                            except KeyError:
+                                self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+                            itrace                  += 1
+                else:
+                    if staid1 > staid2:
+                        staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+                    else:
+                        staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                    for chan1 in channels1:
+                        for chan2 in channels2:
+                            try:
+                                #---------------------------------
+                                # get data from original database
+                                #---------------------------------
+                                indata              = indset.auxiliary_data['NoiseXcorr'][netcode1][stacode1][netcode2][stacode2][chan1.code][chan2.code]
+                                xcorr_header        = indata.parameters
+                                xcorr_data          = indata.data.value
+                                self.add_auxiliary_data(data=xcorr_data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+                            except KeyError:
+                                pass
+        return            
+    
+    
     def xcorr_rotation(self, outdir=None, pfx='COR'):
         """Rotate cross-correlation data 
         ===========================================================================================================

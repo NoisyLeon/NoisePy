@@ -29,6 +29,7 @@ from subprocess import call
 from mpl_toolkits.basemap import Basemap, shiftgrid, cm
 import matplotlib.pyplot as plt
 from matplotlib.mlab import griddata
+import matplotlib
 import colormaps
 import obspy
 import field2d_earth
@@ -51,6 +52,17 @@ def _get_azi_weight(aziALL, validALL):
                     if delAzi < 20. or delAzi > 340.:
                         weightALL[i, ilon, ilat]+= validALL[i, ilon, ilat]    
     return weightALL
+
+def to_percent(y, position):
+    # Ignore the passed in position. This has the effect of scaling the default
+    # tick locations.
+    # # # s = str(100 * y)
+    s = str(y)
+    # The percent symbol needs escaping in latex
+    if matplotlib.rcParams['text.usetex'] is True:
+        return s + r'$\%$'
+    else:
+        return s + '%'
 
 class EikonalTomoDataSet(h5py.File):
     
@@ -659,7 +671,6 @@ class EikonalTomoDataSet(h5py.File):
                         cdist=cdist, mindp=mindp, pers=pers)
         return
         
-    
     def quake_eikonal(self, inasdffname, workingdir, fieldtype='Tph', channel='Z', data_type='FieldDISPpmf2interp',
             runid=0, merge=False, deletetxt=False, verbose=True, amplplc=False, cdist=150., mindp=20):
         """
@@ -1146,6 +1157,19 @@ class EikonalTomoDataSet(h5py.File):
             shutil.rmtree(workingdir)
         return
     
+    def quake_eikonal_mp_lowmem(self, inasdffname, workingdir, fieldtype='Tph', channel='Z', data_type='FieldDISPpmf2interp', runid=0,
+                merge=False, deletetxt=True, verbose=True, subsize=1000, nprocess=None, amplplc=False, cdist=150., mindp=10):
+        """
+        Low memory version of xcorr_eikonal_mp
+        """
+        pers_dbase      = self.attrs['period_array']
+        for per in pers_dbase:
+            print 'eikonal tomography for T = '+str(per)+' sec'
+            pers        = np.array([per])
+            self.quake_eikonal_mp(inasdffname=inasdffname, workingdir=workingdir, fieldtype=fieldtype, channel=channel, data_type=data_type,
+                runid=runid, merge=False, deletetxt=deletetxt, verbose=verbose, subsize=subsize, nprocess=nprocess, amplplc=amplplc, cdist=cdist, mindp=mindp)
+        return
+
     def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=15, anisotropic=False, use_numba=True, coverage=0.1):
         """
         Stack gradient results to perform Eikonal Tomography
@@ -2095,8 +2119,8 @@ class EikonalTomoDataSet(h5py.File):
             distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
             m               = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
                                 lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=10)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=10)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=20)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=20)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=0.5, dashes=[2,2], labels=[1,0,0,0], fontsize=5)
             # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=0.5, dashes=[2,2], labels=[0,0,0,1], fontsize=5)
         m.drawcoastlines(linewidth=1.0)
@@ -2210,7 +2234,7 @@ class EikonalTomoDataSet(h5py.File):
         else:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.set_label(clabel, fontsize=12, rotation=0)
+        cb.set_label(clabel, fontsize=20, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb.ax.tick_params(labelsize=15)
         print 'plotting data from '+dataid
@@ -2328,6 +2352,9 @@ class EikonalTomoDataSet(h5py.File):
         return
     
     def compare_raytomo(self, inraytomofname, rayruntype, rayrunid, runid, period, showfig=True, projection='lambert', cmap='cv', clabel='C (km/s)'):
+        """
+        compare the eikonal tomography results with the ray tomography
+        """
         # raytomo data
         dset_ray    = h5py.File(inraytomofname)
         rundict     = {0: 'smooth_run', 1: 'qc_run'}
@@ -2375,22 +2402,31 @@ class EikonalTomoDataSet(h5py.File):
                 ################################
         im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=-0.2, vmax=0.2)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.set_label(clabel, fontsize=12, rotation=0)
+        cb.set_label(clabel, fontsize=30, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
-        cb.ax.tick_params(labelsize=15)
+        cb.ax.tick_params(labelsize=20)
         cb.solids.set_edgecolor("face")
         plt.show()
+        
         ax      = plt.subplot()
         data    = diffdata[np.logical_not(mask + raymask)]
-        plt.hist(data, bins=100)
+        plt.hist(data, bins=100, normed=True)
         outstd  = data.std()
         outmean = data.mean()
-        plt.xlim(-.4, .4)
-        plt.ylabel('Phase velocity measurements', fontsize=20)
-        plt.xlabel('Difference (km/s)', fontsize=20)
-        plt.title(str(period)+' sec, mean = %g m/s, std = %g m/s' %(outmean*1000., outstd*1000.), fontsize=30)
+        # compute mad
+        from statsmodels import robust
+        mad     = robust.mad(data)
+        plt.xlim(-.2, .2)
+        import matplotlib.mlab as mlab
+        from matplotlib.ticker import FuncFormatter
+        plt.ylabel('Percentage (%)', fontsize=30)
+        plt.xlabel('Differences (km/sec)', fontsize=30)
+        plt.title(str(period)+' sec, mean = %g m/s, std = %g m/s, mad = %g m/s' %(outmean*1000., outstd*1000., mad*1000.), fontsize=30)
         ax.tick_params(axis='x', labelsize=20)
         ax.tick_params(axis='y', labelsize=20)
+        formatter = FuncFormatter(to_percent)
+        # Set the formatter
+        plt.gca().yaxis.set_major_formatter(formatter)
         if showfig:
             plt.show()
             
