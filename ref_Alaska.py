@@ -4,7 +4,7 @@ import timeit
 import matplotlib.pyplot as plt
 
 # Initialize ASDF dataset
-dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Alaska.h5')
+dset=quakedbase.quakeASDF('/work1/leon/ALASKA_work_20180808_old/ASDF_data/ref_Alaska_hs_bk.h5')
 # dset.add_quakeml('/scratch/summit/life9360/ALASKA_work/quakeml/alaska_2017_aug.ml')
 
 # dset=quakedbase.quakeASDF('ref_Alaska.h5')
@@ -37,7 +37,7 @@ dset=quakedbase.quakeASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/ref_Al
 # dset.harmonic_stripping()
 # t2=timeit.default_timer()
 # print t2-t1, 'sec'
-# dset.plot_ref(network='AE', station='U15A', phase='P', datatype='RefRHS')
+dset.plot_ref(network='AK', station='DHY', phase='P', datatype='RefRHSdata')
 # plt.show()
 
-dset.plot_all_ref(outdir='/scratch/summit/life9360/ALASKA_work/ref_figs', outtxt='ref_log')
+# dset.plot_all_ref(outdir='/scratch/summit/life9360/ALASKA_work/ref_figs', outtxt='ref_log')

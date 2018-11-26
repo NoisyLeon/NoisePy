@@ -127,6 +127,49 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print outstr
         return
     
+    def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
+        """Get basemap for plotting results
+        """
+        # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
+        lat_centre  = (self.maxlat+self.minlat)/2.0
+        lon_centre  = (self.maxlon+self.minlon)/2.0
+        if projection=='merc':
+            m       = Basemap(projection='merc', llcrnrlat=self.minlat-5., urcrnrlat=self.maxlat+5., llcrnrlon=self.minlon-5.,
+                        urcrnrlon=self.maxlon+5., lat_ts=20, resolution=resolution)
+            m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
+            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
+            m.drawstates(color='g', linewidth=2.)
+        elif projection=='global':
+            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
+        elif projection=='regional_ortho':
+            m1      = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution='l')
+            m       = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution=resolution,\
+                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
+        elif projection=='lambert':
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon, self.minlat, self.maxlon) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon, self.maxlat+2., self.minlon) # distance is in m
+            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+                        lat_1=self.minlat, lat_2=self.maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+        m.drawcoastlines(linewidth=1.0)
+        m.drawcountries(linewidth=1.)
+        m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        m.drawmapboundary(fill_color="white")
+        m.drawstates()
+        try:
+            geopolygons.PlotPolygon(inbasemap=m)
+        except:
+            pass
+        return m
+    
+    #==================================================================
+    # functions for manipulating earthquake catalog
+    #==================================================================
     def get_events(self, startdate, enddate, add2dbase=True, gcmt=False, Mmin=5.5, Mmax=None, minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None,
             latitude=None, longitude=None, minradius=None, maxradius=None, mindepth=None, maxdepth=None, magnitudetype=None,
             outquakeml=None):
@@ -181,7 +224,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     continue
                 outcatalog.append(event)
         else:
-            gcmt_url_old    = 'http://www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/jan76_dec13.ndk'
+            # Updated the URL on Aug 31st, 2018
+            gcmt_url_old    = 'http://www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/jan76_dec17.ndk'
             gcmt_new        = 'http://www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/NEW_MONTHLY'
             if starttime.year < 2005:
                 print('Loading catalog: '+gcmt_url_old)
@@ -200,7 +244,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     cat_old = cat_old.filter("depth <= %g" %(maxdepth*1000.))
                 if mindepth != None:
                     cat_old = cat_old.filter("depth >= %g" %(mindepth*1000.))
-                temp_stime  = obspy.core.utcdatetime.UTCDateTime('2014-01-01')
+                temp_stime  = obspy.core.utcdatetime.UTCDateTime('2018-01-01')
                 outcatalog  = cat_old.filter("magnitude >= %g" %Mmin, "time >= %s" %str(starttime), "time <= %s" %str(endtime) )
             else:
                 outcatalog      = obspy.core.event.Catalog()
@@ -257,8 +301,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.cat.write(outquakeml, format='quakeml')
         return
     
-    
-    
     def read_quakeml(self, inquakeml, add2dbase=False):
         self.cat    = obspy.read_events(inquakeml)
         if add2dbase:
@@ -269,161 +311,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print('Copying catalog from ASDF to memory')
         self.cat    = self.events
         return
-    
-    def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN']):
-        """Read txt station list 
-        """
-        sta_info    = sta_info_default.copy()
-        with open(stafile, 'r') as f:
-            Sta                     = []
-            site                    = obspy.core.inventory.util.Site(name='01')
-            creation_date           = obspy.core.utcdatetime.UTCDateTime(0)
-            inv                     = obspy.core.inventory.inventory.Inventory(networks=[], source=source)
-            total_number_of_channels= len(chans)
-            for lines in f.readlines():
-                lines       = lines.split()
-                netsta      = lines[0]
-                netcode     = netsta[:2]
-                stacode     = netsta[2:]
-                if stacode[-1]=='/':
-                    stacode = stacode[:-1]
-                    print netcode, stacode
-                lon         = float(lines[1])
-                lat         = float(lines[2])
-                if lat>90.:
-                    lon     = float(lines[2])
-                    lat     = float(lines[1])
-                netsta      = netcode+'.'+stacode
-                if Sta.__contains__(netsta):
-                    index   = Sta.index(netsta)
-                    if abs(self[index].lon-lon) >0.01 and abs(self[index].lat-lat) >0.01:
-                        raise ValueError('Incompatible Station Location:' + netsta+' in Station List!')
-                    else:
-                        print 'Warning: Repeated Station:' +netsta+' in Station List!'
-                        continue
-                channels    = []
-                if lon>180.:
-                    lon -= 360.
-                for chan in chans:
-                    channel = obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
-                                elevation=0.0, depth=0.0)
-                    channels.append(channel)
-                station     = obspy.core.inventory.station.Station(code=stacode, latitude=lat, longitude=lon, elevation=0.0,
-                                site=site, channels=channels, total_number_of_channels = total_number_of_channels, creation_date = creation_date)
-                network     = obspy.core.inventory.network.Network(code=netcode, stations=[station])
-                networks    = [network]
-                inv         += obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
-        print 'Writing obspy inventory to ASDF dataset'
-        self.add_stationxml(inv)
-        print 'End writing obspy inventory to ASDF dataset'
-        return
-    
-    def read_sac(self, datadir):
-        """This function is a scratch for reading a specific datasets, DO NOT use this function!
-        """
-        L       = len(self.events)
-        evnumb  = 0
-        import glob
-        for event in self.events:
-            event_id        = event.resource_id.id.split('=')[-1]
-            magnitude       = event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
-            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
-            evnumb          +=1
-            print '================================= Getting surface wave data ==================================='
-            print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude) 
-            st              = obspy.Stream()
-            otime           = event.origins[0].time
-            evlo            = event.origins[0].longitude; evla=event.origins[0].latitude
-            tag             = 'surf_ev_%05d' %evnumb
-            # if lon0!=None and lat0!=None:
-            #     dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
-            #     dist=dist/1000.
-            #     starttime=otime+dist/vmax; endtime=otime+dist/vmin
-            #     commontime=True
-            # else:
-            #     commontime=False
-            odate           = str(otime.year)+'%02d' %otime.month +'%02d' %otime.day
-            for staid in self.waveforms.list():
-                netcode, stacode=staid.split('.')
-                print staid
-                stla, elev, stlo=self.waveforms[staid].coordinates.values()
-                # sta_datadir=datadir+'/'+netcode+'/'+stacode
-                sta_datadir=datadir+'/'+netcode+'/'+stacode
-                sacpfx=sta_datadir+'/'+stacode+'.'+odate
-                
-                pzpfx='/home/lili/code/china_data/response_files/SAC_*'+netcode+'_'+stacode
-                respfx='/home/lili/code/china_data/RESP4WeisenCUB/dbRESPCNV20131007/'+netcode+'/'+staid+'/RESP.'+staid
-                st=obspy.Stream()
-                for chan in ['*Z', '*E', '*N']:
-                    sacfname    = sacpfx+chan
-                    pzfpattern  = pzpfx+'_'+chan
-                    respfpattern= respfx+'*BH'+chan[-1]+'*'
-                    #################
-                    try: respfname=glob.glob(respfpattern)[0]
-                    except: break
-                    seedresp = {'filename': respfname,  # RESP filename
-                    # when using Trace/Stream.simulate() the "date" parameter can
-                    # also be omitted, and the starttime of the trace is then used.
-                    # Units to return response in ('DIS', 'VEL' or ACC)
-                    'units': 'VEL'
-                    }
-                    try: tr=obspy.read(sacfname)[0]
-                    except: break
-                    tr.detrend()
-                    tr.stats.channel='BH'+chan[-1]
-                    tr.simulate(paz_remove=None, pre_filt=(0.001, 0.005, 1, 100.0), seedresp=seedresp)
-                    ################
-                    # try: pzfname = glob.glob(pzfpattern)[0]
-                    # except: break
-                    # try: tr=obspy.read(sacfname)[0]
-                    # except: break
-                    # obspy.io.sac.sacpz.attach_paz(tr, pzfname)
-                    # tr.decimate(10)
-                    # tr.detrend()
-                    # tr.simulate(paz_remove=tr.stats.paz, pre_filt=(0.001, 0.005, 1, 100.0))
-                    st.append(tr)
-                self.add_waveforms(st, event_id=event_id, tag=tag)    
-    
-    def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
-        """Get basemap for plotting results
-        """
-        # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
-        lat_centre  = (self.maxlat+self.minlat)/2.0
-        lon_centre  = (self.maxlon+self.minlon)/2.0
-        if projection=='merc':
-            m       = Basemap(projection='merc', llcrnrlat=self.minlat-5., urcrnrlat=self.maxlat+5., llcrnrlon=self.minlon-5.,
-                        urcrnrlon=self.maxlon+5., lat_ts=20, resolution=resolution)
-            m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
-            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
-            m.drawstates(color='g', linewidth=2.)
-        elif projection=='global':
-            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
-        elif projection=='regional_ortho':
-            m1      = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution='l')
-            m       = Basemap(projection='ortho', lon_0=self.minlon, lat_0=self.minlat, resolution=resolution,\
-                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
-        elif projection=='lambert':
-            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon, self.minlat, self.maxlon) # distance is in m
-            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(self.minlat, self.minlon, self.maxlat+2., self.minlon) # distance is in m
-            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
-                        lat_1=self.minlat, lat_2=self.maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
-        m.drawcoastlines(linewidth=1.0)
-        m.drawcountries(linewidth=1.)
-        m.fillcontinents(lake_color='#99ffff',zorder=0.2)
-        m.drawmapboundary(fill_color="white")
-        m.drawstates()
-        try:
-            geopolygons.PlotPolygon(inbasemap=m)
-        except:
-            pass
-        return m
-    
+
     def plot_events(self, gcmt=False, projection='lambert', valuetype='depth', geopolygons=None, showfig=True, vmin=None, vmax=None):
         if gcmt:
             from obspy.imaging.beachball import beach
@@ -494,6 +382,57 @@ class quakeASDF(pyasdf.ASDFDataSet):
             plt.show()
         return   
     
+    #==================================================================
+    # functions for manipulating station inventory
+    #==================================================================
+    def read_stationtxt(self, stafile, source='CIEI', chans=['BHZ', 'BHE', 'BHN']):
+        """Read txt station list 
+        """
+        sta_info    = sta_info_default.copy()
+        with open(stafile, 'r') as f:
+            Sta                     = []
+            site                    = obspy.core.inventory.util.Site(name='01')
+            creation_date           = obspy.core.utcdatetime.UTCDateTime(0)
+            inv                     = obspy.core.inventory.inventory.Inventory(networks=[], source=source)
+            total_number_of_channels= len(chans)
+            for lines in f.readlines():
+                lines       = lines.split()
+                netsta      = lines[0]
+                netcode     = netsta[:2]
+                stacode     = netsta[2:]
+                if stacode[-1]=='/':
+                    stacode = stacode[:-1]
+                    print netcode, stacode
+                lon         = float(lines[1])
+                lat         = float(lines[2])
+                if lat>90.:
+                    lon     = float(lines[2])
+                    lat     = float(lines[1])
+                netsta      = netcode+'.'+stacode
+                if Sta.__contains__(netsta):
+                    index   = Sta.index(netsta)
+                    if abs(self[index].lon-lon) >0.01 and abs(self[index].lat-lat) >0.01:
+                        raise ValueError('Incompatible Station Location:' + netsta+' in Station List!')
+                    else:
+                        print 'Warning: Repeated Station:' +netsta+' in Station List!'
+                        continue
+                channels    = []
+                if lon>180.:
+                    lon -= 360.
+                for chan in chans:
+                    channel = obspy.core.inventory.channel.Channel(code=chan, location_code='01', latitude=lat, longitude=lon,
+                                elevation=0.0, depth=0.0)
+                    channels.append(channel)
+                station     = obspy.core.inventory.station.Station(code=stacode, latitude=lat, longitude=lon, elevation=0.0,
+                                site=site, channels=channels, total_number_of_channels = total_number_of_channels, creation_date = creation_date)
+                network     = obspy.core.inventory.network.Network(code=netcode, stations=[station])
+                networks    = [network]
+                inv         += obspy.core.inventory.inventory.Inventory(networks=networks, source=source)
+        print 'Writing obspy inventory to ASDF dataset'
+        self.add_stationxml(inv)
+        print 'End writing obspy inventory to ASDF dataset'
+        return
+    
     def get_stations(self, startdate=None, enddate=None, network=None, station=None, location=None, channel=None, includerestricted=False,
             minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None, latitude=None, longitude=None, minradius=None, maxradius=None):
         """Get station inventory from IRIS server
@@ -543,6 +482,75 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.inv    = inv
         return 
     
+    #==================================================================
+    # functions for reading/downloading/writing waveforms
+    #==================================================================
+    def read_sac(self, datadir):
+        """This function is a scratch for reading a specific datasets, DO NOT use this function!
+        """
+        L       = len(self.events)
+        evnumb  = 0
+        import glob
+        for event in self.events:
+            event_id        = event.resource_id.id.split('=')[-1]
+            magnitude       = event.magnitudes[0].mag; Mtype=event.magnitudes[0].magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            evnumb          +=1
+            print '================================= Getting surface wave data ==================================='
+            print 'Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude) 
+            st              = obspy.Stream()
+            otime           = event.origins[0].time
+            evlo            = event.origins[0].longitude; evla=event.origins[0].latitude
+            tag             = 'surf_ev_%05d' %evnumb
+            # if lon0!=None and lat0!=None:
+            #     dist, az, baz=obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
+            #     dist=dist/1000.
+            #     starttime=otime+dist/vmax; endtime=otime+dist/vmin
+            #     commontime=True
+            # else:
+            #     commontime=False
+            odate           = str(otime.year)+'%02d' %otime.month +'%02d' %otime.day
+            for staid in self.waveforms.list():
+                netcode, stacode=staid.split('.')
+                print staid
+                stla, elev, stlo=self.waveforms[staid].coordinates.values()
+                # sta_datadir=datadir+'/'+netcode+'/'+stacode
+                sta_datadir=datadir+'/'+netcode+'/'+stacode
+                sacpfx=sta_datadir+'/'+stacode+'.'+odate
+                
+                pzpfx='/home/lili/code/china_data/response_files/SAC_*'+netcode+'_'+stacode
+                respfx='/home/lili/code/china_data/RESP4WeisenCUB/dbRESPCNV20131007/'+netcode+'/'+staid+'/RESP.'+staid
+                st=obspy.Stream()
+                for chan in ['*Z', '*E', '*N']:
+                    sacfname    = sacpfx+chan
+                    pzfpattern  = pzpfx+'_'+chan
+                    respfpattern= respfx+'*BH'+chan[-1]+'*'
+                    #################
+                    try: respfname=glob.glob(respfpattern)[0]
+                    except: break
+                    seedresp = {'filename': respfname,  # RESP filename
+                    # when using Trace/Stream.simulate() the "date" parameter can
+                    # also be omitted, and the starttime of the trace is then used.
+                    # Units to return response in ('DIS', 'VEL' or ACC)
+                    'units': 'VEL'
+                    }
+                    try: tr=obspy.read(sacfname)[0]
+                    except: break
+                    tr.detrend()
+                    tr.stats.channel='BH'+chan[-1]
+                    tr.simulate(paz_remove=None, pre_filt=(0.001, 0.005, 1, 100.0), seedresp=seedresp)
+                    ################
+                    # try: pzfname = glob.glob(pzfpattern)[0]
+                    # except: break
+                    # try: tr=obspy.read(sacfname)[0]
+                    # except: break
+                    # obspy.io.sac.sacpz.attach_paz(tr, pzfname)
+                    # tr.decimate(10)
+                    # tr.detrend()
+                    # tr.simulate(paz_remove=tr.stats.paz, pre_filt=(0.001, 0.005, 1, 100.0))
+                    st.append(tr)
+                self.add_waveforms(st, event_id=event_id, tag=tag)    
+    
     def get_surf_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False,
                             startdate=None, enddate=None ):
         """Get surface wave data from IRIS server
@@ -555,9 +563,13 @@ class quakeASDF(pyasdf.ASDFDataSet):
         vmin, vmax      - minimum/maximum velocity for surface wave window
         =====================================================================================================================
         """
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
         client              = Client('IRIS')
         evnumb              = 0
-        L                   = len(self.events)
+        L                   = len(self.cat)
         try:
             stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
         except:
@@ -566,10 +578,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
         except:
             etime4down  = obspy.UTCDateTime()
-        try:
-            print self.cat
-        except AttributeError:
-            self.copy_catalog()
+        pre_filt            = (0.001, 0.005, 1, 100.0)
         for event in self.cat:
             event_id        = event.resource_id.id.split('=')[-1]
             magnitude       = event.magnitudes[0].mag
@@ -583,7 +592,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 continue
             print('================================= Getting surface wave data ===================================')
             print('Event ' + str(evnumb)+' : '+event_descrip+', '+Mtype+' = '+str(magnitude))
-            st              = obspy.Stream()
+            st                  = obspy.Stream()
             if lon0!=None and lat0!=None:
                 dist, az, baz   = obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
                 dist            = dist/1000.
@@ -592,6 +601,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 commontime      = True
             else:
                 commontime      = False
+            Ntraces             = 0
             for staid in self.waveforms.list():
                 netcode, stacode= staid.split('.')
                 stla, elev, stlo= self.waveforms[staid].coordinates.values()
@@ -605,22 +615,43 @@ class quakeASDF(pyasdf.ASDFDataSet):
                         continue
                     starttime       = otime+dist/vmax
                     endtime         = otime+dist/vmin
-                # location=self.waveforms[staid].StationXML[0].stations[0].channels[0].location_code
                 try:
-                    # st += client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
-                    #         starttime=starttime, endtime=endtime, attach_response=True)
-                    st              += client.get_waveforms(network=netcode, station=stacode, location='00', channel=channel,
-                                        starttime=starttime, endtime=endtime, attach_response=True)
+                    tr              = client.get_waveforms(network=netcode, station=stacode, location='*', channel=channel,
+                                        starttime=starttime, endtime=endtime, attach_response=True)[0]
+                    try:
+                        temp_resp   = tr.stats.response
+                    except AttributeError:
+                        N       = 10
+                        i       = 0
+                        get_resp= False
+                        while (i < N) and (not get_resp):
+                            tr      = client.get_waveforms(network=netcode, station=stacode, location='*', channel=channel,
+                                        starttime=starttime, endtime=endtime, attach_response=True)[0]
+                            try:
+                                resp        = tr.stats.response
+                                get_resp    = True
+                            except AttributeError:
+                                i           += 1
+                        if not get_resp:
+                            if verbose:
+                                print 'No data for:', staid
+                            continue
+                    Ntraces                 += 1
+                except:
+                    if verbose:
+                        print 'No data for:', staid
+                    continue
+                tr.detrend()
+                try:
+                    tr.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
                 except:
                     if verbose:
                         print 'No data for:', staid
                     continue
                 if verbose:
                     print 'Getting data for:', staid
-            print('===================================== Removing response =======================================')
-            pre_filt    = (0.001, 0.005, 1, 100.0)
-            st.detrend()
-            st.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
+                st      += tr
+            print('====================== Downloaded : '+str(Ntraces)+' traces =============================')
             tag         = 'surf_ev_%05d' %evnumb
             # adding waveforms
             self.add_waveforms(st, event_id=event_id, tag=tag)
@@ -1305,7 +1336,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             print('-----------------------------------------------------------------------------------------------------------')
         print('================================== End reading downloaded surf wave data ==================================')
         return
-
+    
     def write2sac(self, network, station, evnumb, datatype='body'):
         """ Extract data from ASDF to SAC file
         ====================================================================================================================
@@ -1357,6 +1388,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
             tr.stats.sac['stlo']    = stlo
             tr.stats.sac['stla']    = stla    
         return st
+    
+    #==================================================================
+    # functions for receiver function analysis
+    #==================================================================
     
     def compute_ref(self, inrefparam=CURefPy.InputRefparam(), refslow=0.06, saveampc=True, verbose=False,
                     startdate=None, enddate=None, fs=40., walltimeinhours = None, walltimetol=2000., startind=1):
@@ -1676,7 +1711,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
         print('End reading receiver function data !')
         return
         
-    
     def harmonic_stripping(self, outdir=None, data_type='RefRmoveout', VR=80., tdiff=0.08, phase='P', reftype='R', fs=40., endtime=10.,\
                 savetxt=False, savepredat=True):
         """Harmonic stripping analysis
@@ -1939,11 +1973,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.plot_ref(network=netcode, station=stacode, phase=phase, outdir=outdir)
         fid.close()
             
-            
-            
-    
-    
-
     def array_processing(self, evnumb=1, win_len=20., win_frac=0.2, sll_x=-3.0, slm_x=3.0, sll_y=-3.0, slm_y=3.0, sl_s=0.03,
             frqlow=0.0125, frqhigh=0.02, semb_thres=-1e9, vel_thres=-1e9, prewhiten=0, verbose=True, coordsys='lonlat', timestamp='mlabday',
                 method=0, minlat=None, maxlat=None, minlon=None, maxlon=None, lon0=None, lat0=None, radius=None, Tmin=None, Tmax=None, vmax=5.0, vmin=2.0):
@@ -2050,6 +2079,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
         fig.subplots_adjust(left=0.15, top=0.95, right=0.95, bottom=0.2, hspace=0)
         plt.show()
         return 
+    
+    #==================================================================
+    # functions for surface wave analysis
+    #==================================================================
     
     def quake_prephp(self, outdir, mapfile='./MAPS/smpkolya_phv', verbose=True):
         """
@@ -2159,7 +2192,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         f77         - use aftanf77 or not
         pfx         - prefix for output txt DISP files
         ---------------------------------------------------------------------------------------
-        Output:
+        ::: output :::
         self.auxiliary_data.DISPbasic1, self.auxiliary_data.DISPbasic2,
         self.auxiliary_data.DISPpmf1, self.auxiliary_data.DISPpmf2
         =======================================================================================
@@ -2197,6 +2230,14 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 evid                = 'E%05d' % (iev+1)
                 if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ):
                     continue
+                staid_aux_temp      = netcode+'_'+stacode+'_'+channel
+                # appending data that not exists
+                try:
+                    if evid in self.auxiliary_data['DISPbasic1'].list():
+                        if staid_aux_temp in self.auxiliary_data['DISPbasic1'][evid].list():
+                            continue
+                except:
+                    pass
                 az, baz, dist       = geodist.inv(evlo, evla, stlo, stla)
                 dist                = dist/1000. 
                 if baz<0:
@@ -2458,6 +2499,12 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     subdset         = self.auxiliary_data[data_type][evid][dataid]
                 except KeyError:
                     continue
+                # added Sep 4th, 2018. skip upon existence
+                staid_aux_temp      = netcode+'_'+stacode+'_'+channel
+                if data_type+'interp' in self.auxiliary_data.list():
+                    if evid in self.auxiliary_data[data_type+'interp'].list():
+                        if staid_aux_temp in self.auxiliary_data[data_type+'interp'][evid].list():
+                            continue
                 data                = subdset.data.value
                 index               = subdset.parameters
                 outindex            = { 'To': 0, 'U': 1, 'C': 2,  'amp': 3, 'snr': 4, 'inbound': 5, 'Np': pers.size }
@@ -2536,6 +2583,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 field_lst.append(np.array([]))
                 Nfplst.append(0)
             datalst         = self.auxiliary_data[data_type][evid].list()
+            # skip upon existence
+            if 'Field'+data_type in self.auxiliary_data.list():
+                if evid+'_'+channel in self.auxiliary_data['Field'+data_type].list():
+                    print '--- Skip upon existence!'
+                    continue
             for staid in staLst:
                 netcode, stacode    = staid.split('.')
                 dataid              = netcode+'_'+stacode+'_'+channel

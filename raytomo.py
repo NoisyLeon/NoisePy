@@ -49,7 +49,6 @@ def to_percent(y, position):
     # Ignore the passed in position. This has the effect of scaling the default
     # tick locations.
     s = str(100 * y)
-
     # The percent symbol needs escaping in latex
     if matplotlib.rcParams['text.usetex'] is True:
         return s + r'$\%$'
@@ -150,7 +149,6 @@ class RayTomoDataSet(h5py.File):
         print outstr
         return
     
-    
     def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_'):
         """
         Set input parameters for tomographic inversion.
@@ -176,6 +174,10 @@ class RayTomoDataSet(h5py.File):
         self.attrs.create(name = 'qcpfx', data=qcpfx)
         return
         
+    #==================================================================
+    # functions performing tomography
+    #==================================================================
+    
     def run_smooth(self, datadir, outdir, datatype='ph', channel='ZZ', dlon=0.5, dlat=0.5, stepinte=0.2, lengthcell=1.0, alpha1=3000, alpha2=100, sigma=500,
             runid=0, comments='', deletetxt=False, contourfname='./contour.ctr', IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', reshape=True):
         """
@@ -399,6 +401,8 @@ class RayTomoDataSet(h5py.File):
         # positive bound
         ##
         bounds          = {18.: 10., 16.: 25., 14.: 25., 12.: 35., 10.: 35., 8.: 40.}
+        # bounds          = {}
+        
         ##
         for per in pers:
             #------------------------------------------------
@@ -739,13 +743,13 @@ class RayTomoDataSet(h5py.File):
                 readset             = opergrp.create_dataset(name='max_resp', data=outrea)
                 readset.attrs.create(name='Nlat', data=self.Nlat)
                 readset.attrs.create(name='Nlon', data=self.Nlon)
-                # resolution analysis, number of cells involvec in cone base
+                # resolution analysis, number of cells involved in cone base
                 outrea              = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
                 outrea[index2]      = resol[:, 3]
                 readset             = opergrp.create_dataset(name='ncone', data=outrea)
                 readset.attrs.create(name='Nlat', data=self.Nlat)
                 readset.attrs.create(name='Nlon', data=self.Nlon)
-                # resolution analysis, number of cells involvec in Gaussian construction
+                # resolution analysis, number of cells involved in Gaussian construction
                 outrea              = np.zeros((self.Nlat, self.Nlon), dtype=np.float64)
                 outrea[index2]      = resol[:, 4]
                 readset             = opergrp.create_dataset(name='ngauss', data=outrea)
@@ -753,7 +757,11 @@ class RayTomoDataSet(h5py.File):
                 readset.attrs.create(name='Nlon', data=self.Nlon)
         return
     
-    def get_uncertainty(self, ineikfname, runid=0, percentage=None, num_thresh=None, inrunid=0, gausspercent=1.):
+    #==================================================================
+    # postprocessing functions
+    #==================================================================
+    
+    def get_uncertainty(self, ineikfname, Tmin=None, Tmax=None, runid=0, percentage=None, num_thresh=None, inrunid=0, gausspercent=1., gstd_thresh=100.):
         """
         get the uncertainty (sem, standard error of the mean)
         =================================================================================================================
@@ -767,10 +775,15 @@ class RayTomoDataSet(h5py.File):
                             - NMthresh    = min(NMmax*percentage, num_thresh), if both are specified
         inrunid         - input id of run for eikonal tomography
         gausspercent    - do not change !
+        gstd_thresh     - threshold Gaussian deviation value for determination of mask array for inversion
         =================================================================================================================
         """
         dataid      = 'reshaped_qc_run_'+str(runid)
         pers        = self.attrs['period_array']
+        if Tmin is not None:
+            pers    = pers[pers >= Tmin]
+        if Tmax is not None:
+            pers    = pers[pers <= Tmax]
         grp         = self[dataid]
         isotropic   = grp.attrs['isotropic']
         org_grp     = self['qc_run_'+str(runid)]
@@ -788,7 +801,16 @@ class RayTomoDataSet(h5py.File):
                         org_grp.attrs['dlon'] != indset.attrs['dlon'] or \
                             org_grp.attrs['dlat'] != indset.attrs['dlat']:
             raise ValueError('Incompatible input eikonal datasets!')
+        #----------------
+        # determine mask
+        #----------------
         mask        = grp['mask2']
+        if gstd_thresh is not None:
+            for per in pers:
+                pergrp  = grp['%g_sec'%( per )]
+                mgauss  = pergrp['gauss_std'].value
+                mask    += mgauss > gstd_thresh
+        grp.create_dataset(name='mask_inv', data=mask)
         for per in pers:
             #-------------------------------
             # get data
@@ -810,7 +832,7 @@ class RayTomoDataSet(h5py.File):
                         = inpergrp['NmeasureQC'].value
             index_in    = np.logical_not(inmask)
             Nmeasure2   = Nmeasure[index_in]
-            if Nmeasure2.size==0:
+            if Nmeasure2.size == 0:
                 print '--- T = '+str(per)+' sec ---'
                 print 'No uncertainty, step 1'
                 print '----------------------------'
@@ -853,7 +875,135 @@ class RayTomoDataSet(h5py.File):
             #     Nmin    = mgauss2[mgauss2<=gaussstd].size    
             #     print 'T = '+str(per)+' sec; min gauss_std: '+str(gstdmin)+' km, number of grids less than threhhold: '+str(Nmin)+'; max gauss_std: '+str(gstdmax)+' km'
         return
-
+    
+    def get_mask_inv(self, Tmin=None, Tmax=None, runid=0, gstd_thresh=100.):
+        """
+        get the mask array that is valid for all the periods
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run for ray tomography
+        =================================================================================================================
+        """
+        dataid      = 'reshaped_qc_run_'+str(runid)
+        pers        = self.attrs['period_array']
+        if Tmin is not None:
+            pers    = pers[pers >= Tmin]
+        if Tmax is not None:
+            pers    = pers[pers <= Tmax]
+        grp         = self[dataid]
+        isotropic   = grp.attrs['isotropic']
+        org_grp     = self['qc_run_'+str(runid)]
+        if isotropic:
+            print 'isotropic inversion results do not output gaussian std!'
+            return
+        mask        = grp['mask2']
+        if gstd_thresh is not None:
+            for per in pers:
+                pergrp  = grp['%g_sec'%( per )]
+                mgauss  = pergrp['gauss_std'].value
+                mask    += mgauss > gstd_thresh
+        grp.create_dataset(name='mask_inv', data=mask)
+        return
+    
+    
+    #==================================================================
+    # functions for plotting
+    #==================================================================
+    
+    def plot_sem_curve(self, ineikfname, period, runid=0, percentage=None, num_thresh=None, inrunid=0, gausspercent=1., gstd_thresh=100., \
+                       dx=1., xmax=999, xmin=-999, semfactor=2., plotfig=True):
+        """
+        get the uncertainty (sem, standard error of the mean)
+        =================================================================================================================
+        ::: input parameters :::
+        ineikfname      - input hdf5 file name that include the eikonal tomography results
+        runid           - id of run for ray tomography
+        percentage      - used to determine the number of threshhold measurements used for determine uncertainty
+        num_thresh      - same as above
+                            - NMthresh    = NMmax*percentage, if only "percentage" is specified
+                            - NMthresh    = num_thresh, if only "num_thresh" is specified
+                            - NMthresh    = min(NMmax*percentage, num_thresh), if both are specified
+        inrunid         - input id of run for eikonal tomography
+        gausspercent    - do not change !
+        =================================================================================================================
+        """
+        dataid      = 'reshaped_qc_run_'+str(runid)
+        pers        = self.attrs['period_array']
+        if period not in pers:
+            raise KeyError('Input period not in the database!')
+        grp         = self[dataid]
+        isotropic   = grp.attrs['isotropic']
+        org_grp     = self['qc_run_'+str(runid)]
+        if isotropic:
+            print 'isotropic inversion results do not output gaussian std!'
+            return
+        indset      = h5py.File(ineikfname)
+        inpers      = indset.attrs['period_array']
+        indataid    = 'Eikonal_stack_'+str(inrunid)
+        ingrp       = indset[indataid]
+        if self.attrs['minlon'] != indset.attrs['minlon'] or \
+            self.attrs['maxlon'] != indset.attrs['maxlon'] or \
+                self.attrs['minlat'] != indset.attrs['minlat'] or \
+                    self.attrs['maxlat'] != indset.attrs['maxlat'] or \
+                        org_grp.attrs['dlon'] != indset.attrs['dlon'] or \
+                            org_grp.attrs['dlat'] != indset.attrs['dlat']:
+            raise ValueError('Incompatible input eikonal datasets!')
+        pergrp      = grp['%g_sec'%( period )]
+        mgauss      = pergrp['gauss_std'].value
+        #----------------
+        # determine mask
+        #----------------
+        mask        = grp['mask2']
+        if gstd_thresh is not None:
+            mask    += mgauss > gstd_thresh
+        #-------------------------------
+        # get data
+        #-------------------------------
+        mgauss      = pergrp['gauss_std'].value
+        #-------------------------------
+        # get data from eikonal dataset
+        #-------------------------------
+        inpergrp    = ingrp['%g_sec'%( period )]
+        inmask      = inpergrp['mask'].value
+        invel_sem   = inpergrp['vel_sem'].value
+        mask        += inmask
+        index       = np.logical_not(mask)
+        sem         = invel_sem[index]
+        gstd        = mgauss[index]
+        #
+        dx          /=2.
+        xmax        = min(gstd.max(), xmax)
+        xmin        = max(gstd.min(), xmin)
+        Nx          = int(np.floor((xmax-xmin)/dx))
+        gstd_plt    = np.arange(Nx, dtype=float)*dx + xmin
+        sem_plt     = np.zeros(Nx, dtype=float)
+        sem_error_plt\
+                    = np.zeros(Nx, dtype=float)
+        for i in range(Nx):
+            tempstd = gstd_plt[i]
+            tempind = (gstd <= tempstd+dx/2.)*(gstd > tempstd-dx/2.)
+            sem_plt[i]\
+                    = sem[tempind].mean()
+            sem_error_plt[i]\
+                    = sem[tempind].std()
+            # print sem[tempind].mean()
+        sem_plt     *= 1000.
+        sem_error_plt\
+                    *= 1000.
+        from scipy import stats
+        slope, intercept, r_value, p_value, std_err = stats.linregress((gstd_plt*2.), sem_plt*semfactor)
+        if plotfig:
+            ax  = plt.subplot()
+            plt.plot(gstd_plt*2., sem_plt*semfactor, 'o', ms=15, label='observed')
+            # plt.errorbar(gstd_plt*2., sem_plt, yerr=sem_error_plt, fmt='o',  ms=15, label='observed')
+            plt.plot(gstd_plt*2., intercept + slope*gstd_plt*2., 'r-', lw=5,  label='fitted line')
+            ax.tick_params(axis='x', labelsize=20)
+            ax.tick_params(axis='y', labelsize=20)
+            plt.ylabel('Uncertainties (m/sec)', fontsize=30)
+            plt.xlabel('Resolusion (km)', fontsize=30)
+            plt.legend(fontsize=30)
+            plt.show()
+        return slope, intercept
     
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Get basemap for plotting results
@@ -929,7 +1079,7 @@ class RayTomoDataSet(h5py.File):
         return
     
     def plot(self, runtype, runid, datatype, period, shpfx=None, clabel='', cmap='cv', projection='lambert', hillshade=False,\
-             geopolygons=None, vmin=None, vmax=None, showfig=True):
+             geopolygons=None, vmin=None, vmax=None, thresh=100., semfactor=2., showfig=True):
         """plot maps from the tomographic inversion
         =================================================================================================================
         ::: input parameters :::
@@ -942,6 +1092,7 @@ class RayTomoDataSet(h5py.File):
         projection      - projection type
         geopolygons     - geological polygons for plotting
         vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
         showfig         - show figure or not
         =================================================================================================================
         """
@@ -986,13 +1137,19 @@ class RayTomoDataSet(h5py.File):
         if datatype == 'amp2':
             data    = data*100.
         if datatype == 'vel_sem':
-            data    = data*1000.
+            data        = data*1000.*semfactor
         if not isotropic:
             if datatype == 'cone_radius' or datatype == 'gauss_std' or datatype == 'max_resp' or datatype == 'ncone' or \
                          datatype == 'ngauss' or datatype == 'vel_sem':
                 mask    = ingroup['mask2']
             else:
                 mask    = ingroup['mask1']
+            if thresh is not None:
+                gauss_std   = pergrp['gauss_std'].value
+                mask_gstd   = gauss_std > thresh
+                mask        = mask + mask_gstd
+            if datatype is 'vel_sem':
+                mask    = ingroup['mask_inv']
             mdata       = ma.masked_array(data, mask=mask )
         else:
             mdata       = data.copy()
@@ -1001,9 +1158,9 @@ class RayTomoDataSet(h5py.File):
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        shapefname  = '/projects/life9360/geological_maps/qfaults'
+        shapefname  = '/home/leon/geological_maps/qfaults'
         m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
         m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
         # shapefname  = '../AKfaults/qfaults'
         # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
@@ -1046,14 +1203,18 @@ class RayTomoDataSet(h5py.File):
             m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
             m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
         ###################################################################
-        if hillshade:
-            m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
-        else:
-            m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        # if hillshade:
+        #     m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
+        # else:
+        #     m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         if hillshade:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
         else:
-            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+            if datatype is 'path_density':
+                import matplotlib.colors as colors
+                im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', norm=colors.LogNorm(vmin=vmin, vmax=vmax),)
+            else:
+                im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label(clabel, fontsize=20, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
@@ -1063,15 +1224,27 @@ class RayTomoDataSet(h5py.File):
         print 'plotting data from '+dataid
         # # cb.solids.set_rasterized(True)
         cb.solids.set_edgecolor("face")
+        if datatype is 'path_density':
+            cb.set_ticks([1, 10, 100, 1000, 10000])
+            cb.set_ticklabels([1, 10, 100, 1000, 10000])
         # m.shadedrelief(scale=1., origin='lower')
-        # xc, yc      = m(np.array([-162]), np.array([69]))
-        # m.plot(xc, yc,'o', ms=15)
-        # xc, yc      = m(np.array([-148]), np.array([69]))
-        # m.plot(xc, yc,'o', ms=15)
+        xc, yc      = m(np.array([-143]), np.array([61]))
+        m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
+        xc, yc      = m(np.array([-149]), np.array([61]))
+        m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
         # xc, yc      = m(np.array([-156]), np.array([71]))
         # m.plot(xc, yc,'o', ms=15)
         # xc, yc      = m(np.array([-156]), np.array([68]))
         # m.plot(xc, yc,'o', ms=15)
+        # lons            = np.array([-170., -160., -150., -140., -130.,\
+        #                             -160., -150., -140., -130.,\
+        #                             -160., -150., -140., -130.])
+        # lats            = np.array([60., 60., 60., 60., 60.,\
+        #                             65., 65., 65., 65.,\
+        #                             70., 70., 70., 70.])
+        # xc, yc          = m(lons, lats)
+        # m.plot(xc, yc,'o', ms=15)
+        
         if showfig:
             plt.show()
         return
@@ -1161,8 +1334,8 @@ class RayTomoDataSet(h5py.File):
                 print 'T = '+str(per)+' sec; min gauss_std: '+str(gstdmin)+' km, number of grids less than threhhold: '+str(Nmin)+'; max gauss_std: '+str(gstdmax)+' km'
         return
     
-    def interp_surface(self, workingdir='./raytomo_interp_surface', dlon=0.05, dlat=0.05, runid=0, deletetxt=True):
-        """interpolate inverted velocity maps and uncertainties to a finer grid for joint inversion
+    def interp_surface(self, workingdir='./raytomo_interp_surface', dlon=None, dlat=None, runid=0, deletetxt=True):
+        """interpolate inverted velocity maps and uncertainties to a grid for joint inversion
         =================================================================================================================
         ::: input parameters :::
         workingdir  - working directory
@@ -1180,12 +1353,24 @@ class RayTomoDataSet(h5py.File):
         maxlon          = self.attrs['maxlon']
         minlat          = self.attrs['minlat']
         maxlat          = self.attrs['maxlat']
+        if dlon is None or dlat is None:
+            Lcell       = self['qc_run_'+str(runid)].attrs['lengthcell']
+            dlat        = Lcell
+            dlon        = Lcell
+            ratio       = field2d_earth.determine_interval(minlat=minlat, maxlat=maxlat, dlon=dlon, dlat = dlat, \
+                                verbose=True, rtype=1)
+            dlon        = dlat*ratio
+            print '----------------------------------------------------------'
+            print 'Automatical determine dlat =',dlat,'to dlon =',dlon
+            print '----------------------------------------------------------'
+            return 
         if isotropic:
             print 'isotropic inversion results do not output gaussian std!'
             return
         if org_grp.attrs['dlon'] == dlon and org_grp.attrs['dlat'] == dlat:
             print 'No need for interpolation!'
             return
+        # determine the type of interpolation
         if org_grp.attrs['dlon'] > dlon and org_grp.attrs['dlat'] > dlat:
             sfx         = 'HD'
         elif org_grp.attrs['dlon'] < dlon and org_grp.attrs['dlat'] < dlat:
@@ -1194,11 +1379,11 @@ class RayTomoDataSet(h5py.File):
             sfx         = 'interp'
         org_grp.attrs.create(name = 'dlon_'+sfx, data=dlon)
         org_grp.attrs.create(name = 'dlat_'+sfx, data=dlat)
-        mask1           = grp['mask1']
-        mask2           = grp['mask2']
-        index1          = np.logical_not(mask1)
-        index2          = np.logical_not(mask2)
+        #--------------------------------------------------
         # get the mask array for the interpolated data
+        #--------------------------------------------------
+        mask_inv        = grp['mask_inv']
+        index_inv       = np.logical_not(mask_inv)
         lons            = np.arange(int((maxlon-minlon)/dlon)+1)*dlon+minlon
         lats            = np.arange(int((maxlat-minlat)/dlat)+1)*dlat+minlat
         Nlon            = lons.size
@@ -1211,51 +1396,60 @@ class RayTomoDataSet(h5py.File):
                 clon    = lons[j]
                 ind_lon = np.where(clon<=self.lons)[0][0]      
                 ind_lat = np.where(clat<=self.lats)[0][0]
-                if (clon - self.lons[ind_lon])< 0.001 and (clat - self.lats[ind_lat]):
-                    mask[i, j]  = mask1[ind_lat, ind_lon]
+                if (clon - self.lons[ind_lon])< 0.001 and (clat - self.lats[ind_lat])<0.001:
+                    mask[i, j]  = mask_inv[ind_lat, ind_lon]
                     continue
-                mask[i, j]      = mask[i, j]*mask1[ind_lat, ind_lon]
+                mask[i, j]      = mask[i, j]*mask_inv[ind_lat, ind_lon]
                 if ind_lat > 0:
-                    mask[i, j]      = mask[i, j]*mask1[ind_lat-1, ind_lon]
+                    mask[i, j]      = mask[i, j]*mask_inv[ind_lat-1, ind_lon]
                     if ind_lon > 0:
-                        mask[i, j]  = mask[i, j]*mask1[ind_lat-1, ind_lon-1]
+                        mask[i, j]  = mask[i, j]*mask_inv[ind_lat-1, ind_lon-1]
                 if ind_lon > 0:
-                    mask[i, j]      = mask[i, j]*mask1[ind_lat, ind_lon-1]
+                    mask[i, j]      = mask[i, j]*mask_inv[ind_lat, ind_lon-1]
                     if ind_lat > 0:
-                        mask[i, j]  = mask[i, j]*mask1[ind_lat-1, ind_lon-1]
+                        mask[i, j]  = mask[i, j]*mask_inv[ind_lat-1, ind_lon-1]
         grp.create_dataset(name = 'mask_'+sfx, data=mask)
         for per in pers:
             working_per = workingdir+'/'+str(per)+'sec'
             if not os.path.isdir(working_per):
                 os.makedirs(working_per)
+            no_sem      = False
             #-------------------------------
             # get data
             #-------------------------------
             try:
                 pergrp      = grp['%g_sec'%( per )]
                 vel         = pergrp['vel_iso'].value
-                vel_sem     = pergrp['vel_sem'].value
             except KeyError:
                 print 'No data for T = '+str(per)+' sec'
                 continue
+            try:
+                vel_sem     = pergrp['vel_sem'].value
+            except:
+                if org_grp.attrs['datatype'] == 'gr':
+                    no_sem  = True
+                else:
+                    print 'No uncertainties for T = '+str(per)+' sec'
+                    continue
             #-------------------------------
             # interpolation for velocity
             #-------------------------------
-            field2d_v   = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+            field2d_v       = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
                             minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
-            field2d_v.read_array(lonArr = self.lonArr[index1], latArr = self.latArr[index1], ZarrIn = vel[index1])
-            outfname    = 'interp_vel.lst'
+            field2d_v.read_array(lonArr = self.lonArr[index_inv], latArr = self.latArr[index_inv], ZarrIn = vel[index_inv])
+            outfname        = 'interp_vel.lst'
             field2d_v.interp_surface(workingdir=working_per, outfname=outfname)
-            vHD_dset    = pergrp.create_dataset(name='vel_iso_'+sfx, data=field2d_v.Zarr)
-            #-------------------------------
+            vHD_dset        = pergrp.create_dataset(name='vel_iso_'+sfx, data=field2d_v.Zarr)
+            #---------------------------------
             # interpolation for uncertainties
-            #-------------------------------
-            field2d_un  = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
-                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
-            field2d_un.read_array(lonArr = self.lonArr[index2], latArr = self.latArr[index2], ZarrIn = vel_sem[index2])
-            outfname    = 'interp_un.lst'
-            field2d_un.interp_surface(workingdir=working_per, outfname=outfname)
-            unHD_dset   = pergrp.create_dataset(name='vel_sem_'+sfx, data=field2d_un.Zarr)
+            #---------------------------------
+            if not no_sem:
+                field2d_un  = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                                minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
+                field2d_un.read_array(lonArr = self.lonArr[index_inv], latArr = self.latArr[index_inv], ZarrIn = vel_sem[index_inv])
+                outfname    = 'interp_un.lst'
+                field2d_un.interp_surface(workingdir=working_per, outfname=outfname)
+                unHD_dset   = pergrp.create_dataset(name='vel_sem_'+sfx, data=field2d_un.Zarr)
         if deletetxt:
             shutil.rmtree(workingdir)
         return
@@ -1368,6 +1562,14 @@ class RayTomoDataSet(h5py.File):
         print 'plotting data from '+dataid
         # # cb.solids.set_rasterized(True)
         cb.solids.set_edgecolor("face")
+        lons            = np.array([-160., -160., -150., -140., -130.,\
+                                    -160., -150., -140., -130.,\
+                                    -160., -150., -140., -130.])
+        lats            = np.array([55., 60., 60., 60., 60.,\
+                                    65., 65., 65., 55.,\
+                                    70., 70., 70., 70.])
+        xc, yc          = m(lons, lats)
+        m.plot(xc, yc,'ko', ms=15)
         # m.shadedrelief(scale=1., origin='lower')
         if showfig:
             plt.show()
@@ -1442,6 +1644,7 @@ class RayTomoDataSet(h5py.File):
     
     def plot_avg_misfit_map(self, period, threshfactor=None, runtype=0, runid=0,\
                 vmin=None, vmax=None, absolute=True, projection='lambert', cmap='cv', showfig=True):
+        # define colormap
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
@@ -1455,6 +1658,7 @@ class RayTomoDataSet(h5py.File):
                     cmap    = pycpt.load.gmtColormap(cmap)
             except:
                 pass
+        # get residual data
         rundict     = {0: 'smooth_run', 1: 'qc_run'}
         dataid      = rundict[runtype]+'_'+str(runid)
         self._get_lon_lat_arr(dataid)
@@ -1467,7 +1671,7 @@ class RayTomoDataSet(h5py.File):
             ind_flag= 0
         else:
             if ingroup.attrs['isotropic']:
-                ind_flag= 0
+                ind_flag    = 0
         pers        = self.attrs['period_array']
         if not period in pers:
             raise KeyError('period = '+str(period)+' not included in the database')
@@ -1478,6 +1682,7 @@ class RayTomoDataSet(h5py.File):
             isotropic   = True
         dataind         = 7 + ind_flag # 7 for smooth run and isotropic qc_run, 8 for others
         data            = pergrp['residual'].value
+        # get the average misfit for each station
         from statsmodels import robust
         residual        = data[:, dataind]
         mad             = robust.mad(residual)
@@ -1488,35 +1693,29 @@ class RayTomoDataSet(h5py.File):
         evla            = 0.
         i_sta           = 0
         misfit_all      = 0.
+        # loop over data array to extract misfit array
+        # NOTE: residual array looks like
+        # A B
+        # A C
+        # B C
+        # Thus two loops are needed to get misfit array for B and C
         for i in range(Ndata):
             if evla != data[i, 1] or evlo != data[i, 2]:
                 if i != 0:
                     misfit_avg  = misfit_all/i_sta
-                    # print i_sta, misfit_all, misfit_avg
                     misfit_arr.append(np.array([evla, evlo, misfit_all, misfit_avg, i_sta]))
                     n_sta       = i_sta
                     i_sta       = 0
-                    misfit_all\
-                                = 0.
-                    # # # if threshfactor is not None:
-                    # # #     if threshfactor*mad < abs(misfit_avg):
-                    # # #         print evlo, evla, misfit_avg, n_sta
-                    # # #         x, y= m(evlo, evla)
-                    # # #         im  = m.scatter(x, y, marker='^', s=200, c=misfit_avg, cmap=cmap, vmin=vmin, vmax=vmax)
-                    # # # if threshfactor is None:
-                    # # #     x, y    = m(evlo, evla)
-                    # # #     im      = m.scatter(x, y, marker='^', s=200, c=misfit_avg, cmap=cmap, vmin=vmin, vmax=vmax)
-                evla    = data[i, 1]
-                evlo    = data[i, 2]
+                    misfit_all  = 0.
+                evla        = data[i, 1]
+                evlo        = data[i, 2]
             if absolute:
-                misfit_all\
-                        += abs(residual[i])##/data[i, -1]/112.
+                misfit_all  += abs(residual[i])##/data[i, -1]/112.
             else:
-                misfit_all\
-                        += residual[i]##/data[i, -1]/112.
-            i_sta       += 1
-        misfit_arr      = np.array(misfit_arr)
-        # return misfit_arr
+                misfit_all  += residual[i]##/data[i, -1]/112.
+            i_sta           += 1
+        misfit_arr          = np.array(misfit_arr)
+        # the second loop 
         for i in range(Ndata):
             evla        = data[i, 3]
             evlo        = data[i, 4]
@@ -1531,34 +1730,30 @@ class RayTomoDataSet(h5py.File):
                         += 1
         misfit_arr[:, 3]= misfit_arr[:, 2]/misfit_arr[:, 4]
         Nevent          = misfit_arr.shape[0]
-        
-        m               = self._get_basemap(projection=projection)
-        if threshfactor is not None:
+        if threshfactor is None:
+            evla_arr    = misfit_arr[:, 0]
+            evlo_arr    = misfit_arr[:, 1]
+            misfit_avg  = misfit_arr[:, 3]
+        else:
             ind_plot    = np.where(threshfactor*mad<np.abs(misfit_arr[:, 3]))[0]
             evla_arr    = misfit_arr[ind_plot, 0]
             evlo_arr    = misfit_arr[ind_plot, 1]
             misfit_avg  = misfit_arr[ind_plot, 3]
             np.set_printoptions(formatter={'float': '{: 0.3f}'.format})
             print misfit_arr[ind_plot, :]
-        if threshfactor is None:
-            evla_arr    = misfit_arr[:, 0]
-            evlo_arr    = misfit_arr[:, 1]
-            misfit_avg  = misfit_arr[:, 3]
+        m               = self._get_basemap(projection=projection)
         x, y            = m(evlo_arr, evla_arr)
-        im              = m.scatter(x, y, marker='^', s=200, c=misfit_avg, cmap=cmap, vmin=vmin, vmax=vmax)
+        im              = m.scatter(x, y, marker='^', s=200, edgecolors='k', c=misfit_avg, cmap=cmap, vmin=vmin, vmax=vmax)
         
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label('avg misfit (sec)', fontsize=12, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb.ax.tick_params(labelsize=15)
-        # cb.set_alpha(1)
         cb.draw_all()
         if showfig:
             plt.show()
-        
-        
-    
+           
     def plot_discard_rays(self, period, runtype=0, runid=0, crifactor=0.5, crilimit=10., datatype='res', clabel='', \
                           projection='lambert', showfig=True):
         rundict     = {0: 'smooth_run', 1: 'qc_run'}
@@ -1616,6 +1811,10 @@ class RayTomoDataSet(h5py.File):
             plt.show()
         
     
+    
+    #-----
+    #functions that will be deprecated...
+    #------
     
     def _numpy2ma(self, inarray, reason_n=None):
         """Convert input numpy array to masked array
@@ -1831,8 +2030,6 @@ class RayTomoDataSet(h5py.File):
         if showfig:
             plt.show()
         return
-    
-    
     
     def plot_global_map(self, period, resolution='i', inglbpfx='./MAPS/smpkolya_phv_R', geopolygons=None, showfig=True, vmin=None, vmax=None):
         """
