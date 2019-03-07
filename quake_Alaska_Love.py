@@ -7,9 +7,10 @@ import pyaftan
 #------------------------------
 # Initialize ASDF dataset
 #------------------------------
-dset    = quakedbase.quakeASDF('/work1/leon/ALASKA_work/ASDF_data/surf_Alaska.h5')
-# # # dset.add_quakeml('/scratch/summit/life9360/ALASKA_work/quakeml/alaska_2017_aug.ml')
-# # # print dset.events[0]
+dset    = quakedbase.quakeASDF('/work1/leon/ALASKA_work/ASDF_data/surf_Alaska_Love.h5')
+
+# dset.copy_stations(inasdffname = '/work1/leon/ALASKA_work/ASDF_data/surf_Alaska.h5', channel='LH*')
+# dset.copy_catalog_fromasdf(inasdffname = '/work1/leon/ALASKA_work/ASDF_data/surf_Alaska.h5')
 
 #------------------------------
 # Retrieving earthquake catalog
@@ -34,7 +35,7 @@ dset    = quakedbase.quakeASDF('/work1/leon/ALASKA_work/ASDF_data/surf_Alaska.h5
 # # # t1=timeit.default_timer()
 # # 
 # # # dset.read_surf_waveforms_DMT(datadir='/scratch/summit/life9360/ALASKA_work/surf_19950101_20170831', verbose=False)
-# dset.get_surf_waveforms(startdate='2018-05-01', verbose=False)
+st = dset.get_love_waveforms(startdate='2006-01-01', verbose=False, channel='LHE,LHN,LHZ', minDelta=5.)
 
 #------------------------------
 # aftan analysis

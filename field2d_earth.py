@@ -899,7 +899,7 @@ class Field2d(object):
         evloArr                                 = np.ones(loninArr.size, dtype=np.float64)*evlo
         evlaArr                                 = np.ones(latinArr.size, dtype=np.float64)*evla
         az, baz, distevent                      = geodist.inv(loninArr, latinArr, evloArr, evlaArr) # loninArr/latinArr are initial points
-        distevent                               = distevent/1000.
+        distevent                               = distevent/1000.        
         az                                      = az + 180.
         az                                      = 90.-az
         baz                                     = 90.-baz
@@ -1206,6 +1206,7 @@ class Field2d(object):
             mdata       = ma.masked_array(data, mask=self.mask_helm )
         elif datatype == 'z':
             data        = self.Zarr
+            # # # data[1:-1, 1:-1]        = self.az
             try:
                 mdata   = ma.masked_array(data, mask=self.mask )
             except:
@@ -1223,13 +1224,17 @@ class Field2d(object):
         cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.ax.tick_params(labelsize=10)
         if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
-            cb.set_label('C (km/s)', fontsize=12, rotation=0)
+            if datatype == 'z':
+                cb.set_label('Travel time (sec)', fontsize=12, rotation=0)
+            else:    
+                cb.set_label('C (km/s)', fontsize=12, rotation=0)
         if self.fieldtype=='amp':
             cb.set_label('nm', fontsize=12, rotation=0)
-        # if contour:
-        #     # levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 20)
-        #     levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 60)
-        #     m.contour(x, y, self.Zarr, colors='k', levels=levels, linewidths=0.5)
+        
+        if contour:
+            # levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 20)
+            levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 60)
+            m.contour(x, y, self.Zarr, colors='k', levels=levels, linewidths=0.5)
         plt.suptitle(title, fontsize=30)
         if showfig:
             plt.show()

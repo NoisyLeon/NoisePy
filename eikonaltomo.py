@@ -2349,7 +2349,9 @@ class EikonalTomoDataSet(h5py.File):
         return outaz, outslow
         
     def plot_azimuthal_single_point(self, inlat, inlon, runid, period, helm=False, \
-                            fitpsi1=True, fitpsi2=True, getdata=False, showfig=True):
+                            fitpsi1=False, fitpsi2=True, getdata=False, showfig=True, outfname = None):
+        if inlon < 0:
+            inlon       += 360.
         if helm:
             dataid      = 'Helmholtz_stack_'+str(runid)
         else:
@@ -2360,9 +2362,16 @@ class EikonalTomoDataSet(h5py.File):
         nlon_grad       = self.attrs['nlon_grad']
         self._get_lon_lat_arr()
         index   = np.where((self.latArr==inlat)*(self.lonArr==inlon))
+        if index[0].size == 0 or index[1].size == 0:
+            print 'No data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
         if not period in pers:
             raise KeyError('period = '+str(period)+' not included in the database')
         pergrp          = ingroup['%g_sec'%( period )]
+        mask            = pergrp['mask'].value
+        if mask[index[0], index[1]]:
+            print 'No valid data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
         slowAni         = pergrp['slownessAni'].value + pergrp['slowness'].value
         velAnisem       = pergrp['velAni_sem'].value
         outslowness     = slowAni[:, index[0] - nlat_grad, index[1] - nlon_grad]
@@ -2380,73 +2389,229 @@ class EikonalTomoDataSet(h5py.File):
         Nbin            = ind.size
         if getdata:
             return azArr, 1./outslowness, outvel_sem, 1./avg_slowness
-        if fitpsi1 or fitpsi2:
-            indat           = (1./outslowness).reshape(1, Nbin)
-            U               = np.zeros((Nbin, Nbin), dtype=np.float64)
-            np.fill_diagonal(U, 1./outvel_sem)
-            # construct forward operator matrix
-            tG              = np.ones((Nbin, 1), dtype=np.float64)
-            G               = tG.copy()
-            tbaz            = np.pi*(azArr+180.)/180.
-            if fitpsi1:
-                tGsin       = np.sin(tbaz)
-                tGcos       = np.cos(tbaz)
-                G           = np.append(G, tGsin)
-                G           = np.append(G, tGcos)
-            if fitpsi2:
-                tGsin2      = np.sin(tbaz*2)
-                tGcos2      = np.cos(tbaz*2)
-                G           = np.append(G, tGsin2)
-                G           = np.append(G, tGcos2)
-            if fitpsi1 and fitpsi2:
-                G           = G.reshape((5, Nbin))
-            else:
-                G           = G.reshape((3, Nbin))
-            G               = G.T
-            G               = np.dot(U, G)
-            # data
-            d               = indat.T
-            d               = np.dot(U, d)
-            # least square inversion
-            model           = np.linalg.lstsq(G, d)[0]
-            A0              = model[0]
-            if fitpsi1:
-                A1          = np.sqrt(model[1]**2 + model[2]**2)
-                phi1        = np.arctan2(model[1], model[2])/2.
+        try:
+            if fitpsi1 or fitpsi2:
+                indat           = (1./outslowness).reshape(1, Nbin)
+                U               = np.zeros((Nbin, Nbin), dtype=np.float64)
+                np.fill_diagonal(U, 1./outvel_sem)
+                # construct forward operator matrix
+                tG              = np.ones((Nbin, 1), dtype=np.float64)
+                G               = tG.copy()
+                azArr           += 180.
+                azArr           = 360. - azArr
+                azArr           -= 90.
+                azArr[azArr<0.] += 360.  
+                tbaz            = np.pi*(azArr)/180.
+                if fitpsi1:
+                    tGsin       = np.sin(tbaz)
+                    tGcos       = np.cos(tbaz)
+                    G           = np.append(G, tGsin)
+                    G           = np.append(G, tGcos)
                 if fitpsi2:
-                    A2      = np.sqrt(model[3]**2 + model[4]**2)
-                    phi2    = np.arctan2(model[3], model[4])/2.
-            else:
-                A2          = np.sqrt(model[1]**2 + model[2]**2)
-                phi2        = np.arctan2(model[1], model[2])/2.
-            # # # predat          = np.dot(G, model) * outvel_sem
-            # # # az_fit          = np.mgrid[minazi:maxazi:100*1j]
-            # # # predat          = A1*np.cos(np.pi*(az_fit+180.) - phi1)
-        if helm:
-            plt.errorbar(azArr+180., 1./outslowness, yerr=outvel_sem, fmt='o', label='Helmholtz observed')
-        else:
-            plt.errorbar(azArr+180., 1./outslowness, yerr=outvel_sem, fmt='o', label='eikonal observed')
-        if fitpsi1 or fitpsi2:
-            az_fit          = np.mgrid[minazi:maxazi:100*1j]
-            if fitpsi1:
-                predat      = A0 + A1*np.cos((np.pi/180.*(az_fit+180.)-phi1) )
-                fitlabel    = 'A1: %g %%, phi1: %g deg \n' %(A1[0]/A0[0]*100., phi1/np.pi*180.)
-                if fitpsi2:
-                     predat     += A2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2) )
-                     fitlabel   += 'A2: %g %%, phi2: %g deg' %(A2[0]/A0[0]*100., phi2/np.pi*180.)
-            else:
-                predat      = A0 + A2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2) )
-                fitlabel    = 'A2: %g %%, phi2: %g deg' %(A2[0]/A0[0]*100., phi2/np.pi*180.)
+                    tGsin2      = np.sin(tbaz*2)
+                    tGcos2      = np.cos(tbaz*2)
+                    G           = np.append(G, tGsin2)
+                    G           = np.append(G, tGcos2)
+                if fitpsi1 and fitpsi2:
+                    G           = G.reshape((5, Nbin))
+                else:
+                    G           = G.reshape((3, Nbin))
+                G               = G.T
+                G               = np.dot(U, G)
+                # data
+                d               = indat.T
+                d               = np.dot(U, d)
+                # least square inversion
+                model           = np.linalg.lstsq(G, d)[0]
+                A0              = model[0]
+                if fitpsi1:
+                    A1          = np.sqrt(model[1]**2 + model[2]**2)
+                    phi1        = np.arctan2(model[1], model[2])/2.
+                    if fitpsi2:
+                        A2      = np.sqrt(model[3]**2 + model[4]**2)
+                        phi2    = np.arctan2(model[3], model[4])/2.
+                else:
+                    A2          = np.sqrt(model[1]**2 + model[2]**2)
+                    phi2        = np.arctan2(model[1], model[2])/2.
+                # # # predat          = np.dot(G, model) * outvel_sem
+                # # # az_fit          = np.mgrid[minazi:maxazi:100*1j]
+                # # # predat          = A1*np.cos(np.pi*(az_fit+180.) - phi1)
+            plt.figure(figsize=[18, 9.6])
+            ax      = plt.subplot()
             if helm:
-                plt.plot(az_fit+180., predat, '-', label='Helmholtz fit \n'+fitlabel )
+                plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='Helmholtz observed')
             else:
-                plt.plot(az_fit+180., predat, '-', label='eikonal fit \n'+fitlabel )
-            # print phi1/np.pi*180.
-            # # plt.plot(azArr+180., predat, '-')
-        plt.legend()
-        plt.title('lon = '+str(inlon-360.)+', lat = '+str(inlat), fontsize=30.)
-        if showfig:
-            plt.show()
+                # index   = (azArr>263.)*(azArr<273.)
+                # v       = (1./outslowness)
+                # index   = np.logical_not( index * (v[:, 0]< 3.52) )
+                # plt.errorbar(azArr[index], 1./outslowness[index], yerr=outvel_sem[index], fmt='o', label='eikonal observed')
+                plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='eikonal observed')
+                
+            if fitpsi1 or fitpsi2:
+                az_fit          = np.mgrid[minazi:maxazi:100*1j]
+                if fitpsi1:
+                    predat      = A0 + A1*np.cos((np.pi/180.*(az_fit+180.)-phi1) )
+                    fitlabel    = 'A1: %g %%, phi1: %g deg \n' %(A1[0]/A0[0]*100., phi1/np.pi*180.)
+                    if fitpsi2:
+                         predat     += A2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2) )
+                         fitlabel   += 'A2: %g %%, phi2: %g deg' %(A2[0]/A0[0]*100., phi2/np.pi*180.)
+                else:
+                    predat      = A0 + A2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2) )
+                    fitlabel    = 'A2: %g %%, phi2: %g deg' %(A2[0]/A0[0]*100., phi2/np.pi*180.)
+                if helm:
+                    plt.plot(az_fit+180., predat, '-', lw=3, label='Helmholtz fit \n'+fitlabel )
+                else:
+                    plt.plot(az_fit+180., predat, '-', lw=3, label='eikonal fit \n'+fitlabel )
+                # print phi1/np.pi*180.
+                # # plt.plot(azArr+180., predat, '-')
+            plt.ylabel('Phase velocity(km/sec)', fontsize=20)
+            plt.xlabel('Azimuth (degree)', fontsize=20)
+            ax.tick_params(axis='x', labelsize=20)
+            ax.tick_params(axis='y', labelsize=20)
+            plt.legend()
+            plt.title('lon = '+str(inlon-360.)+', lat = '+str(inlat), fontsize=30.)
+            if showfig:
+                plt.show()
+            if outfname is not None:
+                plt.savefig(outfname)
+        except:
+            return
+        
+    def plot_azimuthal_single_point_all(self, inlat, inlon, runid, period, helm=False, \
+                            fitpsi = True, getdata=False, showfig=True, outfname = None):
+        if inlon < 0:
+            inlon       += 360.
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup         = self[dataid]
+        pers            = self.attrs['period_array']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        self._get_lon_lat_arr()
+        index   = np.where((self.latArr==inlat)*(self.lonArr==inlon))
+        if index[0].size == 0 or index[1].size == 0:
+            print 'No data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp          = ingroup['%g_sec'%( period )]
+        mask            = pergrp['mask'].value
+        if mask[index[0], index[1]]:
+            print 'No valid data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
+        slowAni         = pergrp['slownessAni'].value + pergrp['slowness'].value
+        velAnisem       = pergrp['velAni_sem'].value
+        outslowness     = slowAni[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        outvel_sem      = velAnisem[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        avg_slowness    = pergrp['slowness'].value[index[0] - nlat_grad, index[1] - nlon_grad]
+        maxazi          = ingroup.attrs['maxazi']
+        minazi          = ingroup.attrs['minazi']
+        Nbin            = ingroup.attrs['N_bin']
+        azArr           = np.mgrid[minazi:maxazi:Nbin*1j]
+        
+        ind             = np.where(outvel_sem != 0)[0]
+        outslowness     = outslowness[ind]
+        azArr           = azArr[ind]
+        outvel_sem      = outvel_sem[ind]
+        Nbin            = ind.size
+        if getdata:
+            return azArr, 1./outslowness, outvel_sem, 1./avg_slowness
+        try:
+            if fitpsi:
+                indat           = (1./outslowness).reshape(1, Nbin)
+                U               = np.zeros((Nbin, Nbin), dtype=np.float64)
+                np.fill_diagonal(U, 1./outvel_sem)
+                # construct forward operator matrix
+                tG              = np.ones((Nbin, 1), dtype=np.float64)
+                G               = tG.copy()
+                azArr           += 180.
+                azArr           = 360. - azArr
+                azArr           -= 90.
+                azArr[azArr<0.] += 360.  
+                tbaz            = np.pi*(azArr)/180.
+                # fit psi1
+                tGsin           = np.sin(tbaz)
+                tGcos           = np.cos(tbaz)
+                G1              = np.append(G, tGsin)
+                G1              = np.append(G1, tGcos)
+                # fit psi2
+                tGsin2          = np.sin(tbaz*2)
+                tGcos2          = np.cos(tbaz*2)
+                G2              = np.append(G, tGsin2)
+                G2              = np.append(G2, tGcos2)
+                G2              = G2.reshape((3, Nbin))
+                # fit both
+                G3              = np.append(G1, tGsin2)
+                G3              = np.append(G3, tGcos2)
+                G3              = G3.reshape((5, Nbin))
+                #--------------------------
+                # inversion, psi2
+                #--------------------------
+                G2              = G2.T
+                G2              = np.dot(U, G2)
+                # data
+                d               = indat.T
+                d               = np.dot(U, d)
+                # least square inversion
+                model2          = np.linalg.lstsq(G2, d)[0]
+                #--------------------------
+                # inversion, psi1 + psi2
+                #--------------------------
+                G3              = G3.T
+                G3              = np.dot(U, G3)
+                # data
+                d               = indat.T
+                d               = np.dot(U, d)
+                # least square inversion
+                model3          = np.linalg.lstsq(G3, d)[0]
+                
+                A0_2            = model2[0]
+                A2_2            = np.sqrt(model2[1]**2 + model2[2]**2)
+                phi2_2          = np.arctan2(model2[1], model2[2])/2.
+                
+                A0_3            = model3[0]
+                A1_3            = np.sqrt(model3[1]**2 + model3[2]**2)
+                phi1_3          = np.arctan2(model3[1], model3[2])/2.
+                A2_3            = np.sqrt(model3[3]**2 + model3[4]**2)
+                phi2_3          = np.arctan2(model3[3], model3[4])/2.
+                    
+                # # # predat          = np.dot(G, model) * outvel_sem
+                # # # az_fit          = np.mgrid[minazi:maxazi:100*1j]
+                # # # predat          = A1*np.cos(np.pi*(az_fit+180.) - phi1)
+            plt.figure(figsize=[18, 9.6])
+            ax      = plt.subplot()
+            if helm:
+                plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='Helmholtz observed')
+            else:
+                plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='eikonal observed')
+            if fitpsi:
+                az_fit          = np.mgrid[minazi:maxazi:100*1j]
+                predat2         = A0_2 + A2_2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2_2) )
+                fitlabel2       = 'psi2 inversion: A2: %g %%, phi2: %g deg' %(A2_2[0]/A0_2[0]*100., phi2_2/np.pi*180.)
+                predat3         = A0_3 + A1_3*np.cos((np.pi/180.*(az_fit+180.)-phi1_3) ) \
+                                    + A2_3*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2_3) )
+                fitlabel3       = 'psi1 + psi2 inversion:'+ 'A1: %g %%, phi1: %g deg; ' %(A1_3[0]/A0_3[0]*100., phi1_3/np.pi*180.) \
+                                    + 'A2: %g %%, phi2: %g deg' %(A2_3[0]/A0_3[0]*100., phi2_3/np.pi*180.)
+                plt.plot(az_fit+180., predat2, '-', label=fitlabel2 )
+                plt.plot(az_fit+180., predat3, '-', label=fitlabel3 )
+            plt.ylabel('Phase velocity(km/sec)', fontsize=20)
+            plt.xlabel('Azimuth (degree)', fontsize=20)
+            ax.tick_params(axis='x', labelsize=20)
+            ax.tick_params(axis='y', labelsize=20)
+            plt.legend()
+            plt.title('lon = '+str(inlon-360.)+', lat = '+str(inlat), fontsize=30.)
+            vmin    = min((1./outslowness).min(), predat2.min()) - 0.01
+            vmax    = max((1./outslowness).max(), predat2.max()) + 0.01
+            plt.ylim(vmin, vmax)
+            if showfig:
+                plt.show()
+            if outfname is not None:
+                plt.savefig(outfname)
+        except:
+            return
+
         # if fitpsi1 or fitpsi2:
         #     return indat, model
         
@@ -2506,12 +2671,18 @@ class EikonalTomoDataSet(h5py.File):
         lat_centre  = (maxlat+minlat)/2.0
         lon_centre  = (maxlon+minlon)/2.0
         if projection=='merc':
-            m       = Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
-                        urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
+            # m       = Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
+            #             urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
             # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
-            m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
-            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
+            m       = Basemap(projection='merc', llcrnrlat=minlat, urcrnrlat=maxlat, llcrnrlon=minlon,
+                        urcrnrlon=maxlon, lat_ts=20, resolution=resolution)
+            # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
+            # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
+            m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,1,1,1])
+            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,1,0])
+            # m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
+            # m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             m.drawstates(color='g', linewidth=2.)
         elif projection=='global':
             m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
@@ -2526,14 +2697,12 @@ class EikonalTomoDataSet(h5py.File):
             # m.drawmeridians(np.arange(10,180.0,30.0), dashes=[10, 5], linewidth=2)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
-            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
             m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='h', projection='lcc',\
-                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=20)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=20)
-            # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=0.5, dashes=[2,2], labels=[1,0,0,0], fontsize=5)
-            # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=0.5, dashes=[2,2], labels=[0,0,0,1], fontsize=5)
+                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,1], fontsize=15)
         m.drawcoastlines(linewidth=1.0)
         m.drawcountries(linewidth=1.)
         # m.drawmapboundary(fill_color=[1.0,1.0,1.0])
@@ -2546,8 +2715,8 @@ class EikonalTomoDataSet(h5py.File):
             pass
         return m
     
-    def plot(self, runid, datatype, period, sem_factor=2., helm=False, merged=False, clabel='', cmap='cv', projection='lambert',\
-                hillshade=False, geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True):
+    def plot(self, runid, datatype, period, semfactor=2., Nthresh=None, helm=False, merged=False, clabel='', cmap='cv', projection='lambert',\
+                hillshade=False, geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True, v_rel=None):
         """plot maps from the tomographic inversion
         =================================================================================================================
         ::: input parameters :::
@@ -2564,6 +2733,19 @@ class EikonalTomoDataSet(h5py.File):
         showfig         - show figure or not
         =================================================================================================================
         """
+        ###
+        # # # dset_in     = h5py.File('/work1/leon/ALASKA_work/hdf5_files/eikonal_quake_20181030.h5')
+        # # # dataid      = 'Eikonal_stack_'+str(0)
+        # # # ingroup     = dset_in[dataid]
+        # # # pergrp      = ingroup['%g_sec'%( period )]
+        # # # datatype    = 'vel_iso'
+        # # # indata      = pergrp[datatype].value
+        # # # inmask      = pergrp['mask'].value
+        # # # Nm_in       = np.zeros(indata.shape)
+        # # # Nm_in[1:-1, 1:-1] \
+        # # #             = pergrp['NmeasureQC'].value
+        ###
+        
         if helm:
             dataid      = 'Helmholtz_stack_'+str(runid)
         else:
@@ -2597,11 +2779,24 @@ class EikonalTomoDataSet(h5py.File):
             outstr      = outstr[:-1]
             raise KeyError('Unexpected datatype: '+datatype+\
                            ', available datatypes are: '+outstr)
+        # mask1       = pergrp['mask'].value
+        # mask2       = pergrp['mask_eik'].value
         mask        = pergrp['mask'].value
+        # mask2       += mask
+        if not (Nthresh is None):
+            Narr        = np.zeros(self.lonArr.shape)
+            Narr[1:-1, 1:-1]        \
+                        = pergrp['NmeasureQC'].value
+            mask        += Narr < Nthresh
         if (datatype=='Nmeasure' or datatype=='NmeasureQC') and merged:
             mask    = pergrp['mask_eik'].value
         if datatype == 'vel_sem':
-            data    *= 1000.*sem_factor
+            data    *= 1000.*semfactor
+        ###
+        # # # diffdata    = abs(indata - data)
+        # # # 
+        # # # data [diffdata>0.1]  = indata[diffdata> 0.1]
+        ###
         mdata       = ma.masked_array(data, mask=mask )
         #-----------
         # plot data
@@ -2628,9 +2823,14 @@ class EikonalTomoDataSet(h5py.File):
         elif cmap == 'cv':
             import pycpt
             cmap    = pycpt.load.gmtColormap('./cv.cpt')
-        elif os.path.isfile(cmap):
-            import pycpt
-            cmap    = pycpt.load.gmtColormap(cmap)
+        else:
+            try:
+                if os.path.isfile(cmap):
+                    import pycpt
+                    cmap    = pycpt.load.gmtColormap(cmap)
+                    cmap    = cmap.reversed()
+            except:
+                pass
         ###################################################################
         if hillshade:
             from netCDF4 import Dataset
@@ -2651,10 +2851,15 @@ class EikonalTomoDataSet(h5py.File):
         #     m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
         # else:
         #     m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        if v_rel is not None:
+            mdata       = (mdata - v_rel)/v_rel * 100.
         if hillshade:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
         else:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        # m.contour(x, y, mask2, colors='w')
+        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
+        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label(clabel, fontsize=20, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
@@ -2894,7 +3099,7 @@ class EikonalTomoDataSet(h5py.File):
         if Nmeasure is not None:
             Nm_mask += Nm_in < Nmeasure
             Nm_mask += Nm < Nmeasure
-        mdata       = ma.masked_array(diffdata, mask=mask + inmask+Nm_mask )
+        mdata       = ma.masked_array(diffdata, mask=mask + inmask + Nm_mask )
         #-----------
         # plot data
         #-----------
@@ -2910,7 +3115,7 @@ class EikonalTomoDataSet(h5py.File):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
                 ################################
-        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=-0.2, vmax=0.2)
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=-0.1, vmax=0.1)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label(clabel, fontsize=30, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
@@ -3071,6 +3276,46 @@ class EikonalTomoDataSet(h5py.File):
         if showfig:
             plt.show()
 
+    def plot_travel_time(self, inasdffname, netcode, stacode, period, channel='ZZ', mindp=50):
+        minlon              = self.attrs['minlon']
+        maxlon              = self.attrs['maxlon']
+        minlat              = self.attrs['minlat']
+        maxlat              = self.attrs['maxlat']
+        dlon                = self.attrs['dlon']
+        dlat                = self.attrs['dlat']
+        nlat_grad           = self.attrs['nlat_grad']
+        nlon_grad           = self.attrs['nlon_grad']
+        nlat_lplc           = self.attrs['nlat_lplc']
+        nlon_lplc           = self.attrs['nlon_lplc']
+        inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        try:
+            data            = inDbase.auxiliary_data['FieldDISPpmf2interp'][netcode][stacode][channel][str(int(period))+'sec'].data.value
+        except KeyError:
+            print 'No data!'
+            return
+        lons        = data[:, 0]
+        lats        = data[:, 1]
+        C           = data[:, 2]
+        dist        = data[:, 5]
+        T           = dist/C
+        coordinates = inDbase.waveforms[netcode+'.'+stacode].coordinates
+        evlo        = coordinates['longitude']
+        evla        = coordinates['latitude']
+        field2d     = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=period, evlo=evlo, evla=evla, fieldtype='Tph',\
+                                nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
+        if not _check_station_distribution(lons, lats, np.int32(mindp/2.)):
+            print 'Travel time related to this station will be discarded!'
+        field2d.read_array(lonArr = lons, latArr = lats, ZarrIn = T )
+        outfname        = netcode+'.'+stacode+'_Tph_'+channel+'.lst'
+        field2d.interp_surface(workingdir='temp_travel_time_dir', outfname=outfname)
+        if not field2d.check_curvature(workingdir='temp_travel_time_dir', outpfx=netcode+'.'+stacode+'_'+channel+'_'):
+            print 'Did not pass the curvature test!'
+            return
+        field2d.eikonal_operator(workingdir='temp_travel_time_dir', inpfx=netcode+'.'+stacode+'_'+channel+'_')
+        field2d.plot(datatype='z', title='Travel time for station: '+ netcode+'.'+stacode, contour=True)
+    
+    
 class hybridTomoDataSet(EikonalTomoDataSet):
     """
     Object for merging eikonal tomography results, ray tomography results
@@ -3677,6 +3922,7 @@ class hybridTomoDataSet(EikonalTomoDataSet):
                     inrunid=0, gausspercent=1., gstd_thresh=100.):
         """
         Merge eikonal tomography results with ray tomography results
+        Uncertainties will be extrapolated based on the resolution values yieled by the ray tomography method
         """
         # ray tomography group
         indset      = h5py.File(inrayfname)
@@ -3715,15 +3961,29 @@ class hybridTomoDataSet(EikonalTomoDataSet):
                 mgauss  = pergrp['gauss_std'].value
                 mask_ray+= mgauss > gstd_thresh
         outgrp.create_dataset(name='mask_ray', data=mask_ray)
+        #------------------------------------------------------
+        # determine mask for period in eikonal database
+        #------------------------------------------------------
+        # mask_eik        = grp['%g_sec'%( pers[0] )]['mask'].value
+        # for per in pers:
+        #     pergrp          = grp['%g_sec'%( per )]
+        #     mask_temp       = pergrp['mask'].value
+        #     Nmeasure        = np.zeros(mask_eik.shape)
+        #     Nmeasure[1:-1, 1:-1]\
+        #                     = pergrp['NmeasureQC'].value
+        #     mask_temp[Nmeasure<Nmeasure_thresh]\
+        #                     = True
+        #     mask_eik        += mask_temp
+        # outgrp.create_dataset(name='mask_eik', data=mask_eik)
         for per in pers:
             pergrp          = grp['%g_sec'%( per )]
-            mask            = pergrp['mask'].value
             velocity        = pergrp['vel_iso'].value
             uncertainty     = pergrp['vel_sem'].value
-            Nmeasure        = np.zeros(mask.shape)
+            mask_eik        = pergrp['mask'].value
+            Nmeasure        = np.zeros(mask_eik.shape)
             Nmeasure[1:-1, 1:-1]\
                             = pergrp['NmeasureQC'].value
-            mask[Nmeasure<Nmeasure_thresh]\
+            mask_eik[Nmeasure<Nmeasure_thresh]\
                             = True
             #-------------------------------
             # get data
@@ -3732,8 +3992,8 @@ class hybridTomoDataSet(EikonalTomoDataSet):
                 per_raygrp  = raygrp['%g_sec'%( per )]
                 # replace velocity value outside eikonal region
                 vel_ray     = per_raygrp['vel_iso'].value
-                velocity[mask]\
-                            = vel_ray[mask]
+                velocity[mask_eik]\
+                            = vel_ray[mask_eik]
                 #--------------------------------------------------
                 # replace uncertainty value outside eikonal region
                 #--------------------------------------------------
@@ -3744,7 +4004,7 @@ class hybridTomoDataSet(EikonalTomoDataSet):
                 gstdmin     = mgauss2.min()
                 ind_gstdmin = (mgauss==gstdmin*gausspercent)*index_ray
                 # eikonal 
-                index       = np.logical_not(mask)
+                index       = np.logical_not(mask_eik)
                 Nmeasure2   = Nmeasure[index]
                 if Nmeasure2.size == 0:
                     print '--- T = '+str(per)+' sec ---'
@@ -3761,7 +4021,10 @@ class hybridTomoDataSet(EikonalTomoDataSet):
                 else:
                     raise ValueError('at least one of percentage/num_thresh should be specified')
                 indstd      = (Nmeasure>=NMthresh)*index
-                # estimate uncertainties
+                #------------------------
+                # extrapolate uncertainties
+                #------------------------
+                # locate the grid points where Gaussian std is small enough and Nmeasure is large enough
                 index_all   = ind_gstdmin*indstd
                 temp_sem    = uncertainty[index_all]
                 if temp_sem.size == 0:
@@ -3775,17 +4038,17 @@ class hybridTomoDataSet(EikonalTomoDataSet):
                 print '----------------------------'
                 est_sem     = (mgauss/gstdmin)*sem_min
                 # replace uncertainties
-                uncertainty[mask]\
-                            = est_sem[mask]
+                uncertainty[mask_eik]\
+                            = est_sem[mask_eik]
             # save data to database
             out_pergrp      = outgrp.create_group(name='%g_sec'%( per ))
             vdset           = out_pergrp.create_dataset(name='vel_iso', data=velocity)
             undset          = out_pergrp.create_dataset(name='vel_sem', data=uncertainty)
-            maskeikdset     = out_pergrp.create_dataset(name='mask_eik', data=mask)
+            maskeikdset     = out_pergrp.create_dataset(name='mask_eik', data=mask_eik)
             if per in raypers:
                 maskdset    = out_pergrp.create_dataset(name='mask', data=mask_ray)
             else:
-                maskdset    = out_pergrp.create_dataset(name='mask', data=mask)
+                maskdset    = out_pergrp.create_dataset(name='mask', data=mask_eik)
             Nmdset          = out_pergrp.create_dataset(name='Nmeasure', data=Nmeasure)
         return
 
@@ -3987,6 +4250,8 @@ class hybridTomoDataSet(EikonalTomoDataSet):
         if showfig:
             plt.show()
         return
+    
+    
     
 def eikonal4mp(infield, workingdir, channel, cdist):
     working_per     = workingdir+'/'+str(infield.period)+'sec'

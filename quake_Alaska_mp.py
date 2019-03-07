@@ -57,7 +57,7 @@ dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eik
 # dset.eikonal_stack(runid=0, anisotropic=False)
 # dset.helm_stack(runid=0, anisotropic=False, dv_thresh=0.2)
 
-# dset.compare_eiktomo(ineiktomofname='/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20180814_250km.h5', \
-#                      inrunid=0, runid=0, period=40., Nmeasure=50, helm=True)
+dset.compare_eiktomo(ineiktomofname='/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20180814_250km.h5', \
+                     inrunid=0, runid=0, period=40., Nmeasure=50, helm=False)
 
 

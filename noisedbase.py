@@ -37,6 +37,10 @@ from mpl_toolkits.basemap import Basemap, shiftgrid, cm
 import obspy.signal.array_analysis
 from obspy.imaging.cm import obspy_sequential
 import glob
+from numba import jit, float32, int32, boolean, float64
+import pyfftw
+import time
+
 
 sta_info_default        = {'xcorr': 1, 'isnet': 0}
 xcorr_header_default    = {'netcode1': '', 'stacode1': '', 'netcode2': '', 'stacode2': '', 'chan1': '', 'chan2': '',
@@ -46,6 +50,368 @@ xcorr_sacheader_default = {'knetwk': '', 'kstnm': '', 'kcmpnm': '', 'stla': 1234
                 'delta': 12345, 'npts': 12345, 'user0': 0, 'b': 12345, 'e': 12345}
 monthdict               = {1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AUG', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DEC'}
 
+
+@jit(float32[:](float32[:, :], float32[:, :], int32))
+def _CalcRecCor(arr1, arr2, lagN):
+    """compute the amplitude weight for the xcorr, used for amplitude correction
+        optimized by numba
+    ==============================================================================
+    ::: input parameters :::
+    arr1, arr2  - the input arrays from ft_*SAC_rec,
+                    indicating holes in the original records
+    lagN        - one-sided npts for xcorr
+    ::: output :::
+    cor_rec     - amplitude weight for the xcorr
+    ==============================================================================
+    """
+    N1      = arr1.shape[0]
+    N2      = arr2.shape[0]
+    # array indicating number of data points for xcorr, used for amplitude correction
+    cor_rec = np.zeros(int(2*lagN + 1), dtype=float)
+    for i in range(lagN+1):
+        cor_rec[lagN+i] = 0.
+        cor_rec[lagN-i] = 0.
+        for irec1 in range(N1):
+            for irec2 in range(N2):
+                if arr1[irec1, 0] >= arr2[irec2, 1] - i:
+                    continue
+                if arr1[irec1, 1] <= arr2[irec2, 0] - i:
+                    break
+                recB            = max(arr1[irec1, 0], arr2[irec2, 0] - i)
+                recE            = min(arr1[irec1, 1], arr2[irec2, 1] - i)
+                cor_rec[lagN+i] += recE - recB
+            for irec2 in range(N2):
+                if arr1[irec1, 0] >= arr2[irec2, 1] + i:
+                    continue
+                if arr1[irec1, 1] <= arr2[irec2, 0] + i:
+                    break
+                recB            = max(arr1[irec1, 0], arr2[irec2, 0] + i)
+                recE            = min(arr1[irec1, 1], arr2[irec2, 1] + i)
+                cor_rec[lagN-i] += recE - recB
+    cor_rec[lagN]   /= 2.
+    return cor_rec
+
+def _amp_ph_to_xcorr(amp1, amp2, ph1, ph2, sps = 1., lagtime = 3000.):
+    """Convert amplitude and phase arrays to xcorr
+    ==============================================================================
+    ::: input parameters :::
+    amp1, ph1   - amplitude and phase data arrays for station(component) 1
+    amp2, ph2   - amplitude and phase data arrays for station(component) 2
+    sps         - target sampling rate
+    lagtime     - lag time for xcorr
+    ::: output :::
+    out_data    - xcorr
+    ==============================================================================
+    """
+    N           = amp1.size
+    Ns          = int(2*N - 1)
+    # cross-spectrum, conj(sac1)*(sac2)
+    x_sp        = np.zeros(Ns, dtype=complex) 
+    temp1       = np.zeros(N, dtype=complex)
+    temp2       = np.zeros(N, dtype=complex)
+    temp1.real  = amp1*np.cos(ph1)
+    temp1.imag  = amp1*np.sin(ph1)
+    temp2.real  = amp2*np.cos(ph2)
+    temp2.imag  = amp2*np.sin(ph2)
+    x_sp[:N]    = temp2 * np.conj(temp1)
+    # perform inverse FFT with pyFFTW, much faster than numpy_fft, scipy.fftpack
+    out         = pyfftw.interfaces.numpy_fft.ifft(x_sp)
+    seis_out    = 2.*(out.real)
+    lagN        = int(np.floor(lagtime*sps +0.5))
+    if lagN > Ns:
+        raise ValueError('Lagtime npts overflow!')
+    out_data            = np.zeros(2*lagN+1, dtype=float)
+    out_data[lagN]      = seis_out[0]
+    out_data[:lagN]     = (seis_out[1:lagN+1])[::-1]
+    out_data[(lagN+1):] = (seis_out[Ns-lagN:])[::-1]
+    return out_data
+
+def _amp_ph_to_xcorr_fast(amp1, amp2, ph1, ph2, fftw_plan, sps = 1., lagtime = 3000.):
+    """Convert amplitude and phase arrays to xcorr
+        This is the fast version of _amp_ph_to_xcorr, a precomputed fftw_plan needs
+        to be prepared for speeding up
+    ==============================================================================
+    ::: input parameters :::
+    amp1, ph1   - amplitude and phase data arrays for station(component) 1
+    amp2, ph2   - amplitude and phase data arrays for station(component) 2
+    fftw_plan   - precomputed fftw_plan
+    sps         - target sampling rate
+    lagtime     - lag time for xcorr
+    ::: output :::
+    out_data    - xcorr
+    ==============================================================================
+    """
+    N           = amp1.size
+    Ns          = int(2*N - 1)
+    # cross-spectrum, conj(sac1)*(sac2)
+    x_sp        = np.zeros(Ns, dtype=complex)
+    out         = np.zeros(Ns, dtype=complex)
+    temp1       = np.zeros(N, dtype=complex)
+    temp2       = np.zeros(N, dtype=complex)
+    temp1.real  = amp1*np.cos(ph1)
+    temp1.imag  = amp1*np.sin(ph1)
+    temp2.real  = amp2*np.cos(ph2)
+    temp2.imag  = amp2*np.sin(ph2)
+    x_sp[:N]    = temp2 * np.conj(temp1)
+    # perform inverse FFT with pyFFTW, much faster than numpy_fft, scipy.fftpack
+    # the precomputed fftw_plan is used
+    fftw_plan.update_arrays(x_sp, out)
+    fftw_plan.execute()
+    seis_out    = 2.*(out.real)
+    lagN        = int(np.floor(lagtime*sps +0.5))
+    if lagN > Ns:
+        raise ValueError('Lagtime npts overflow!')
+    out_data            = np.zeros(2*lagN+1, dtype=float)
+    out_data[lagN]      = seis_out[0]
+    out_data[:lagN]     = (seis_out[1:lagN+1])[::-1]
+    out_data[(lagN+1):] = (seis_out[Ns-lagN:])[::-1]
+    return out_data/Ns
+
+class xcorr_pair(object):
+    """ An object to for ambient noise cross-correlation computation
+    =================================================================================================================
+    ::: parameters :::
+    stacode1, netcode1  - station/network code for station 1
+    stacode2, netcode2  - station/network code for station 2
+    monthdir            - month directory (e.g. 2019.JAN)
+    daylst              - list includes the days for xcorr
+    =================================================================================================================
+    """
+    def __init__(self, stacode1, netcode1, stacode2, netcode2, monthdir, daylst):
+        self.stacode1   = stacode1
+        self.netcode1   = netcode1
+        self.stacode2   = stacode2
+        self.netcode2   = netcode2
+        self.monthdir   = monthdir
+        self.daylst     = daylst
+        return
+    
+    def print_info(self):
+        """print the informations of this pair
+        """
+        staid1          = self.netcode1 + '.' + self.stacode1
+        staid2          = self.netcode2 + '.' + self.stacode2
+        print '--- '+ staid1+'_'+staid2+' : '+self.monthdir+' '+str(len(self.daylst))+' days' 
+    
+    def convert_amph_to_xcorr(self, datadir, chans=['LHZ', 'LHE', 'LHN'], ftlen = True,\
+            tlen = 84000., mintlen = 20000., sps = 1., lagtime = 3000., CorOutflag = 0, \
+            fprcs = False, fastfft=True, verbose=False):
+        """
+        Convert amplitude and phase files to xcorr
+        =================================================================================================================
+        ::: input parameters :::
+        datadir     - directory including data and output
+        chans       - channel list
+        ftlen       - turn (on/off) cross-correlation-time-length correction for amplitude
+        tlen        - time length of daily records (in sec)
+        mintlen     - allowed minimum time length for cross-correlation (takes effect only when ftlen = True)
+        sps         - target sampling rate
+        lagtime     - cross-correlation signal half length in sec
+        CorOutflag  - 0 = only output monthly xcorr data, 1 = only daily, 2 or others = output both
+        fprcs       - turn on/off (1/0) precursor signal checking, NOT implemented yet
+        fastfft     - speeding up the computation by using precomputed fftw_plan or not
+        =================================================================================================================
+        """
+        if verbose:
+            self.print_info()
+        staid1                  = self.netcode1 + '.' + self.stacode1
+        staid2                  = self.netcode2 + '.' + self.stacode2
+        month_dir               = datadir+'/'+self.monthdir
+        monthly_xcorr           = []
+        chan_size               = len(chans)
+        init_common_header      = False
+        xcorr_common_sacheader  = xcorr_sacheader_default.copy()
+        lagN                    = np.floor(lagtime*sps +0.5) # npts for one-sided lag
+        stacked_day             = 0
+        #---------------------------------------
+        # construct fftw_plan for speeding up
+        #---------------------------------------
+        if fastfft:
+            temp_pfx        = month_dir+'/'+self.monthdir+'.'+str(self.daylst[0])+\
+                                '/ft_'+self.monthdir+'.'+str(self.daylst[0])+'.'+staid1+'.'+chans[0]+'.SAC'
+            amp_ref         = obspy.read(temp_pfx+'.am')[0]
+            Nref            = amp_ref.data.size
+            Ns              = int(2*Nref - 1)
+            temp_x_sp       = np.zeros(Ns, dtype=complex)
+            temp_out        = np.zeros(Ns, dtype=complex)
+            fftw_plan       = pyfftw.FFTW(input_array=temp_x_sp, output_array=temp_out, direction='FFTW_BACKWARD',\
+                                flags=('FFTW_MEASURE', ))
+        else:
+            Nref            = 0
+        #-----------------
+        # loop over days
+        #-----------------
+        for day in self.daylst:
+            # input streams
+            st_amp1     = obspy.Stream()
+            st_ph1      = obspy.Stream()
+            st_amp2     = obspy.Stream()
+            st_ph2      = obspy.Stream()
+            # daily output streams
+            daily_xcorr = []
+            daydir      = month_dir+'/'+self.monthdir+'.'+str(day)
+            # read amp/ph files
+            for chan in chans:
+                pfx1    = daydir+'/ft_'+self.monthdir+'.'+str(day)+'.'+staid1+'.'+chan+'.SAC'
+                pfx2    = daydir+'/ft_'+self.monthdir+'.'+str(day)+'.'+staid2+'.'+chan+'.SAC'
+                st_amp1 += obspy.read(pfx1+'.am')
+                st_ph1  += obspy.read(pfx1+'.ph')
+                st_amp2 += obspy.read(pfx2+'.am')
+                st_ph2  += obspy.read(pfx2+'.ph')
+            #-----------------------------
+            # define commone sac header
+            #-----------------------------
+            if not init_common_header:
+                tr1                                 = st_amp1[0]
+                tr2                                 = st_amp2[0]
+                xcorr_common_sacheader['kuser0']    = self.netcode1
+                xcorr_common_sacheader['kevnm']     = self.stacode1
+                xcorr_common_sacheader['knetwk']    = self.netcode2
+                xcorr_common_sacheader['kstnm']     = self.stacode2
+                # # # xcorr_common_sacheader['kcmpnm']    = chan1+chan2
+                xcorr_common_sacheader['evla']      = tr1.stats.sac.stla
+                xcorr_common_sacheader['evlo']      = tr1.stats.sac.stlo
+                xcorr_common_sacheader['stla']      = tr2.stats.sac.stla
+                xcorr_common_sacheader['stlo']      = tr2.stats.sac.stlo
+                dist, az, baz                       = obspy.geodetics.gps2dist_azimuth(tr1.stats.sac.stla, tr1.stats.sac.stlo,\
+                                                        tr2.stats.sac.stla, tr2.stats.sac.stlo) # distance is in m
+                xcorr_common_sacheader['dist']      = dist/1000.
+                xcorr_common_sacheader['az']        = az
+                xcorr_common_sacheader['baz']       = baz
+                xcorr_common_sacheader['delta']     = 1./sps
+                xcorr_common_sacheader['npts']      = int(2*lagN + 1)
+                xcorr_common_sacheader['b']         = -float(lagN/sps)
+                xcorr_common_sacheader['e']         = float(lagN/sps)
+                xcorr_common_sacheader['user0']     = 1
+                init_common_header                  = True
+            skip_this_day   = False
+            # compute cross-correlation
+            for ich1 in range(chan_size):
+                if skip_this_day:
+                    break
+                for ich2 in range(chan_size):
+                    # get data arrays
+                    amp1    = st_amp1[ich1].data
+                    ph1     = st_ph1[ich1].data
+                    amp2    = st_amp2[ich2].data
+                    ph2     = st_ph2[ich2].data
+                    # quality control
+                    if np.any(amp1 > 1e20) or np.any(amp2 > 1e20):
+                        skip_this_day   = True
+                        break
+                    if np.isnan(amp1).any() or np.isnan(amp2).any() or \
+                            np.isnan(ph1).any() or np.isnan(ph2).any():
+                        skip_this_day   = True
+                        break
+                    # get amplitude correction array
+                    Namp        = amp1.size
+                    if ftlen:
+                        # npts for the length of the preprocessed daily record 
+                        Nrec    = int(tlen*sps)
+                        frec1   = daydir+'/ft_'+self.monthdir+'.'+str(day)+'.'+staid1+'.'+chans[ich1]+'.SAC_rec'
+                        frec2   = daydir+'/ft_'+self.monthdir+'.'+str(day)+'.'+staid2+'.'+chans[ich1]+'.SAC_rec'
+                        if os.path.isfile(frec1):
+                            arr1= np.loadtxt(frec1)
+                            if arr1.size == 2:
+                                arr1    = arr1.reshape(1, 2) 
+                        else:
+                            arr1= (np.array([0, Nrec])).reshape(1, 2)                            
+                        if os.path.isfile(frec2):
+                            arr2= np.loadtxt(frec2)
+                            if arr2.size == 2:
+                                arr2    = arr2.reshape(1, 2)
+                        else:
+                            arr2= (np.array([0, Nrec])).reshape(1, 2)
+                        cor_rec     = _CalcRecCor(arr1, arr2, np.int32(lagN))
+                        # skip the day if the length of available data is too small
+                        if cor_rec[0] < mintlen*sps or cor_rec[-1] < mintlen*sps:
+                            skip_this_day   = True
+                            break
+                    # comvert amp & ph files to xcorr
+                    if fastfft and Namp == Nref:
+                        out_data        = _amp_ph_to_xcorr_fast(amp1=amp1, ph1=ph1, amp2=amp2, ph2=ph2, sps=sps,\
+                                                                lagtime=lagtime, fftw_plan=fftw_plan)
+                    else:
+                        out_data        = _amp_ph_to_xcorr(amp1=amp1, ph1=ph1, amp2=amp2, ph2=ph2, sps=sps, lagtime=lagtime)
+                    # amplitude correction
+                    if ftlen:
+                        out_data    /= cor_rec
+                        out_data    *= float(2*Namp - 1)
+                    # end of computing individual xcorr
+                    daily_xcorr.append(out_data)
+            # end loop over channels
+            if not skip_this_day:
+                if verbose:
+                    print 'xcorr finished '+ staid1+'_'+staid2+' : '+self.monthdir+'.'+str(day)
+                # output daily xcorr
+                if CorOutflag != 0:
+                    out_daily_dir   = month_dir+'/COR_D/'+staid1
+                    if not os.path.isdir(out_daily_dir):
+                        os.makedirs(out_daily_dir)
+                    for ich1 in range(chan_size):
+                        for ich2 in range(chan_size):
+                            i                       = 3*ich1 + ich2
+                            out_daily_fname         = out_daily_dir+'/COR_'+staid1+'_'+chans[ich1]+\
+                                                        '_'+staid2+'_'+chans[ich2]+'_'+str(day)+'.SAC'
+                            daily_header            = xcorr_common_sacheader.copy()
+                            daily_header['kcmpnm']  = chans[ich1]+chans[ich2]
+                            sacTr                   = obspy.io.sac.sactrace.SACTrace(data = daily_xcorr[i], **daily_header)
+                            sacTr.write(out_daily_fname)
+                # append to monthly data
+                if CorOutflag != 1:
+                    # intilize
+                    if stacked_day  == 0:
+                        for ich1 in range(chan_size):
+                            for ich2 in range(chan_size):
+                                i                   = 3*ich1 + ich2
+                                monthly_xcorr.append(daily_xcorr[i])
+                    # stacking
+                    else:
+                        for ich1 in range(chan_size):
+                            for ich2 in range(chan_size):
+                                i                   = 3*ich1 + ich2
+                                monthly_xcorr[i]    += daily_xcorr[i]
+                    stacked_day += 1
+        # end loop over days
+        if CorOutflag != 1 and stacked_day != 0:
+            out_monthly_dir     = month_dir+'/COR/'+staid1
+            if not os.path.isdir(out_monthly_dir):
+                try:
+                    os.makedirs(out_monthly_dir)
+                except OSError:
+                    i   = 0
+                    while(i < 10):
+                        sleep_time  = np.random.random()/10.
+                        time.sleep(sleep_time)
+                        if not os.path.isdir(out_monthly_dir):
+                            try:
+                                os.makedirs(out_monthly_dir)
+                                break
+                            except OSError:
+                                pass
+                        i   += 1
+            for ich1 in range(chan_size):
+                for ich2 in range(chan_size):
+                    i                           = 3*ich1 + ich2
+                    out_monthly_fname           = out_monthly_dir+'/COR_'+staid1+'_'+chans[ich1]+\
+                                                    '_'+staid2+'_'+chans[ich2]+'.SAC'
+                    monthly_header              = xcorr_common_sacheader.copy()
+                    monthly_header['kcmpnm']    = chans[ich1]+chans[ich2]
+                    monthly_header['user0']     = stacked_day
+                    sacTr                       = obspy.io.sac.sactrace.SACTrace(data = monthly_xcorr[i], **monthly_header)
+                    sacTr.write(out_monthly_fname)
+        return
+
+def amph_to_xcorr_for_mp(in_xcorr_pair, datadir, chans=['LHZ', 'LHE', 'LHN'], ftlen = True,\
+            tlen = 84000., mintlen = 20000., sps = 1., lagtime = 3000., CorOutflag = 0, \
+            fprcs = False, fastfft=True):
+    
+    in_xcorr_pair.convert_amph_to_xcorr(datadir=datadir, chans=chans, ftlen = ftlen,\
+            tlen = tlen, mintlen = mintlen, sps = sps,  lagtime = lagtime, CorOutflag = CorOutflag,\
+                    fprcs = fprcs, fastfft=fastfft)
+    # # # in_xcorr_pair.print_info()
+    return
+    
 class noiseASDF(pyasdf.ASDFDataSet):
     """ An object to for ambient noise cross-correlation analysis based on ASDF database
     =================================================================================================================
@@ -230,6 +596,70 @@ class noiseASDF(pyasdf.ASDFDataSet):
         self.add_stationxml(inv)
         print('End writing obspy inventory to ASDF dataset')
         return 
+    
+    def copy_stations(self, inasdffname, startdate=None, enddate=None, location=None, channel=None, includerestricted=False,
+            minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None, latitude=None, longitude=None, minradius=None, maxradius=None):
+        """copy and renew station inventory given an input ASDF file
+            the function will copy the network and station names while renew other informations given new limitations
+        =======================================================================================================
+        ::: input parameters :::
+        inasdffname         - input ASDF file name
+        startdate, enddata  - start/end date for searching
+        network             - Select one or more network codes.
+                                Can be SEED network codes or data center defined codes.
+                                    Multiple codes are comma-separated (e.g. "IU,TA").
+        station             - Select one or more SEED station codes.
+                                Multiple codes are comma-separated (e.g. "ANMO,PFO").
+        location            - Select one or more SEED location identifiers.
+                                Multiple identifiers are comma-separated (e.g. "00,01").
+                                As a special case “--“ (two dashes) will be translated to a string of two space
+                                characters to match blank location IDs.
+        channel             - Select one or more SEED channel codes.
+                                Multiple codes are comma-separated (e.g. "BHZ,HHZ").             
+        minlatitude         - Limit to events with a latitude larger than the specified minimum.
+        maxlatitude         - Limit to events with a latitude smaller than the specified maximum.
+        minlongitude        - Limit to events with a longitude larger than the specified minimum.
+        maxlongitude        - Limit to events with a longitude smaller than the specified maximum.
+        latitude            - Specify the latitude to be used for a radius search.
+        longitude           - Specify the longitude to the used for a radius search.
+        minradius           - Limit to events within the specified minimum number of degrees from the
+                                geographic point defined by the latitude and longitude parameters.
+        maxradius           - Limit to events within the specified maximum number of degrees from the
+                                geographic point defined by the latitude and longitude parameters.
+        =======================================================================================================
+        """
+        try:
+            starttime   = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            starttime   = None
+        try:
+            endtime     = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            endtime     = None
+        client          = Client('IRIS')
+        init_flag       = False
+        indset          = pyasdf.ASDFDataSet(inasdffname)
+        for staid in indset.waveforms.list():
+            network     = staid.split('.')[0]
+            station     = staid.split('.')[1]
+            print 'Copying/renewing station inventory: '+ staid
+            if init_flag:
+                inv     += client.get_stations(network=network, station=station, starttime=starttime, endtime=endtime, channel=channel, 
+                            minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
+                            latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, level='channel',
+                            includerestricted=includerestricted)
+            else:
+                inv     = client.get_stations(network=network, station=station, starttime=starttime, endtime=endtime, channel=channel, 
+                            minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
+                            latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, level='channel',
+                            includerestricted=includerestricted)
+                init_flag= True
+        self.add_stationxml(inv)
+        try:
+            self.inv    +=inv
+        except:
+            self.inv    = inv
+        return
     
     def get_limits_lonlat(self):
         """get the geographical limits of the stations
@@ -441,6 +871,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         
         return st
         
+    
     def read_xcorr(self, datadir, pfx='COR', fnametype=2, inchannels=None, verbose=True):
         """Read cross-correlation data in ASDF database
         ===========================================================================================================
@@ -535,6 +966,162 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     print 'reading xcorr data: '+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2
         return
         
+    def compute_xcorr(self, datadir, startdate, enddate, chans=['LHZ', 'LHE', 'LHN'], \
+            fskipxcorr = 0, ftlen = True, tlen = 84000., mintlen = 20000., sps = 1., lagtime = 3000., CorOutflag = 0, \
+                fprcs = False, fastfft=True, parallel=True, nprocess=None, subsize=600):
+        """
+        compute ambient noise cross-correlation given preprocessed amplitude and phase files
+        =================================================================================================================
+        ::: input parameters :::
+        datadir             - directory including data and output
+        startdate/enddate   - start/end date for computation           
+        chans               - channel list
+        fskipxcorr          - skip flags: 1 = skip upon existence of target file, 0 = overwrites
+        ftlen               - turn (on/off) cross-correlation-time-length correction for amplitude
+        tlen                - time length of daily records (in sec)
+        mintlen             - allowed minimum time length for cross-correlation (takes effect only when ftlen = True)
+        sps                 - target sampling rate
+        lagtime             - cross-correlation signal half length in sec
+        CorOutflag          - 0 = only output monthly xcorr data, 1 = only daily, 2 or others = output both
+        fprcs               - turn on/off (1/0) precursor signal checking, NOT implemented yet
+        fastfft             - speeding up the computation by using precomputed fftw_plan or not
+        parallel            - run the xcorr parallelly or not
+        nprocess            - number of processes
+        subsize             - subsize of processing list, use to prevent lock in multiprocessing process
+        =================================================================================================================
+        """
+        stime   = obspy.UTCDateTime(startdate)
+        etime   = obspy.UTCDateTime(enddate)
+        #-------------------------
+        # Loop over month
+        #-------------------------
+        while(stime < etime):
+            print '=== Xcorr data preparing: '+str(stime.year)+'.'+monthdict[stime.month]
+            month_dir   = datadir+'/'+str(stime.year)+'.'+monthdict[stime.month]
+            if not os.path.isdir(month_dir):
+                print '--- Xcorr dir NOT exists : '+str(stime.year)+'.'+monthdict[stime.month]
+                continue
+            # xcorr list
+            xcorr_lst   = []
+            # define the first day and last day of the current month
+            c_stime     = obspy.UTCDateTime(str(stime.year)+'-'+str(stime.month)+'-1')
+            try:
+                c_etime = obspy.UTCDateTime(str(stime.year)+'-'+str(stime.month+1)+'-1')
+            except ValueError:
+                c_etime = obspy.UTCDateTime(str(stime.year+1)+'-1-1')
+            #-------------------------
+            # Loop over station 1
+            #-------------------------
+            for staid1 in self.waveforms.list():
+                # determine if the range of the station 1 matches current month
+                st_date1    = self.waveforms[staid1].StationXML.networks[0].stations[0].start_date
+                ed_date1    = self.waveforms[staid1].StationXML.networks[0].stations[0].end_date
+                if st_date1 > c_etime or ed_date1 < c_stime:
+                    continue
+                netcode1, stacode1  = staid1.split('.')
+                #-------------------------
+                # Loop over station 2
+                #-------------------------
+                for staid2 in self.waveforms.list():
+                    if staid1 >= staid2:
+                        continue
+                    netcode2, stacode2  = staid2.split('.')
+                    ###
+                    # if staid1 != 'IU.COLA' or staid2 != 'XE.DH3':
+                    #     continue
+                    ###
+                    # determine if the range of the station 2 matches current month
+                    st_date2    = self.waveforms[staid2].StationXML.networks[0].stations[0].start_date
+                    ed_date2    = self.waveforms[staid2].StationXML.networks[0].stations[0].end_date
+                    if st_date2 > c_etime or ed_date2 < c_stime:
+                        continue
+                    ctime       = obspy.UTCDateTime(str(stime.year)+'-'+str(stime.month)+'-1')
+                    # day list
+                    daylst      = []
+                    # Loop over days
+                    while(True):
+                        daydir  = month_dir+'/'+str(stime.year)+'.'+monthdict[stime.month]+'.'+str(ctime.day)
+                        skipday = False
+                        if os.path.isdir(daydir):
+                            for chan in chans:
+                                infname1    = daydir+'/ft_'+str(stime.year)+'.'+monthdict[stime.month]+'.'+str(ctime.day)+\
+                                               '.'+staid1+'.'+chan+ '.SAC'
+                                infname2    = daydir+'/ft_'+str(stime.year)+'.'+monthdict[stime.month]+'.'+str(ctime.day)+\
+                                               '.'+staid2+'.'+chan+ '.SAC'
+                                if os.path.isfile(infname1+'.am') and os.path.isfile(infname1+'.ph')\
+                                        and os.path.isfile(infname2+'.am') and os.path.isfile(infname2+'.ph'):
+                                    continue
+                                else:
+                                    skipday = True
+                                    break
+                            if not skipday:
+                                daylst.append(ctime.day)
+                        try:
+                            ctime.day   += 1
+                        except ValueError:
+                            break
+                    if len(daylst) != 0:
+                        xcorr_lst.append( xcorr_pair(stacode1 = stacode1, netcode1=netcode1,\
+                            stacode2=stacode2, netcode2=netcode2, monthdir=str(stime.year)+'.'+monthdict[stime.month], daylst=daylst) )
+                        ###
+                        # # # return xcorr_lst
+                        ###
+            # End loop over station1/station2/days
+            if len(xcorr_lst) == 0:
+                print '--- Xcorr NO data: '+str(stime.year)+'.'+monthdict[stime.month]+' : '+ str(len(xcorr_lst)) + ' pairs'
+                if stime.month == 12:
+                    stime       = obspy.UTCDateTime(str(stime.year + 1)+'0101')
+                else:
+                    stime.month += 1
+                continue
+            #--------------------------------
+            # Cross-correlation computation
+            #--------------------------------
+            print '--- Xcorr computating: '+str(stime.year)+'.'+monthdict[stime.month]+' : '+ str(len(xcorr_lst)) + ' pairs'
+            if not parallel:
+                for ilst in range(len(xcorr_lst)):
+                    xcorr_lst[ilst].convert_amph_to_xcorr(datadir=datadir, chans=chans, ftlen = ftlen,\
+                            tlen = tlen, mintlen = mintlen, sps = sps,  lagtime = lagtime, CorOutflag = CorOutflag,\
+                                fprcs = fprcs, fastfft=fastfft, verbose=False)
+            # parallelized run
+            else:
+                #-----------------------------------------
+                # Computing xcorr with multiprocessing
+                #-----------------------------------------
+                if len(xcorr_lst) > subsize:
+                    Nsub            = int(len(xcorr_lst)/subsize)
+                    for isub in range(Nsub):
+                        print 'xcorr : subset:', isub, 'in', Nsub, 'sets'
+                        cxcorrLst   = xcorr_lst[isub*subsize:(isub+1)*subsize]
+                        XCORR       = partial(amph_to_xcorr_for_mp, datadir=datadir, chans=chans, ftlen = ftlen,\
+                                        tlen = tlen, mintlen = mintlen, sps = sps,  lagtime = lagtime, CorOutflag = CorOutflag,\
+                                            fprcs = fprcs, fastfft=fastfft)
+                        pool        = multiprocessing.Pool(processes=nprocess)
+                        pool.map(XCORR, cxcorrLst) #make our results with a map call
+                        pool.close() #we are not adding any more processes
+                        pool.join() #tell it to wait until all threads are done before going on
+                    cxcorrLst       = xcorr_lst[(isub+1)*subsize:]
+                    XCORR           = partial(amph_to_xcorr_for_mp, datadir=datadir, chans=chans, ftlen = ftlen,\
+                                        tlen = tlen, mintlen = mintlen, sps = sps,  lagtime = lagtime, CorOutflag = CorOutflag,\
+                                            fprcs = fprcs, fastfft=fastfft)
+                    pool            = multiprocessing.Pool(processes=nprocess)
+                    pool.map(XCORR, cxcorrLst) #make our results with a map call
+                    pool.close() #we are not adding any more processes
+                    pool.join() #tell it to wait until all threads are done before going on
+                else:
+                    XCORR           = partial(amph_to_xcorr_for_mp, datadir=datadir, chans=chans, ftlen = ftlen,\
+                                        tlen = tlen, mintlen = mintlen, sps = sps,  lagtime = lagtime, CorOutflag = CorOutflag,\
+                                            fprcs = fprcs, fastfft=fastfft)
+                    pool            = multiprocessing.Pool(processes=nprocess)
+                    pool.map(XCORR, xcorr_lst) #make our results with a map call
+                    pool.close() #we are not adding any more processes
+                    pool.join() #tell it to wait until all threads are done before going on
+            if stime.month == 12:
+                stime       = obspy.UTCDateTime(str(stime.year + 1)+'0101')
+            else:
+                stime.month += 1
+        return
+    
     def xcorr_stack(self, datadir, startyear, startmonth, endyear, endmonth, pfx='COR', outdir=None, inchannels=None, fnametype=2, verbose=False):
         """Stack cross-correlation data from monthly-stacked sac files
         ===========================================================================================================
@@ -602,6 +1189,10 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print('start stacking')
         for staid1 in staLst:
             for staid2 in staLst:
+                lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+                lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+                lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
                 netcode1, stacode1  = staid1.split('.')
                 netcode2, stacode2  = staid2.split('.')
                 if stacode1 >= stacode2:
@@ -686,6 +1277,15 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             except TypeError:
                                 warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
                                 skipflag= True
+                            # added on 2018-02-27
+                            # # # if (abs(tr.stats.sac.evlo - lon1) > 0.001)\
+                            # # #         or (abs(tr.stats.sac.evla - lat1) > 0.001) \
+                            # # #         or (abs(tr.stats.sac.stlo - lon2) > 0.001) \
+                            # # #         or (abs(tr.stats.sac.stla - lat2) > 0.001):
+                            # # #     print 'WARNING: Same station code but different locations detected ' + staid1 +'_'+ staid2
+                            # # #     print 'FILENAME: '+ fname
+                            # # #     skipflag= True
+                            # # #     break
                             if np.isnan(tr.data).any() or abs(tr.data.max())>1e20:
                                 warnings.warn('NaN monthly SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
                                 skipflag= True
@@ -726,10 +1326,6 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         xcorr_header['az']  = stackedST[0].stats.sac.az
                         xcorr_header['baz'] = stackedST[0].stats.sac.baz
                     except AttributeError:
-                        lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
-                        lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
-                        lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
-                        lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
                         dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
                         dist                = dist/1000.
                         xcorr_header['dist']= dist
@@ -963,7 +1559,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 utcdate.month   = 1
         mnumb                   = mlst.size
         #--------------------------------------------------
-        # determine channels if inchannels is specified
+        # create channels if inchannels is specified
         #--------------------------------------------------
         if inchannels is not None:
             try:
@@ -976,10 +1572,10 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     channels    = inchannels
             except:
                 inchannels      = None
-        staLst                  = self.waveforms.list()
         #--------------------------------------------------
         # main loop for station pairs
         #--------------------------------------------------
+        staLst                  = self.waveforms.list()
         Nsta                    = len(staLst)
         Ntotal_traces           = Nsta*(Nsta-1)/2
         itrstack                = 0
@@ -999,7 +1595,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 stackedST           = []
                 cST                 = []
                 initflag            = True
-                if inchannels==None:
+                if inchannels is None:
                     channels1       = []
                     channels2       = []
                     tempchans1      = self.waveforms[staid1].StationXML.networks[0].stations[0].channels
@@ -1077,7 +1673,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                                 skipflag= True
                                 break
                             cST.append(tr)
-                    if len(cST)!=len(channels1)*len(channels2) or skipflag:
+                    if len(cST) != len(channels1)*len(channels2) or skipflag:
                         cST             = []
                         continue
                     if initflag:
@@ -1093,10 +1689,12 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     if verbose:
                         print('Finished stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2)
                     # create sac output directory 
-                    if outdir!=None:
+                    if outdir is not None:
                         if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
                             os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
+                    #----------------------------------------------
                     # write cross-correlation header information
+                    #----------------------------------------------
                     xcorr_header            = xcorr_header_default.copy()
                     xcorr_header['b']       = stackedST[0].stats.sac.b
                     xcorr_header['e']       = stackedST[0].stats.sac.e
@@ -1135,7 +1733,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     for chan1 in channels1:
                         for chan2 in channels2:
                             stackedTr       = stackedST[itrace]
-                            if outdir!=None:
+                            if outdir is not None:
                                 outfname            = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
                                                         pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
                                 stackedTr.write(outfname, format='SAC')
@@ -1778,7 +2376,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print 'End of Generating Misha Tomography Input File!'
         return
     
-    def xcorr_raytomoinput(self, outdir, channel='ZZ', pers=np.array([]), outpfx='raytomo_in_', data_type='DISPpmf2interp', verbose=True):
+    def xcorr_raytomoinput(self, outdir, staxml=None, netcodelst=[], channel='ZZ',\
+                           pers=np.array([]), outpfx='raytomo_in_', data_type='DISPpmf2interp', verbose=True):
         """
         Generate input files for Barmine's straight ray surface wave tomography code.
         =======================================================================================================
@@ -1806,7 +2405,26 @@ class noiseASDF(pyasdf.ASDFDataSet):
             fgr         = open(fname_gr, 'w')
             fph_lst.append(fph)
             fgr_lst.append(fgr)
-        staLst          = self.waveforms.list()
+        #--------------------------------------------------------------------------
+        # added the functionality of using stations from an input StationXML file
+        #--------------------------------------------------------------------------
+        if staxml != None:
+            inv             = obspy.read_inventory(staxml)
+            waveformLst     = []
+            for network in inv:
+                netcode     = network.code
+                if len(netcodelst) != 0:
+                    if not netcode in netcodelst:
+                        continue
+                for station in network:
+                    stacode = station.code
+                    waveformLst.append(netcode+'.'+stacode)
+            staLst          = waveformLst
+            print 'Using stations from input StationXML file'
+        #--------------------------------------------------------------------------
+        else:
+            print 'Using all the stations from database'
+            staLst          = self.waveforms.list()
         Nsta            = len(staLst)
         Ntotal_traces   = Nsta*(Nsta-1)/2
         Ntr_one_percent = int(Ntotal_traces/100.)
@@ -1838,7 +2456,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 index               = subdset.parameters
                 for iper in range(pers.size):
                     per             = pers[iper]
-                    if dist < 2.*per*3.5:
+                    # three wavelength
+                    if dist < 3.*per*3.5:
                         continue
                     ind_per         = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
@@ -1866,7 +2485,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print ('End of generating Misha tomography input files!')
         return
     
-    def xcorr_get_field(self, outdir=None, channel='ZZ', pers=np.array([]), data_type='DISPpmf2interp', verbose=True, staxml=None):
+    def xcorr_get_field(self, outdir=None, staxml=None, channel='ZZ', pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
         """ Get the field data for Eikonal tomography
         ============================================================================================================================
         ::: input parameters :::
@@ -1937,7 +2556,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 # loop over periods
                 for iper in range(pers.size):
                     per     = pers[iper]
-                    if dist < 2.*per*3.5:
+                    # three wavelength, note that in eikonal_operator, another similar criteria will be applied
+                    if dist < 3.*per*3.5:
                         continue
                     ind_per = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
@@ -1987,7 +2607,32 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     np.savetxt( txtfname, field_lst[iper], fmt='%g', header=header )
         return
     
-    
+    # def plot_travel_time(self, netcode, stacode, period, channel='ZZ'):
+    #     try:
+    #         data    = self.auxiliary_data['FieldDISPpmf2interp'][netcode][stacode][channel][str(int(period)+'sec')].data.value
+    #     except KeyError:
+    #         print 'No data!'
+    #         return
+    #     lons        = data[:, 0]
+    #     lats        = data[:, 1]
+    #     C           = data[:, 2]
+    #     dist        = data[:, 5]
+    #     T           = dist/C
+    #     field2d     = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+    #                                 minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=evlo, evla=evla, fieldtype=fieldtype,\
+    #                                     nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
+    #             Zarr            = dataArr[:, fdict[fieldtype]]
+    #             # added on 03/06/2018
+    #             if Zarr.size <= mindp:
+    #                 continue
+    #             # added on 10/08/2018
+    #             inlons          = dataArr[:, 0]
+    #             inlats          = dataArr[:, 1]
+    #             if not _check_station_distribution(inlons, inlats, np.int32(mindp/2.)):
+    #                 continue
+    #             distArr         = dataArr[:, 6] # Note amplitude is added!!!
+    #             field2d.read_array(lonArr = inlons, latArr = inlats, ZarrIn = distArr/Zarr )
+        
             
 def stack4mp(inv, datadir, outdir, ylst, mlst, pfx, fnametype):
     stackedST   = []

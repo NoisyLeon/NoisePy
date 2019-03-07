@@ -714,8 +714,8 @@ class aftantrace(obspy.core.trace.Trace):
             nprpv   = 0
             phprper = np.array([])
             phprvel = np.array([])
-        tmin    = self.ftanparam.arr2_1[1,0]
-        tmax    = self.ftanparam.arr2_1[1,-1]
+        tmin    = self.ftanparam.arr2_1[1, 0]
+        tmax    = self.ftanparam.arr2_1[1, -1]
         dt      = self.stats.delta
         tb      = self.stats.sac.b
         nsam    = self.stats.npts

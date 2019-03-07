@@ -40,7 +40,11 @@ def discrete_cmap(N, base_cmap=None):
     # Note that if base_cmap is a string or None, you can simply do
     #    return plt.cm.get_cmap(base_cmap, N)
     # The following works for string, None, or a colormap instance:
-    base        = plt.cm.get_cmap(base_cmap)
+    if os.path.isfile(base_cmap):
+        import pycpt
+        base    = pycpt.load.gmtColormap(base_cmap)
+    else:
+        base    = plt.cm.get_cmap(base_cmap)
     color_list  = base(np.linspace(0, 1, N))
     cmap_name   = base.name + str(N)
     return base.from_list(cmap_name, color_list, N)
@@ -54,6 +58,145 @@ def to_percent(y, position):
         return s + r'$\%$'
     else:
         return s + '%'
+
+def _bad_station_detector(inarr, thresh=200.):
+    latlst1 = inarr[:, 1]
+    lonlst1 = inarr[:, 2]
+    latlst2 = inarr[:, 3]
+    lonlst2 = inarr[:, 4]
+    res     = inarr[:, 7]
+    Ndata   = inarr.shape[0]
+    # get station lst
+    stlas   = np.array([])
+    stlos   = np.array([])
+    for i in range(Ndata):
+        if i == 0:
+            stlas       = np.append(stlas, latlst1[i])
+            stlos       = np.append(stlos, lonlst1[i])
+            continue
+        if latlst1[i] != latlst1[i-1] or lonlst1[i] != lonlst1[i-1]:
+            if np.any((stlas == latlst1[i])*(stlos == lonlst1[i])):
+                continue
+            stlas       = np.append(stlas, latlst1[i])
+            stlos       = np.append(stlos, lonlst1[i])
+    Nsta                = stlas.size
+    ressum              = np.zeros(Nsta, dtype=np.float64)
+    Nsum                = np.zeros(Nsta, dtype=np.float64)
+    for i in range(Ndata):
+        ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
+        ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
+        # # # ressum[ind1]    += abs(res[i])
+        # # # ressum[ind2]    += abs(res[i])
+        ressum[ind1]    += res[i]
+        ressum[ind2]    += res[i]
+        Nsum[ind1]      += 1
+        Nsum[ind2]      += 1
+    # # # avgres              = abs(ressum/Nsum)
+    absressum           = abs(ressum)
+    validarr            = np.ones(Ndata, dtype=np.bool)
+    for i in range(Ndata):
+        ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
+        ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
+        # print stlas[ind2], stlos[ind2]
+        if absressum[ind1] > thresh or absressum[ind2] > thresh:
+            validarr[i] = False
+        # # # if avgres[ind1] > thresh or avgres[ind2] > thresh:
+        # # #     validarr[i] = False
+    return validarr
+    
+def _bad_station_detector_old(inarr, thresh=1.):
+    latlst1 = inarr[:, 1]
+    lonlst1 = inarr[:, 2]
+    latlst2 = inarr[:, 3]
+    lonlst2 = inarr[:, 4]
+    res     = inarr[:, 7]
+    # # # res     = inarr[:, 8]
+    
+    # Nsta    = 1
+    Ndata   = inarr.shape[0]
+    # get number of stations
+    for i in range(Ndata):
+        if i == 0:
+            continue
+        if latlst1[i] != latlst1[i-1] or lonlst1[i] != lonlst1[i-1]:
+            Nsta    += 1
+    # get station lst
+    stlas   = np.zeros(Nsta, dtype=np.float64)
+    stlos   = np.zeros(Nsta, dtype=np.float64)
+    ressum  = np.zeros(Nsta, dtype=np.float64)
+    Nsum    = np.zeros(Nsta, dtype=np.float64)
+    ista    = 0
+    for i in range(Ndata):
+        if i == 0:
+            stlas[ista] = latlst1[i]
+            stlos[ista] = lonlst1[i]
+            ista        += 1
+            continue
+        if latlst1[i] != latlst1[i-1] or lonlst1[i] != lonlst1[i-1]:
+            stlas[ista] = latlst1[i]
+            stlos[ista] = lonlst1[i]
+            ista        += 1
+    for i in range(Ndata):
+        ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
+        ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
+        # # # ressum[ind1]    += abs(res[i])
+        # # # ressum[ind2]    += abs(res[i])
+        ressum[ind1]    += res[i]
+        ressum[ind2]    += res[i]
+        Nsum[ind1]      += 1
+        Nsum[ind2]      += 1
+    avgres              = abs(ressum/Nsum)
+    validarr            = np.ones(Ndata, dtype=np.bool)
+    for i in range(Ndata):
+        ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
+        ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
+        print stlas[ind2], stlos[ind2]
+        # if avgres[ind1] > thresh or avgres[ind2] > thresh:
+        #     validarr[i] = False
+    return validarr
+    
+def plot_fault_lines(mapobj, infname, lw=2, color='red'):
+    with open(infname, 'rb') as fio:
+        is_new  = False
+        lonlst  = []
+        latlst  = []
+        for line in fio.readlines():
+            if line.split()[0] == '>':
+                x, y  = mapobj(lonlst, latlst)
+                mapobj.plot(x, y,  lw = lw, color=color)
+                # # # m.plot(xslb, yslb,  lw = 3, color='white')
+                lonlst  = []
+                latlst  = []
+                continue
+            lonlst.append(float(line.split()[0]))
+            latlst.append(float(line.split()[1]))
+        x, y  = mapobj(lonlst, latlst)
+        mapobj.plot(x, y,  lw = lw, color=color)
+
+def read_slab_contour(infname, depth):
+    ctrlst  = []
+    lonlst  = []
+    latlst  = []
+    with open(infname, 'rb') as fio:
+        newctr  = False
+        for line in fio.readlines():
+            if line.split()[0] is '>':
+                newctr  = True
+                if len(lonlst) != 0:
+                    ctrlst.append([lonlst, latlst])
+                lonlst  = []
+                latlst  = []
+                z       = -float(line.split()[1])
+                if z == depth:
+                    skipflag    = False
+                else:
+                    skipflag    = True
+                continue
+            if skipflag:
+                continue
+            lonlst.append(float(line.split()[0]))
+            latlst.append(float(line.split()[1]))
+    return ctrlst
 
 class RayTomoDataSet(h5py.File):
     """
@@ -309,9 +452,9 @@ class RayTomoDataSet(h5py.File):
     
     def run_qc(self, outdir, runid=0, smoothid=0, datatype='ph', wavetype='R', crifactor=0.5, crilimit=10., usemad=True, madfactor=3.,
                dlon=0.5, dlat=0.5, stepinte=0.1, lengthcell=0.5,  isotropic=False, alpha=850, beta=1, sigma=175, \
-                lengthcellAni=1.0, anipara=0, xZone=2, alphaAni0=1200, betaAni0=1, sigmaAni0=200, alphaAni2=1000, sigmaAni2=100, alphaAni4=1200, sigmaAni4=500,\
-                comments='', deletetxt=False, contourfname='./contour.ctr',  IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', \
-                AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn_.1', reshape=True):
+                lengthcellAni=1.0, anipara=0, xZone=2, alphaAni0=1200, betaAni0=1, sigmaAni0=200, alphaAni2=1000, sigmaAni2=100,\
+                alphaAni4=1200, sigmaAni4=500, comments='', deletetxt=False, contourfname='./contour.ctr',\
+                IsoMishaexe='./TOMO_MISHA/itomo_sp_cu_shn', AniMishaexe='./TOMO_MISHA_AZI/tomo_sp_cu_s_shn_.1', reshape=True):
         """
         run Misha's tomography code with quality control based on preliminary run of run_smooth.
         This function is designed to discard outliers in aftan results (quality control), and then do tomography.
@@ -429,13 +572,17 @@ class RayTomoDataSet(h5py.File):
                 ind         = (res_tomo > -(cri_res))*(res_tomo < bounds[per])
                 QC_arr      = inArr[ind, :]
             else:
-                QC_arr          = inArr[np.abs(res_tomo)<cri_res, :]
+                QC_arr      = inArr[np.abs(res_tomo)<cri_res, :]
                 # ind             = (res_tomo > -(cri_res))*(res_tomo < 50.)
                 # QC_arr          = inArr[ind, :]
             ####
-            
-            ##
-            
+            # validarr        = _bad_station_detector(QC_arr)
+            # # # print cri_res
+            # # print validarr[validarr].size
+            # # print validarr.size
+            # # return
+            # QC_arr          = QC_arr[validarr, :]
+            ####
             outArr          = QC_arr[:,:8]
             outper          = outdir+'/'+'%g'%( per ) +'_'+datatype
             if not os.path.isdir(outper):
@@ -882,6 +1029,7 @@ class RayTomoDataSet(h5py.File):
         =================================================================================================================
         ::: input parameters :::
         runid           - id of run for ray tomography
+        gstd_thresh     - threshold value for resolution (Gaussian standard deviation)
         =================================================================================================================
         """
         dataid      = 'reshaped_qc_run_'+str(runid)
@@ -994,13 +1142,13 @@ class RayTomoDataSet(h5py.File):
         slope, intercept, r_value, p_value, std_err = stats.linregress((gstd_plt*2.), sem_plt*semfactor)
         if plotfig:
             ax  = plt.subplot()
-            plt.plot(gstd_plt*2., sem_plt*semfactor, 'o', ms=15, label='observed')
+            plt.plot(gstd_plt*2., sem_plt*semfactor, 'o', ms=15, label='data')
             # plt.errorbar(gstd_plt*2., sem_plt, yerr=sem_error_plt, fmt='o',  ms=15, label='observed')
-            plt.plot(gstd_plt*2., intercept + slope*gstd_plt*2., 'r-', lw=5,  label='fitted line')
+            plt.plot(gstd_plt*2., intercept + slope*gstd_plt*2., 'r-', lw=5,  label='best fitting line')
             ax.tick_params(axis='x', labelsize=20)
             ax.tick_params(axis='y', labelsize=20)
             plt.ylabel('Uncertainties (m/sec)', fontsize=30)
-            plt.xlabel('Resolusion (km)', fontsize=30)
+            plt.xlabel('Resolution (km)', fontsize=30)
             plt.legend(fontsize=30)
             plt.show()
         return slope, intercept
@@ -1010,20 +1158,27 @@ class RayTomoDataSet(h5py.File):
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
         plt.figure()
-        minlon      = self.attrs['minlon']
-        maxlon      = self.attrs['maxlon']
+        minlon      = self.attrs['minlon'] 
+        maxlon      = self.attrs['maxlon'] 
         minlat      = self.attrs['minlat']
-        maxlat      = self.attrs['maxlat']
+        maxlat      = self.attrs['maxlat']        
+        # minlon      = -160.
+        # maxlon      = -138.
+        # minlat      = 58.
+        # maxlat      = 66.
+        
         lat_centre  = (maxlat+minlat)/2.0
         lon_centre  = (maxlon+minlon)/2.0
         if projection=='merc':
-            m       = Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
-                      urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution, epsg = 4269)
+            m       = Basemap(projection='merc', llcrnrlat=minlat, urcrnrlat=maxlat, llcrnrlon=minlon,
+                      urcrnrlon=maxlon, lat_ts=0, resolution=resolution)
             # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
-            m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
-            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
-            m.drawstates(color='g', linewidth=2.)
+            m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,1,1,1])
+            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,1,1,1])
+            # m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
+            # m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
+            # m.drawstates(color='g', linewidth=2.)
         elif projection=='global':
             m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
@@ -1037,14 +1192,12 @@ class RayTomoDataSet(h5py.File):
             # m.drawmeridians(np.arange(10,180.0,30.0), dashes=[10, 5], linewidth=2)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, minlat, maxlon) # distance is in m
-            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat+2., minlon) # distance is in m
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
             m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='h', projection='lcc',\
-                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=20)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=20)
-            # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=0.5, dashes=[2,2], labels=[1,0,0,0], fontsize=5)
-            # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=0.5, dashes=[2,2], labels=[0,0,0,1], fontsize=5)
+                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,1], fontsize=15)
         m.drawcoastlines(linewidth=1.0)
         m.drawcountries(linewidth=1.)
         # # m.drawmapboundary(fill_color=[1.0,1.0,1.0])
@@ -1117,6 +1270,7 @@ class RayTomoDataSet(h5py.File):
             isotropic   = ingroup.attrs['isotropic']
         else:
             isotropic   = True
+        factor              = 1.
         if datatype == 'vel' or datatype=='velocity' or datatype == 'v':
             if isotropic:
                 datatype    = 'velocity'
@@ -1124,8 +1278,12 @@ class RayTomoDataSet(h5py.File):
                 datatype    = 'vel_iso'
         if datatype == 'un' or datatype=='sem' or datatype == 'vel_sem':
             datatype        = 'vel_sem'
+            factor          = 2.
+        if datatype == 'resolution':
+            datatype        = 'gauss_std'
+            factor          = 2.
         try:
-            data    = pergrp[datatype].value
+            data    = pergrp[datatype].value*factor
         except:
             outstr      = ''
             for key in pergrp.keys():
@@ -1142,14 +1300,20 @@ class RayTomoDataSet(h5py.File):
             if datatype == 'cone_radius' or datatype == 'gauss_std' or datatype == 'max_resp' or datatype == 'ncone' or \
                          datatype == 'ngauss' or datatype == 'vel_sem':
                 mask    = ingroup['mask2']
+                # mask    = ingroup['mask_inv']
             else:
                 mask    = ingroup['mask1']
             if thresh is not None:
                 gauss_std   = pergrp['gauss_std'].value
                 mask_gstd   = gauss_std > thresh
                 mask        = mask + mask_gstd
-            if datatype is 'vel_sem':
-                mask    = ingroup['mask_inv']
+            # if datatype is 'vel_sem':
+            #     mask    = ingroup['mask_inv']
+            
+            tempdset    = h5py.File('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20181101.h5')
+            pergrp      = tempdset['merged_tomo_0']['%g_sec'%( period )]
+            mask        = pergrp['mask'].value
+            
             mdata       = ma.masked_array(data, mask=mask )
         else:
             mdata       = data.copy()
@@ -1160,8 +1324,8 @@ class RayTomoDataSet(h5py.File):
         x, y        = m(self.lonArr, self.latArr)
         shapefname  = '/home/leon/geological_maps/qfaults'
         m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-        m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
+        # shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
         # shapefname  = '../AKfaults/qfaults'
         # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
         # shapefname  = '../AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
@@ -1215,10 +1379,11 @@ class RayTomoDataSet(h5py.File):
                 im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', norm=colors.LogNorm(vmin=vmin, vmax=vmax),)
             else:
                 im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
+        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
+        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
         cb.set_label(clabel, fontsize=20, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
-        cb.ax.tick_params(labelsize=15)
+        # cb.ax.tick_params(labelsize=15)
         cb.set_alpha(1)
         cb.draw_all()
         print 'plotting data from '+dataid
@@ -1228,10 +1393,10 @@ class RayTomoDataSet(h5py.File):
             cb.set_ticks([1, 10, 100, 1000, 10000])
             cb.set_ticklabels([1, 10, 100, 1000, 10000])
         # m.shadedrelief(scale=1., origin='lower')
-        xc, yc      = m(np.array([-143]), np.array([61]))
-        m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
-        xc, yc      = m(np.array([-149]), np.array([61]))
-        m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
+        # xc, yc      = m(np.array([-143]), np.array([61]))
+        # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
+        # xc, yc      = m(np.array([-149]), np.array([61]))
+        # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
         # xc, yc      = m(np.array([-156]), np.array([71]))
         # m.plot(xc, yc,'o', ms=15)
         # xc, yc      = m(np.array([-156]), np.array([68]))
@@ -1248,6 +1413,222 @@ class RayTomoDataSet(h5py.File):
         if showfig:
             plt.show()
         return
+    
+    def plot_fast_axis(self, runid, period, anipara = 1, factor=10, shpfx=None, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+             geopolygons=None, vmin=None, vmax=None, thresh=100., semfactor=2., showfig=True):
+        """plot maps from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        datatype        - datatype for plotting
+        period          - period of data
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        dataid      = 'qc_run_'+str(runid)
+        self._get_lon_lat_arr(dataid)
+        try:
+            ingroup     = self['reshaped_'+dataid]
+        except KeyError:
+            try:
+                self.creat_reshape_data(runtype=runtype, runid=runid)
+                ingroup = self['reshaped_'+dataid]
+            except KeyError:
+                raise KeyError(dataid+ ' not exists!')
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        if ingroup.attrs['isotropic'] or self[dataid].attrs['anipara'] == 0:
+            print 'No fast axis information for isotropic run!'
+            return
+        if self[dataid].attrs['anipara'] != anipara:
+            print 'No psi4 axis for psi2 run!'
+            return
+        if anipara == 1:
+            psi         = pergrp['psi2'].value
+            amp         = pergrp['amp2'].value
+        else:
+            psi         = pergrp['psi4'].value
+            amp         = pergrp['amp4'].value
+        mask            = ingroup['mask1']
+        
+
+        # 
+        # if not isotropic:
+        #     if datatype == 'cone_radius' or datatype == 'gauss_std' or datatype == 'max_resp' or datatype == 'ncone' or \
+        #                  datatype == 'ngauss' or datatype == 'vel_sem':
+        #         mask    = ingroup['mask2']
+        #         # mask    = ingroup['mask_inv']
+        #     else:
+        #         mask    = ingroup['mask1']
+        #     if thresh is not None:
+        #         gauss_std   = pergrp['gauss_std'].value
+        #         mask_gstd   = gauss_std > thresh
+        #         mask        = mask + mask_gstd
+        #     # if datatype is 'vel_sem':
+        #     #     mask    = ingroup['mask_inv']
+        #     
+        #     tempdset    = h5py.File('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20181101.h5')
+        #     pergrp      = tempdset['merged_tomo_0']['%g_sec'%( period )]
+        #     mask        = pergrp['mask'].value
+        #     
+        #     mdata       = ma.masked_array(data, mask=mask )
+        # else:
+        #     mdata       = data.copy()
+        #-----------
+        # plot data
+        #-----------
+        m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        x, y        = m(self.lonArr-360., self.latArr)
+        # shapefname  = '/home/leon/geological_maps/qfaults'
+        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
+        plot_fault_lines(m, 'AK_Faults.txt')
+        ampref  = amp.max()/2.
+        # U       = np.sin(psi/180.*np.pi)*amp/ampref
+        # V       = np.cos(psi/180.*np.pi)*amp/ampref
+        U       = np.sin(psi/180.*np.pi)
+        V       = np.cos(psi/180.*np.pi)
+        if factor!=None:
+            x   = x[0:self.Nlat:factor, 0:self.Nlon:factor]
+            y   = y[0:self.Nlat:factor, 0:self.Nlon:factor]
+            U   = U[0:self.Nlat:factor, 0:self.Nlon:factor]
+            V   = V[0:self.Nlat:factor, 0:self.Nlon:factor]
+        # Q       = m.quiver(x, y, U, V, scale=30, width=0.001, headaxislength=0)
+        Q1      = m.quiver(x, y, U, V, scale=30, width=.005, headaxislength=0, headlength=0, headwidth=0.5)
+        Q2      = m.quiver(x, y, -U, -V, scale=30, width=.005, headaxislength=0, headlength=0, headwidth=0.5)
+        # if cmap == 'ses3d':
+        #     cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+        #                     0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        # elif cmap == 'cv':
+        #     import pycpt
+        #     cmap    = pycpt.load.gmtColormap('./cv.cpt')
+        # else:
+        #     try:
+        #         if os.path.isfile(cmap):
+        #             import pycpt
+        #             cmap    = pycpt.load.gmtColormap(cmap)
+        #     except:
+        #         pass
+        # ################################3
+        # if hillshade:
+        #     from netCDF4 import Dataset
+        #     from matplotlib.colors import LightSource
+        # 
+        #     etopodata   = Dataset('/projects/life9360/station_map/grd_dir/ETOPO2v2g_f4.nc')
+        #     etopo       = etopodata.variables['z'][:]
+        #     lons        = etopodata.variables['x'][:]
+        #     lats        = etopodata.variables['y'][:]
+        #     ls          = LightSource(azdeg=315, altdeg=45)
+        #     # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
+        #     etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
+        #     # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
+        #     ny, nx      = etopo.shape
+        #     topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
+        #     m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
+        #     mycm1=pycpt.load.gmtColormap('/projects/life9360/station_map/etopo1.cpt')
+        #     mycm2=pycpt.load.gmtColormap('/projects/life9360/station_map/bathy1.cpt')
+        #     mycm2.set_over('w',0)
+        #     m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
+        #     m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
+        # ###################################################################
+        # # if hillshade:
+        # #     m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
+        # # else:
+        # #     m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        # if hillshade:
+        #     im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
+        # else:
+        #     if datatype is 'path_density':
+        #         import matplotlib.colors as colors
+        #         im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', norm=colors.LogNorm(vmin=vmin, vmax=vmax),)
+        #     else:
+        #         im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        # # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
+        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
+        # cb.set_label(clabel, fontsize=20, rotation=0)
+        # plt.suptitle(str(period)+' sec', fontsize=20)
+        # # cb.ax.tick_params(labelsize=15)
+        # cb.set_alpha(1)
+        # cb.draw_all()
+        # print 'plotting data from '+dataid
+        # # # cb.solids.set_rasterized(True)
+        # cb.solids.set_edgecolor("face")
+        # if datatype is 'path_density':
+        #     cb.set_ticks([1, 10, 100, 1000, 10000])
+        #     cb.set_ticklabels([1, 10, 100, 1000, 10000])
+        # # m.shadedrelief(scale=1., origin='lower')
+        # # xc, yc      = m(np.array([-143]), np.array([61]))
+        # # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
+        # # xc, yc      = m(np.array([-149]), np.array([61]))
+        # # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
+        # # xc, yc      = m(np.array([-156]), np.array([71]))
+        # # m.plot(xc, yc,'o', ms=15)
+        # # xc, yc      = m(np.array([-156]), np.array([68]))
+        # # m.plot(xc, yc,'o', ms=15)
+        # # lons            = np.array([-170., -160., -150., -140., -130.,\
+        # #                             -160., -150., -140., -130.,\
+        # #                             -160., -150., -140., -130.])
+        # # lats            = np.array([60., 60., 60., 60., 60.,\
+        # #                             65., 65., 65., 65.,\
+        # #                             70., 70., 70., 70.])
+        # # xc, yc          = m(lons, lats)
+        # # m.plot(xc, yc,'o', ms=15)
+        # 
+        from netCDF4 import Dataset
+        from matplotlib.colors import LightSource
+        import pycpt
+        etopodata   = Dataset('/home/leon/station_map/grd_dir/ETOPO2v2g_f4.nc')
+        etopo       = etopodata.variables['z'][:]
+        lons        = etopodata.variables['x'][:]
+        lats        = etopodata.variables['y'][:]
+        ls          = LightSource(azdeg=315, altdeg=45)
+        # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
+        etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
+        # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
+        ny, nx      = etopo.shape
+        topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
+        m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
+        mycm1       = pycpt.load.gmtColormap('/home/leon/station_map/etopo1.cpt')
+        mycm2       = pycpt.load.gmtColormap('/home/leon/station_map/bathy1.cpt')
+        mycm2.set_over('w',0)
+        m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
+        m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
+        # ############################
+        slb_ctrlst      = read_slab_contour('alu_contours.in', depth=100.)
+        
+        for slbctr in slb_ctrlst:
+            xslb, yslb  = m(np.array(slbctr[0])-360., np.array(slbctr[1]))
+            m.plot(xslb, yslb,  '--', lw = 5, color='black')
+            m.plot(xslb, yslb,  '--', lw = 3, color='white')
+        # #############################
+        yakutat_slb_dat     = np.loadtxt('YAK_extent.txt')
+        yatlons             = yakutat_slb_dat[:, 0]
+        yatlats             = yakutat_slb_dat[:, 1]
+        xyat, yyat          = m(yatlons, yatlats)
+        m.plot(xyat, yyat, lw = 5, color='black')
+        m.plot(xyat, yyat, lw = 3, color='white')
+        # #############################
+        import shapefile
+        shapefname  = '/home/leon/volcano_locs/SDE_GLB_VOLC.shp'
+        shplst      = shapefile.Reader(shapefname)
+        for rec in shplst.records():
+            lon_vol = rec[4]
+            lat_vol = rec[3]
+            xvol, yvol            = m(lon_vol, lat_vol)
+            m.plot(xvol, yvol, '^', mfc='white', mec='k', ms=10)
+            
+            
+        if showfig:
+            plt.show()
+        return
+    
     
     def generate_corrected_map(self, runid, glbdir, outdir, runtype=1, pers=np.array([]), glbpfx='smpkolya_phv_R_', outpfx='smpkolya_phv_R_'):
         """
@@ -1390,6 +1771,8 @@ class RayTomoDataSet(h5py.File):
         Nlat            = lats.size
         lonArr, latArr  = np.meshgrid(lons, lats)
         mask            = np.ones((Nlat, Nlon), dtype=np.bool)
+        # determine the mask array for interpolated data
+        # if there is one(or more) non-masked data points nearby a interpolated grid point, the interpolated value is considerred valid
         for i in range(Nlat):
             for j in range(Nlon):
                 clat    = lats[i]
@@ -1985,7 +2368,7 @@ class RayTomoDataSet(h5py.File):
             plt.show()
         return
         
-    def plot_fast_axis(self, projection='lambert', inbasemap=None, factor=1, showfig=False, psitype=2):
+    def plot_fast_axis_old(self, projection='lambert', inbasemap=None, factor=1, showfig=False, psitype=2):
         """Plot fast axis(psi2 or psi4)
         """
         if inbasemap==None:

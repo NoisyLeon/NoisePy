@@ -5,8 +5,13 @@ import timeit
 #-----------------------------------------
 # New xcorr database
 #-----------------------------------------
-# dset = noisedbase.noiseASDF('/scratch/summit/life9360/ALASKA_work/ASDF_data/xcorr_Alaska_20180809.h5')
-dset = noisedbase.noiseASDF('/work1/leon/ALASKA_work/ASDF_data/xcorr_Alaska_20190218.h5')
+
+dset = noisedbase.noiseASDF('/work1/leon/ALASKA_work/ASDF_data/xcorr_Alaska_20190306_Love.h5')
+# dset.copy_stations(inasdffname = '/work1/leon/ALASKA_work/ASDF_data/xcorr_Alaska_20190218.h5', channel='LH*')
+
+dset.compute_xcorr(datadir = '/work2/leon/temp_working_2001_2005',
+        startdate='20010101', enddate='20051231', nprocess=10, fastfft=True)
+
 
 # dset.xcorr_stack(datadir='/scratch/summit/life9360/ALASKA_work/COR_work_dir', startyear=1991, startmonth=1, endyear=2018, endmonth=1)
 # 

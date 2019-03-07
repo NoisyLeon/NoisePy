@@ -264,8 +264,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     monstr      = 'sept'
                 gcmt_url_new    = gcmt_new+'/'+str(int(year))+'/'+monstr+yearstr+'.ndk'
                 # cat_new     = obspy.core.event.read_events(gcmt_url_new)
+            
                 try:
-                    cat_new     = obspy.read_events(gcmt_url_new)
+                    cat_new     = obspy.read_events(gcmt_url_new, format='ndk')
                     print('Loading catalog: '+gcmt_url_new)
                 except:
                     print('Link not found: '+gcmt_url_new)
@@ -310,6 +311,13 @@ class quakeASDF(pyasdf.ASDFDataSet):
     def copy_catalog(self):
         print('Copying catalog from ASDF to memory')
         self.cat    = self.events
+        return
+    
+    def copy_catalog_fromasdf(self, inasdffname):
+        print('Copying catalog from ASDF file')
+        indset  = pyasdf.ASDFDataSet(inasdffname)
+        cat     = indset.events
+        self.add_quakeml(cat)
         return
 
     def plot_events(self, gcmt=False, projection='lambert', valuetype='depth', geopolygons=None, showfig=True, vmin=None, vmax=None):
@@ -480,7 +488,71 @@ class quakeASDF(pyasdf.ASDFDataSet):
             self.inv    +=inv
         except:
             self.inv    = inv
-        return 
+        return
+    
+    def copy_stations(self, inasdffname, startdate=None, enddate=None, location=None, channel=None, includerestricted=False,
+            minlatitude=None, maxlatitude=None, minlongitude=None, maxlongitude=None, latitude=None, longitude=None, minradius=None, maxradius=None):
+        """copy and renew station inventory given an input ASDF file
+            the function will copy the network and station names while renew other informations given new limitations
+        =======================================================================================================
+        ::: input parameters :::
+        inasdffname         - input ASDF file name
+        startdate, enddata  - start/end date for searching
+        network             - Select one or more network codes.
+                                Can be SEED network codes or data center defined codes.
+                                    Multiple codes are comma-separated (e.g. "IU,TA").
+        station             - Select one or more SEED station codes.
+                                Multiple codes are comma-separated (e.g. "ANMO,PFO").
+        location            - Select one or more SEED location identifiers.
+                                Multiple identifiers are comma-separated (e.g. "00,01").
+                                As a special case “--“ (two dashes) will be translated to a string of two space
+                                characters to match blank location IDs.
+        channel             - Select one or more SEED channel codes.
+                                Multiple codes are comma-separated (e.g. "BHZ,HHZ").             
+        minlatitude         - Limit to events with a latitude larger than the specified minimum.
+        maxlatitude         - Limit to events with a latitude smaller than the specified maximum.
+        minlongitude        - Limit to events with a longitude larger than the specified minimum.
+        maxlongitude        - Limit to events with a longitude smaller than the specified maximum.
+        latitude            - Specify the latitude to be used for a radius search.
+        longitude           - Specify the longitude to the used for a radius search.
+        minradius           - Limit to events within the specified minimum number of degrees from the
+                                geographic point defined by the latitude and longitude parameters.
+        maxradius           - Limit to events within the specified maximum number of degrees from the
+                                geographic point defined by the latitude and longitude parameters.
+        =======================================================================================================
+        """
+        try:
+            starttime   = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            starttime   = None
+        try:
+            endtime     = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            endtime     = None
+        client          = Client('IRIS')
+        init_flag       = False
+        indset          = pyasdf.ASDFDataSet(inasdffname)
+        for staid in indset.waveforms.list():
+            network     = staid.split('.')[0]
+            station     = staid.split('.')[1]
+            print 'Copying/renewing station inventory: '+ staid
+            if init_flag:
+                inv     += client.get_stations(network=network, station=station, starttime=starttime, endtime=endtime, channel=channel, 
+                            minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
+                            latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, level='channel',
+                            includerestricted=includerestricted)
+            else:
+                inv     = client.get_stations(network=network, station=station, starttime=starttime, endtime=endtime, channel=channel, 
+                            minlatitude=minlatitude, maxlatitude=maxlatitude, minlongitude=minlongitude, maxlongitude=maxlongitude,
+                            latitude=latitude, longitude=longitude, minradius=minradius, maxradius=maxradius, level='channel',
+                            includerestricted=includerestricted)
+                init_flag= True
+        self.add_stationxml(inv)
+        try:
+            self.inv    +=inv
+        except:
+            self.inv    = inv
+        return
     
     #==================================================================
     # functions for reading/downloading/writing waveforms
@@ -551,7 +623,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     st.append(tr)
                 self.add_waveforms(st, event_id=event_id, tag=tag)    
     
-    def get_surf_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False,
+    def get_ray_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False,
                             startdate=None, enddate=None ):
         """Get surface wave data from IRIS server
         ====================================================================================================================
@@ -652,6 +724,178 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     print 'Getting data for:', staid
                 st      += tr
             print('====================== Downloaded : '+str(Ntraces)+' traces =============================')
+            tag         = 'surf_ev_%05d' %evnumb
+            # adding waveforms
+            self.add_waveforms(st, event_id=event_id, tag=tag)
+        return
+    
+    def get_love_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHE,LHN,LHZ', vmax=6.0, vmin=1.0, verbose=False,
+                            startdate=None, enddate=None, do_rotation=True ):
+        """Get surface wave data from IRIS server
+        ====================================================================================================================
+        ::: input parameters :::
+        lon0, lat0      - center of array. If specified, all waveform will have the same starttime and endtime
+        min/maxDelta    - minimum/maximum epicentral distance, in degree
+        channel         - Channel code, e.g. 'BHZ'.
+                            Last character (i.e. component) can be a wildcard (‘?’ or ‘*’) to fetch Z, N and E component.
+        vmin, vmax      - minimum/maximum velocity for surface wave window
+        =====================================================================================================================
+        """
+        try:
+            print self.cat
+        except AttributeError:
+            self.copy_catalog()
+        client              = Client('IRIS')
+        evnumb              = 0
+        L                   = len(self.cat)
+        try:
+            stime4down  = obspy.core.utcdatetime.UTCDateTime(startdate)
+        except:
+            stime4down  = obspy.UTCDateTime(0)
+        try:
+            etime4down  = obspy.core.utcdatetime.UTCDateTime(enddate)
+        except:
+            etime4down  = obspy.UTCDateTime()
+        pre_filt            = (0.001, 0.005, 1, 100.0)
+        for event in self.cat:
+            event_id        = event.resource_id.id.split('=')[-1]
+            magnitude       = event.magnitudes[0].mag
+            Mtype           = event.magnitudes[0].magnitude_type
+            event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
+            otime           = event.origins[0].time
+            evlo            = event.origins[0].longitude
+            evla            = event.origins[0].latitude
+            evnumb          +=1
+            if otime < stime4down or otime > etime4down:
+                continue
+            print('================================= Getting surface wave data ===================================')
+            print('Event ' + str(evnumb)+' : '+str(otime)+' '+event_descrip+', '+Mtype+' = '+str(magnitude))
+            st                  = obspy.Stream()
+            if lon0!=None and lat0!=None:
+                dist, az, baz   = obspy.geodetics.gps2dist_azimuth(evla, evlo, lat0, lon0) # distance is in m
+                dist            = dist/1000.
+                starttime       = otime+dist/vmax
+                endtime         = otime+dist/vmin
+                commontime      = True
+            else:
+                commontime      = False
+            Nstreams            = 0
+            for staid in self.waveforms.list():
+                netcode, stacode= staid.split('.')
+                stla, elev, stlo= self.waveforms[staid].coordinates.values()
+                location        = self.waveforms[staid].StationXML[0].stations[0].channels[0].location_code
+                dist, az, baz   = obspy.geodetics.gps2dist_azimuth(evla, evlo, stla, stlo) # distance is in m
+                # # # az, baz, dist   = geodist.inv(evlo, evla, stlo, stla)
+                dist            = dist/1000.
+                Delta           = obspy.geodetics.kilometer2degrees(dist)
+                if Delta < minDelta:
+                    continue
+                if Delta > maxDelta:
+                    continue
+                if not commontime:
+                    starttime       = otime + dist/vmax
+                    endtime         = otime + dist/vmin
+                try:
+                    temp_st        = client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
+                                        starttime=starttime, endtime=endtime, attach_response=True)
+                    if len(temp_st) < 3:
+                        if verbose:
+                            print 'No data for:', staid
+                        continue
+                    if len(temp_st.select(channel='*E')) == 0 or len(temp_st.select(channel='*N')) == 0:
+                        if verbose:
+                            print 'No data for:', staid
+                        continue
+                    
+                    # # # 
+                    # # # #----------------------------------------------
+                    # # # # determine which location has three component
+                    # # # #----------------------------------------------
+                    # # # for tr0 in temp_st:
+                    # # #     loc0        = tr0.stats.location
+                    # # #     t1          = tr0.stats.starttime
+                    # # #     t2          = tr0.stats.endtime
+                    # # #     isE         = False
+                    # # #     isN         = False
+                    # # #     isZ         = False
+                    # # #     out_st      = obspy.Stream()
+                    # # #     for tr in temp_st:
+                    # # #         if tr.stats.location != loc0:
+                    # # #             continue
+                    # # #         if tr.stats.starttime != t1:
+                    # # #             continue
+                    # # #         if tr.stats.endtime != t2:
+                    # # #             continue
+                    # # #         if tr.stats.channel[-1] == 'E':
+                    # # #             isE = True
+                    # # #             trE = tr.copy()
+                    # # #             out_st.append(trE)
+                    # # #         if tr.stats.channel[-1] == 'N':
+                    # # #             isN = True
+                    # # #             trN = tr.copy()
+                    # # #             out_st.append(trN)
+                    # # #         if tr.stats.channel[-1] == 'Z':
+                    # # #             isZ = True
+                    # # #             trZ = tr.copy()
+                    # # #             out_st.append(trZ)
+                    # # #     if isE and isN and isZ:
+                    # # #         break
+                    # # # # now, out_st has three traces with the same location code
+                    # # # if len(out_st) != 3:
+                    # # #     if verbose:
+                    # # #         print 'No data for:', staid
+                    # # #     continue
+                    # # # #----------------------------------------------
+                    # # # # check response 
+                    # # # #----------------------------------------------
+                    # # # final_st        = obspy.Stream()
+                    # # # for tr in out_st:
+                    # # #     try:
+                    # # #         temp_resp   = tr.stats.response
+                    # # #         final_st.append(tr)
+                    # # #     except AttributeError:
+                    # # #         N       = 10
+                    # # #         i       = 0
+                    # # #         while (i < N):
+                    # # #             temp_tr     = client.get_waveforms(network = tr.stats.network, station=tr.stats.station,\
+                    # # #                             location = tr.stats.location, channel = tr.stats.channel, \
+                    # # #                             starttime=starttime, endtime=endtime, attach_response=True)[0]
+                    # # #             try:
+                    # # #                 resp        = temp_tr.stats.response
+                    # # #                 final_st.append(temp_tr)
+                    # # #             except AttributeError:
+                    # # #                 i           += 1
+                    # # # if len(final_st) != 3:
+                    # # #     if verbose:
+                    # # #         print 'No data for:', staid
+                    # # #     continue
+                    
+                except:
+                    if verbose:
+                        print 'No data for:', staid
+                    continue
+                temp_st.detrend()
+                try:
+                    temp_st.remove_response(pre_filt=pre_filt, taper_fraction=0.1)
+                except:
+                    if verbose:
+                        print 'No data for:', staid
+                    continue
+                #-----------
+                # rotation
+                #-----------
+                if do_rotation:
+                    try:
+                        temp_st.rotate('NE->RT', back_azimuth=baz)
+                    except:
+                        if verbose:
+                            print 'No data for:', staid
+                        continue
+                if verbose:
+                    print 'Getting data for:', staid
+                st      += temp_st
+                Nstreams+= 1
+            print('====================== Downloaded : '+str(Nstreams)+' streams =============================')
             tag         = 'surf_ev_%05d' %evnumb
             # adding waveforms
             self.add_waveforms(st, event_id=event_id, tag=tag)
@@ -2487,7 +2731,8 @@ class quakeASDF(pyasdf.ASDFDataSet):
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
             if not evid in evlst:
-                print(str(Ndata)+' data streams processed disp interpolation')
+                # # # print(str(Ndata)+' data streams processed disp interpolation')
+                print(evid + ' not in the event list')
                 continue
             datalst         = self.auxiliary_data[data_type][evid].list()
             for staid in staLst:
@@ -2607,7 +2852,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 index               = subdset.parameters
                 for iper in range(pers.size):
                     per             = pers[iper]
-                    if dist < 2.*per*3.5:
+                    if dist < 3.*per*3.5:
                         continue
                     ind_per         = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
