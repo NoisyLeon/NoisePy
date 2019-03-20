@@ -7,10 +7,8 @@ import pyaftan
 #------------------------------
 # Initialize ASDF dataset
 #------------------------------
-dset    = quakedbase.quakeASDF('/work1/leon/ALASKA_work/ASDF_data/surf_Alaska_Love.h5')
-
-# dset.copy_stations(inasdffname = '/work1/leon/ALASKA_work/ASDF_data/surf_Alaska.h5', channel='LH*')
-# dset.copy_catalog_fromasdf(inasdffname = '/work1/leon/ALASKA_work/ASDF_data/surf_Alaska.h5')
+dset    = quakedbase.quakeASDF('/work1/leon/US_work/ASDF_data/USCON_TA.h5')
+# dset.copy_catalog_fromasdf(inasdffname = '/work1/leon/ALASKA_work/ASDF_data/surf_Alaska_Love.h5_cat_inv')
 
 #------------------------------
 # Retrieving earthquake catalog
@@ -35,7 +33,7 @@ dset    = quakedbase.quakeASDF('/work1/leon/ALASKA_work/ASDF_data/surf_Alaska_Lo
 # # # t1=timeit.default_timer()
 # # 
 # # # dset.read_surf_waveforms_DMT(datadir='/scratch/summit/life9360/ALASKA_work/surf_19950101_20170831', verbose=False)
-# st = dset.get_love_waveforms(startdate='2006-01-01', verbose=False, channel='LHE,LHN,LHZ', minDelta=5.)
+st = dset.get_love_waveforms(startdate='2004-04-01', verbose=False, channel='LHE,LHN,LHZ', minDelta=5.)
 
 #------------------------------
 # aftan analysis
@@ -48,6 +46,6 @@ dset    = quakedbase.quakeASDF('/work1/leon/ALASKA_work/ASDF_data/surf_Alaska_Lo
 # # # inftan.tmax = 120.
 # # # inftan.tmin = 20.
 # dset.quake_aftan(prephdir='/work1/leon/ALASKA_work/quake_working_dir_Love/pre_disp_L', inftan=inftan, channel='T')
-pers        = np.append( np.arange(11.)*2.+20., np.arange(10.)*5.+45.)
+# pers        = np.append( np.arange(11.)*2.+20., np.arange(10.)*5.+45.)
 # dset.interp_disp(verbose=True, pers=pers, channel='T')
-dset.quake_get_field(pers=pers, channel='T', snr_thresh=10.)
+# dset.quake_get_field(pers=pers, channel='T')

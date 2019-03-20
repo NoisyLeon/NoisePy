@@ -94,6 +94,10 @@ def _check_station_distribution_old(lons, lats, Nvalid_min):
     
 @jit(boolean(float64[:], float64[:], int32))
 def _check_station_distribution(lons, lats, Nvalid_min):
+    """check the station distribution
+        Step 1. a station is counted as valid if there are at least four stations nearby
+        Step 2. check if the number of valid stations is larger than Nvalid_min 
+    """
     N       = lons.size
     Nvalid  = 0
     for i in range(N):
@@ -114,7 +118,7 @@ def _check_station_distribution(lons, lats, Nvalid_min):
                     Nnear       += 1
         if Nnear >= 4:
             Nvalid  += 1
-    if Nvalid >= 20:
+    if Nvalid >= Nvalid_min:
         return True
     else:
         return False
@@ -155,11 +159,282 @@ def _get_mask_interp(mask_in, lons_in, lats_in, lons, lats):
                     mask_out[i, j]  = mask_out[i, j]*mask_in[ind_lat-1, ind_lon-1]
     return mask_out
 
+@jit(float64[:, :](int32, int32, float32, float32, int32, float64[:, :], float64[:, :, :]))
+def _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL):
+    Nevent, Nx, Ny  = aziALL.shape
+    Nx_trim         = Nx - (gridx - 1)
+    Ny_trim         = Ny - (gridy - 1)
+    NmeasureAni     = np.zeros((Nx, Ny), dtype=np.float64) # for quality control
+    for ishift_x in range(gridx):
+        for ishift_y in range(gridy):
+            for ix in range(Nx_trim):
+                for iy in range(Ny_trim):
+                    NmeasureAni[ix + (gridx-1)/2, iy + (gridy-1)/2]  += Nmeasure[ix + ishift_x, iy + ishift_y]
+    # initialization of anisotropic parameters
+    d_bin           = int((maxazi-minazi)/N_bin)
+    # number of measurements in each bin
+    histArr         = np.zeros((N_bin, Nx, Ny))
+    # slowness in each bin
+    slow_sum_ani    = np.zeros((N_bin, Nx, Ny))
+    # slowness uncertainties for each bin
+    slow_un         = np.zeros((N_bin, Nx, Ny))
+    # velocity uncertainties for each bin
+    vel_un          = np.zeros((N_bin, Nx, Ny))
+    #----------------------------------------------------------------------------------
+    # Loop over azimuth bins to get slowness, velocity and number of measurements
+    #----------------------------------------------------------------------------------
+    # for ibin in range(N_bin):
+    #     sumNbin                     = np.zeros((Nx, Ny))
+    #     slowbin                     = np.zeros((Nx, Ny))
+    #     slow_un_ibin                = np.zeros((Nx, Ny))
+    #     velbin                      = np.zeros((Nx, Ny))
+    #     vel_un_ibin                 = np.zeros((Nx, Ny))
+    #     for ishift_x in range(gridx):
+    #         for ishift_y in range(gridy):
+    #             for ix in range(Nx_trim):
+    #                 for iy in range(Ny_trim):
+    # #                     
+    # #                     
+    # #     for i in range(9):
+    # #         indarr                  = index_dict[i]
+    # #         azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #         ibinarr                 = np.floor((azi_arr - minazi)/d_bin)
+    # #         weight_bin              = 1*(ibinarr==ibin)
+    # #         index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #         weight_bin[index_outlier_cutted] \
+    # #                                 = 0
+    # #         slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #         slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #         # differences in slowness numexpr.evaluate('sum(index_azi, 0)')
+    # #         temp_dslow              = numexpr.evaluate('weight_bin*(slownessALL_cutted-slowsumQC_cutted)')
+    # #         temp_dslow              = numexpr.evaluate('sum(temp_dslow, 0)')
+    # #         # velocities
+    # #         temp_vel                = slownessALL_cutted.copy()
+    # #         temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
+    # #         temp_vel                = numexpr.evaluate('weight_bin*temp_vel')
+    # #         temp_vel                = numexpr.evaluate('sum(temp_vel, 0)')
+    # #         # number of measurements in this bin
+    # #         N_ibin                  = numexpr.evaluate('sum(weight_bin, 0)')
+    # #         # quality control
+    # #         ind_valid               = N_ibin >= nmin_bin
+    # #         sumNbin[ind_valid]      += N_ibin[ind_valid]
+    # #         slowbin[ind_valid]      += temp_dslow[ind_valid]
+    # #         velbin[ind_valid]       += temp_vel[ind_valid]
+    # #     vel_mean                    = velbin.copy()
+    # #     vel_mean[sumNbin!=0]        = velbin[sumNbin!=0]/sumNbin[sumNbin!=0]
+    # #     dslow_mean                  = slowbin.copy()
+    # #     dslow_mean[sumNbin!=0]      = dslow_mean[sumNbin!=0]/sumNbin[sumNbin!=0]
+    # # 
+    # # 
+    # # histArr_cutted  = histArr[:, gridx:-gridx, gridy:-gridy]
+    # #             # slowness in each bin
+    # #             slow_sum_ani                = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+    # #             slow_sum_ani_cutted         = slow_sum_ani[:, gridx:-gridx, gridy:-gridy]
+    # #             # slowness uncertainties for each bin
+    # #             slow_un                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+    # #             slow_un_cutted              = slow_un[:, gridx:-gridx, gridy:-gridy]
+    # #             # velocity uncertainties for each bin
+    # #             vel_un                      = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+    # #             vel_un_cutted               = vel_un[:, gridx:-gridx, gridy:-gridy]
+    # #             #
+    # #             index_dict                  = { 0: [0, -2*gridx, 0,         -2*gridy], \
+    # #                                             1: [0, -2*gridx, gridy,     -gridy],\
+    # #                                             2: [0, -2*gridx, 2*gridy,   Ny_size],\
+    # #                                             3: [gridx, -gridx, 0,       -2*gridy],\
+    # #                                             4: [gridx, -gridx, gridy, -gridy],\
+    # #                                             5: [gridx, -gridx, 2*gridy, Ny_size],\
+    # #                                             6: [2*gridx, Nx_size, 0,    -2*gridy],\
+    # #                                             7: [2*gridx, Nx_size, gridy,-gridy],\
+    # #                                             8: [2*gridx, Nx_size, 2*gridy, Ny_size]}
+    # #             nmin_bin                    = 2 # change
+    # #             #----------------------------------------------------------------------------------
+    # #             # Loop over azimuth bins to get slowness, velocity and number of measurements
+    # #             #----------------------------------------------------------------------------------
+    # #             for ibin in xrange(N_bin):
+    # #                 sumNbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
+    # #                 slowbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
+    # #                 slow_un_ibin                = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
+    # #                 velbin                      = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
+    # #                 vel_un_ibin                 = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
+    # #                 for i in range(9):
+    # #                     indarr                  = index_dict[i]
+    # #                     azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     ibinarr                 = np.floor((azi_arr - minazi)/d_bin)
+    # #                     weight_bin              = 1*(ibinarr==ibin)
+    # #                     index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     weight_bin[index_outlier_cutted] \
+    # #                                             = 0
+    # #                     slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     # differences in slowness numexpr.evaluate('sum(index_azi, 0)')
+    # #                     temp_dslow              = numexpr.evaluate('weight_bin*(slownessALL_cutted-slowsumQC_cutted)')
+    # #                     temp_dslow              = numexpr.evaluate('sum(temp_dslow, 0)')
+    # #                     # velocities
+    # #                     temp_vel                = slownessALL_cutted.copy()
+    # #                     temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
+    # #                     temp_vel                = numexpr.evaluate('weight_bin*temp_vel')
+    # #                     temp_vel                = numexpr.evaluate('sum(temp_vel, 0)')
+    # #                     # number of measurements in this bin
+    # #                     N_ibin                  = numexpr.evaluate('sum(weight_bin, 0)')
+    # #                     # quality control
+    # #                     ind_valid               = N_ibin >= nmin_bin
+    # #                     sumNbin[ind_valid]      += N_ibin[ind_valid]
+    # #                     slowbin[ind_valid]      += temp_dslow[ind_valid]
+    # #                     velbin[ind_valid]       += temp_vel[ind_valid]
+    # #                 vel_mean                    = velbin.copy()
+    # #                 vel_mean[sumNbin!=0]        = velbin[sumNbin!=0]/sumNbin[sumNbin!=0]
+    # #                 dslow_mean                  = slowbin.copy()
+    # #                 dslow_mean[sumNbin!=0]      = dslow_mean[sumNbin!=0]/sumNbin[sumNbin!=0]
+    # #                 # compute uncertainties
+    # #                 for i in range(9):
+    # #                     indarr                  = index_dict[i]
+    # #                     azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     ibinarr                 = np.floor((azi_arr-minazi)/d_bin)
+    # #                     weight_bin              = 1*(ibinarr==ibin)
+    # #                     index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     weight_bin[index_outlier_cutted] \
+    # #                                             = 0
+    # #                     slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
+    # #                     temp_vel                = slownessALL_cutted.copy()
+    # #                     temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
+    # #                     vel_un_ibin             = vel_un_ibin + numexpr.evaluate('sum( (weight_bin*(temp_vel-vel_mean))**2, 0)')
+    # #                     slow_un_ibin            = slow_un_ibin + numexpr.evaluate('sum( (weight_bin*(slownessALL_cutted-slowsumQC_cutted \
+    # #                                                             - dslow_mean))**2, 0)')
+    # #                 #------------------------------------
+    # #                 vel_un_ibin[sumNbin!=0]     = np.sqrt(vel_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
+    # #                 vel_un_cutted[ibin, :, :]   = vel_un_ibin
+    # #                 slow_un_ibin[sumNbin!=0]    = np.sqrt(slow_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
+    # #                 slow_un_cutted[ibin, :, :]  = slow_un_ibin
+    # #                 histArr_cutted[ibin, :, :]  = sumNbin
+    # #                 slow_sum_ani_cutted[ibin, :, :]  \
+    # #                                             = dslow_mean
+    # #             #-------------------------------------------
+    # #             N_thresh                                = 10 # change
+    # #             slow_sum_ani_cutted[histArr_cutted<N_thresh] \
+    # #                                                     = 0
+    # #             slow_sum_ani[:, gridx:-gridx, gridy:-gridy]\
+    # #                                                     = slow_sum_ani_cutted
+    # #             # uncertainties
+    # #             slow_un_cutted[histArr_cutted<N_thresh] = 0
+    # #             slow_un[:, gridx:-gridx, gridy:-gridy]  = slow_un_cutted
+    # #             # convert sem of slowness to sem of velocity
+    # #             vel_un_cutted[histArr_cutted<N_thresh]  = 0
+    # #             vel_un[:, gridx:-gridx, gridy:-gridy]   = vel_un_cutted
+    # #             # # # return vel_un
+    # #             # near neighbor quality control
+    # #             Ntotal_thresh                           = 45 # change
+    # #             slow_sum_ani[:, NmeasureAni<Ntotal_thresh]    \
+    # #                                                     = 0 
+    # #             slow_un[:, NmeasureAni<Ntotal_thresh]   = 0
+    # #             vel_un[:, NmeasureAni<Ntotal_thresh]    = 0
+    # #             histArr[:, gridx:-gridx, gridy:-gridy]  = histArr_cutted
+    # # 
+    # 
+    # 
+    # 
+    # return 
+
 
 class EikonalTomoDataSet(h5py.File):
     """
     Object for eikonal/Helmholtz tomography, builded upon hdf5 data file.
     """
+    #==================================================
+    # functions print the information of database
+    #==================================================
+    def print_attrs(self, print_to_screen=True):
+        """
+        Print the attrsbute information of the dataset.
+        """
+        outstr          = '================================= Surface wave eikonal/Helmholtz tomography database ==================================\n'
+        try:
+            outstr      += 'period(s):                              - '+str(self.attrs['period_array'])+'\n'
+            outstr      += 'longitude range                         - '+str(self.attrs['minlon'])+' ~ '+str(self.attrs['maxlon'])+'\n'
+            outstr      += 'longitude spacing/npts                  - '+str(self.attrs['dlon'])+'/'+str(self.attrs['Nlon'])+'\n'
+            outstr      += 'nlon_grad/nlon_lplc                     - '+str(self.attrs['nlon_grad'])+'/'+str(self.attrs['nlon_lplc'])+'\n'
+            outstr      += 'latitude range                          - '+str(self.attrs['minlat'])+' ~ '+str(self.attrs['maxlat'])+'\n'
+            outstr      += 'latitude spacing/npts                   - '+str(self.attrs['dlat'])+'/'+str(self.attrs['Nlat'])+'\n'
+            outstr      += 'nlat_grad/nlat_lplc                     - '+str(self.attrs['nlat_grad'])+'/'+str(self.attrs['nlat_lplc'])+'\n'
+            per_arr     = self.attrs['period_array']
+        except:
+            print 'Empty Database!'
+            return None
+        if print_to_screen:
+            print outstr
+        else:
+            return outstr
+        return
+    
+    def print_info(self, runid=0):
+        """print the information of given eikonal/Helmholz run
+        """
+        outstr      = self.print_attrs(print_to_screen=False)
+        if outstr is None:
+            return
+        outstr      += '========================================== Eikonal_run_%d' %runid +' ====================================================\n'
+        subgroup    = self['Eikonal_run_%d' %runid]
+        pers        = self.attrs['period_array']
+        perid       = '%d_sec' %pers[0]
+        Nevent      = len(subgroup[perid].keys())
+        outstr      += '--- number of (virtual) events                  - '+str(Nevent)+'\n'
+        evid        = subgroup[perid].keys()[0]
+        evgrp       = subgroup[perid][evid]
+        outstr      += '--- attributes for each event                   - evlo, evla, Nvalid_grd, Ntotal_grd \n'
+        outstr      += '--- appV (apparent velocity)                    - '+str(evgrp['appV'].shape)+'\n'
+        try:    
+            outstr  += '--- corV (corrected velocity)                   - '+str(evgrp['corV'].shape)+'\n'
+        except KeyError:
+            outstr  += '*** NO corrected velocity \n'
+        try:    
+            outstr  += '--- lplc_amp (amplitude Laplacian)              - '+str(evgrp['lplc_amp'].shape)+'\n'
+        except KeyError:
+            outstr  += '*** NO corrected lplc_amp \n'
+        outstr      += '--- az (azimuth)                                - '+str(evgrp['az'].shape)+'\n'
+        outstr      += '--- baz (back-azimuth)                          - '+str(evgrp['baz'].shape)+'\n'
+        outstr      += '--- proAngle (propagation angle)                - '+str(evgrp['proAngle'].shape)+'\n'
+        outstr      += '--- travelT (travel time)                       - '+str(evgrp['travelT'].shape)+'\n'
+        outstr      += '--- reason_n (index array)                      - '+str(evgrp['reason_n'].shape)+'\n'
+        outstr      += '        0: accepted point \n' + \
+                       '        1: data point the has large difference between v1HD and v1HD02 \n' + \
+                       '        2: data point that does not have near neighbor points at all E/W/N/S directions\n' + \
+                       '        3: slowness is too large/small \n' + \
+                       '        4: near a zero field data point \n' + \
+                       '        5: epicentral distance is too small \n' + \
+                       '        6: large curvature              \n'
+        try:
+            outstr  += '--- reason_n_helm (index array for Helmoltz)    - '+str(evgrp['reason_n_helm'].shape)+'\n'
+            outstr  += '        0 ~ 6: same as above \n' + \
+                       '        7: reason_n of amplitude field is non-zero (invalid) \n' + \
+                       '        8: negative phase slowness after correction \n'
+        except KeyError:
+            outstr  += '*** NO reason_n_helm \n'
+        
+        try:
+            subgroup= self['Eikonal_stack_%d' %runid]
+            outstr  += '=============================================================================================================\n'
+        except KeyError:
+            outstr  += '========================================== NO corresponding stacked results =================================\n'
+            return
+        if subgroup.attrs['anisotropic']:
+            tempstr = 'anisotropic'
+            outstr  += '--- isotropic/anisotropic                           - '+tempstr+'\n'
+            outstr  += '--- N_bin (number of bins, for ani run)             - '+str(subgroup.attrs['N_bin'])+'\n'
+            outstr  += '--- minazi/maxazi (min/max azi, for ani run)        - '+str(subgroup.attrs['minazi'])+'/'+str(subgroup.attrs['maxazi'])+'\n'
+        else:
+            tempstr = 'isotropic'
+        pergrp      = subgroup[perid]
+        outstr      += '--- Nmeasure (number of raw measurements)           - '+str(pergrp['Nmeasure'].shape)+'\n'
+        outstr      += '--- NmeasureQC (number of qc measurements)          - '+str(pergrp['NmeasureQC'].shape)+'\n'
+        outstr      += '--- slowness                                        - '+str(pergrp['slowness'].shape)+'\n'
+        outstr      += '--- slowness_std                                    - '+str(pergrp['slowness_std'].shape)+'\n'
+        outstr      += '--- mask                                            - '+str(pergrp['mask'].shape)+'\n'
+        outstr      += '--- vel_iso (isotropic velocity)                    - '+str(pergrp['vel_iso'].shape)+'\n'
+        outstr      += '--- vel_sem (uncertainties for velocity)            - '+str(pergrp['vel_sem'].shape)+'\n'
+        print outstr
+        return
+    
+    
     def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), dlon=0.2, dlat=0.2, \
                              nlat_grad=1, nlon_grad=1, nlat_lplc=2, nlon_lplc=2, optimize_spacing=True):
         """
@@ -209,7 +484,7 @@ class EikonalTomoDataSet(h5py.File):
         inasdffname - input ASDF data file
         workingdir  - working directory
         fieldtype   - fieldtype (Tph or Tgr)
-        channel     - channel for analysis
+        channel     - channel for analysis (default = ZZ )
         data_type   - data type
                      (default='FieldDISPpmf2interp', aftan measurements with phase-matched filtering and jump correction)
         runid       - run id
@@ -220,6 +495,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         if fieldtype!='Tph' and fieldtype!='Tgr':
             raise ValueError('Wrong field type: '+fieldtype+' !')
+        # create new eikonal group
         create_group        = False
         while (not create_group):
             try:
@@ -229,7 +505,9 @@ class EikonalTomoDataSet(h5py.File):
                 runid       += 1
                 continue
         group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
+        # input xcorr database
         inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        # get header 
         pers                = self.attrs['period_array']
         minlon              = self.attrs['minlon']
         maxlon              = self.attrs['maxlon']
@@ -244,7 +522,7 @@ class EikonalTomoDataSet(h5py.File):
         fdict               = { 'Tph': 2, 'Tgr': 3}
         evLst               = inDbase.waveforms.list()
         for per in pers:
-            print 'Computing gradient for: '+str(per)+' sec'
+            print '--- computing gradient for: '+str(per)+' sec'
             del_per         = per-int(per)
             if del_per==0.:
                 persfx      = str(int(per))+'sec'
@@ -270,6 +548,7 @@ class EikonalTomoDataSet(h5py.File):
                                         minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=lon1, evla=lat1, fieldtype=fieldtype, \
                                         nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc)
                 Zarr                = dataArr[:, fdict[fieldtype]]
+                # skip if not enough data points
                 if Zarr.size <= mindp:
                     continue
                 distArr             = dataArr[:, 5]
@@ -415,8 +694,8 @@ class EikonalTomoDataSet(h5py.File):
             shutil.rmtree(workingdir)
         return
     
-    def xcorr_eikonal_mp(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', runid=0, new_group=True,
-                deletetxt=True, verbose=False, subsize=1000, nprocess=None, cdist=150., mindp=10, pers=None):
+    def xcorr_eikonal_mp(self, inasdffname, workingdir, fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp',\
+                runid=0, new_group=True, deletetxt=True, verbose=False, subsize=1000, nprocess=None, cdist=150., mindp=10, pers=None):
         """
         Compute gradient of travel time for cross-correlation data with multiprocessing
         =================================================================================================================
@@ -424,7 +703,7 @@ class EikonalTomoDataSet(h5py.File):
         inh5fname   - input hdf5 data file
         workingdir  - working directory
         fieldtype   - fieldtype (Tph or Tgr)
-        channel     - channel for analysis
+        channel     - channel for analysis (default = ZZ )
         data_type   - data type
                      (default='FieldDISPpmf2interp', aftan measurements with phase-matched filtering and jump correction)
         runid       - run id
@@ -449,7 +728,9 @@ class EikonalTomoDataSet(h5py.File):
         else:
             group   = self.require_group( name = 'Eikonal_run_'+str(runid) )
         group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
+        # input xcorr database
         inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        # header information
         if isinstance(pers, np.ndarray):
             pers_dbase      = self.attrs['period_array']
             for per in pers:
@@ -474,7 +755,7 @@ class EikonalTomoDataSet(h5py.File):
         # prepare data
         #------------------------
         for per in pers:
-            print 'Preparing data for gradient computation of '+str(per)+' sec'
+            print '--- preparing data for gradient computation of '+str(per)+' sec'
             del_per         = per-int(per)
             if del_per==0.:
                 persfx      = str(int(per))+'sec'
@@ -511,7 +792,7 @@ class EikonalTomoDataSet(h5py.File):
         if len(fieldLst) > subsize:
             Nsub                    = int(len(fieldLst)/subsize)
             for isub in range(Nsub):
-                print 'Subset:', isub,'in',Nsub,'sets'
+                print '--- eikonal computation subset:', isub,'in',Nsub,'sets'
                 cfieldLst           = fieldLst[isub*subsize:(isub+1)*subsize]
                 EIKONAL             = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
                 pool                = multiprocessing.Pool(processes=nprocess)
@@ -525,7 +806,7 @@ class EikonalTomoDataSet(h5py.File):
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
-            print 'Computing eikonal tomography'
+            print '--- eikonal computation, one set'
             EIKONAL                 = partial(eikonal4mp, workingdir=workingdir, channel=channel, cdist=cdist)
             pool                    = multiprocessing.Pool(processes=nprocess)
             pool.map(EIKONAL, fieldLst) #make our results with a map call
@@ -535,7 +816,7 @@ class EikonalTomoDataSet(h5py.File):
         # Read data into hdf5 dataset
         #-----------------------------------------
         for per in pers:
-            print 'Reading gradient data for: '+str(per)+' sec'
+            print '*** reading gradient data for: '+str(per)+' sec'
             working_per = workingdir+'/'+str(per)+'sec'
             per_group   = group.create_group( name='%g_sec'%( per ) )
             for evid in evLst:
@@ -758,7 +1039,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         pers_dbase      = self.attrs['period_array']
         for per in pers_dbase:
-            print 'eikonal tomography for T = '+str(per)+' sec'
+            print '=== eikonal tomography for T = '+str(per)+' sec'
             pers        = np.array([per])
             self.xcorr_eikonal_mp(inasdffname=inasdffname, workingdir=workingdir, fieldtype=fieldtype, channel=channel,\
                     data_type=data_type, runid=runid, new_group=False, deletetxt=deletetxt, verbose=verbose, subsize=subsize, nprocess=nprocess,\
@@ -823,9 +1104,9 @@ class EikonalTomoDataSet(h5py.File):
         fdict               = { 'Tph': 2, 'Tgr': 3, 'amp': 4}
         # load catalog from input ASDF file
         inDbase             = pyasdf.ASDFDataSet(inasdffname)
-        print 'Loading catalog'
+        print '--- loading catalog'
         cat                 = inDbase.events
-        print 'End loading catalog'
+        print '--- end loading catalog'
         L                   = len(cat)
         datalst             = inDbase.auxiliary_data[data_type].list()
         #-------------------------------------------------------------------------------------------------
@@ -883,7 +1164,7 @@ class EikonalTomoDataSet(h5py.File):
                         continue
                     lons            = dataArr[:, 0]
                     lats            = dataArr[:, 1]
-                    if _check_station_distribution(lons, lats, np.int32(mindp/2.)):
+                    if _check_station_distribution(lons, lats, np.int32(mindp/2.5)):
                         skip_this_event \
                                     = False
                         break
@@ -1023,11 +1304,13 @@ class EikonalTomoDataSet(h5py.File):
         data_type       - data type
                             default='FieldDISPpmf2interp': 
                                 interpolated aftan measurements with phase-matched filtering and jump correction
+        --- pre-tomography quality control ---
         pre_qual_ctrl   - perform pre-tomography quality control or not
         btime_qc        - begin time for quality control
         etime_qc        - end time for quality control
         incat           - input (quality-controlled) catalog
         evid_lst        - event id list corresponding to incat
+        --------------------------------------
         runid           - run id
         deletetxt       - delete output txt files in working directory
         subsize         - subsize of processing list, use to prevent lock in multiprocessing process
@@ -1057,6 +1340,7 @@ class EikonalTomoDataSet(h5py.File):
                     runid       += 1
                     continue
             group.attrs.create(name = 'fieldtype', data=fieldtype[1:])
+        # if period is specified, check if it is in the header 
         if isinstance(pers, np.ndarray):
             pers_dbase      = self.attrs['period_array']
             for per in pers:
@@ -1078,17 +1362,18 @@ class EikonalTomoDataSet(h5py.File):
         fieldLst            = []
         # load catalog from input ASDF file
         inDbase             = pyasdf.ASDFDataSet(inasdffname)
+        # if incat and evid_lst is specified, skip quality control
         if incat is not None and evid_lst is not None:
             cat             = incat
             pre_qual_ctrl   = False
         else:
-            print 'Loading catalog'
+            print '--- loading catalog'
             cat             = inDbase.events
-            print 'End loading catalog'
+            print '--- end loading catalog'
             L               = len(cat)
         datalst             = inDbase.auxiliary_data[data_type].list()
         #-------------------------------------------------------------------------------------------------
-        # quality control for the data before performing eikonal/Helmholtz operation, added 10/10/2018
+        # quality control for the data before performing eikonal/Helmholtz operation, added 2018-10-10
         #-------------------------------------------------------------------------------------------------
         if pre_qual_ctrl:
             print '--- quality control for events'
@@ -1121,7 +1406,7 @@ class EikonalTomoDataSet(h5py.File):
                 if not dataid in datalst:
                     continue
                 if otime < btime_qc or otime > etime_qc:
-                    print('SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+                    print('--- SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
                     continue
                 # loop over periods
                 skip_this_event     = True
@@ -1142,16 +1427,15 @@ class EikonalTomoDataSet(h5py.File):
                         continue
                     lons            = dataArr[:, 0]
                     lats            = dataArr[:, 1]
-                    if _check_station_distribution(lons, lats, np.int32(mindp/2.)):
-                        skip_this_event \
-                                    = False
+                    if _check_station_distribution(lons, lats, np.int32(mindp/2.5)):
+                        skip_this_event     = False
                         break
                 if skip_this_event:
                     if verbose:
-                        print('SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+                        print('--- SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
                     continue
                 if verbose:
-                    print('ACCEPT: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+                    print('--- ACCEPT: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
                 qc_evnumb           += 1
                 qc_cat              += event
                 evid_lst.append(evid)
@@ -1178,7 +1462,7 @@ class EikonalTomoDataSet(h5py.File):
             evnumb          = 0
             for event in cat:
                 evnumb      +=1
-                # added on 10/10/2018
+                # added on 2018-10-10
                 if pre_qual_ctrl:
                     evid        = evid_lst[evnumb-1]
                     qc_evid     = 'E%05d' % evnumb
@@ -1232,7 +1516,7 @@ class EikonalTomoDataSet(h5py.File):
         if len(fieldLst) > subsize:
             Nsub                = int(len(fieldLst)/subsize)
             for isub in range(Nsub):
-                print 'Subset:', isub,'in',Nsub,'sets'
+                print '--- eikonal/helmholtz computation: subset:', isub,'in',Nsub,'sets'
                 cfieldLst       = fieldLst[isub*subsize:(isub+1)*subsize]
                 HELMHOTZ        = partial(helmhotz4mp, workingdir=workingdir, channel=channel, amplplc=amplplc, cdist=cdist)
                 pool            = multiprocessing.Pool(processes=nprocess)
@@ -1246,6 +1530,7 @@ class EikonalTomoDataSet(h5py.File):
             pool.close() #we are not adding any more processes
             pool.join() #tell it to wait until all threads are done before going on
         else:
+            print '--- eikonal/helmholtz computation: one set'
             HELMHOTZ            = partial(helmhotz4mp, workingdir=workingdir, channel=channel, amplplc=amplplc, cdist=cdist)
             pool                = multiprocessing.Pool(processes=nprocess)
             pool.map(HELMHOTZ, fieldLst) #make our results with a map call
@@ -1255,13 +1540,13 @@ class EikonalTomoDataSet(h5py.File):
         # read data into hdf5 dataset
         #-----------------------------------
         for per in pers:
-            print 'Reading gradient data for: '+str(per)+' sec'
+            print '--- reading gradient data for: '+str(per)+' sec'
             working_per         = workingdir+'/'+str(per)+'sec'
             per_group           = group.require_group( name='%g_sec'%( per ) )
             evnumb              = 0
             for event in cat:
                 evnumb          += 1
-                # added on 10/10/2018
+                # added on 2018-10-10
                 if pre_qual_ctrl:
                     evid        = evid_lst[evnumb-1]
                     qc_evid     = 'E%05d' % evnumb
@@ -1269,7 +1554,7 @@ class EikonalTomoDataSet(h5py.File):
                     evid        = 'E%05d' % evnumb
                 infname         = working_per+'/'+evid+'_field2d.npz'
                 if not os.path.isfile(infname):
-                    print 'No data for:', evid
+                    print '--- No data for:', evid
                     continue
                 InArr           = np.load(infname)
                 appV            = InArr['arr_0']
@@ -1325,9 +1610,11 @@ class EikonalTomoDataSet(h5py.File):
         data_type       - data type
                             default='FieldDISPpmf2interp': 
                                 interpolated aftan measurements with phase-matched filtering and jump correction
+        --- pre-tomography quality control ---
         pre_qual_ctrl   - perform pre-tomography quality control or not
         btime_qc        - begin time for quality control
         etime_qc        - end time for quality control
+        --------------------------------------
         runid           - run id
         deletetxt       - delete output txt files in working directory
         subsize         - subsize of processing list, use to prevent lock in multiprocessing process
@@ -1343,9 +1630,9 @@ class EikonalTomoDataSet(h5py.File):
         # quality control for the data before performing eikonal/Helmholtz operation, added 10/10/2018
         #-------------------------------------------------------------------------------------------------
         inDbase         = pyasdf.ASDFDataSet(inasdffname)
-        print 'Loading catalog'
+        print '--- loading catalog'
         cat             = inDbase.events
-        print 'End loading catalog'
+        print '--- end loading catalog'
         L               = len(cat)
         datalst         = inDbase.auxiliary_data[data_type].list()
         if pre_qual_ctrl:
@@ -1379,7 +1666,7 @@ class EikonalTomoDataSet(h5py.File):
                 if not dataid in datalst:
                     continue
                 if otime < btime_qc or otime > etime_qc:
-                    print('SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+                    print('--- SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
                     continue
                 # loop over periods
                 skip_this_event     = True
@@ -1400,14 +1687,13 @@ class EikonalTomoDataSet(h5py.File):
                         continue
                     lons            = dataArr[:, 0]
                     lats            = dataArr[:, 1]
-                    if _check_station_distribution(lons, lats, np.int32(mindp/2.)):
-                        skip_this_event \
-                                    = False
+                    if _check_station_distribution(lons, lats, np.int32(mindp/2.5)):
+                        skip_this_event = False
                         break
                 if skip_this_event:
-                    print('SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+                    print('--- SKIP: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
                     continue
-                print('ACCEPT: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
+                print('--- ACCEPT: Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
                 qc_evnumb           += 1
                 qc_cat              += event
                 evid_lst.append(evid)
@@ -1427,12 +1713,12 @@ class EikonalTomoDataSet(h5py.File):
             self.quake_eikonal_mp(inasdffname=inasdffname, workingdir=workingdir, fieldtype=fieldtype, channel=channel, data_type=data_type,
                 pre_qual_ctrl=False, btime_qc=btime_qc, etime_qc=etime_qc, runid=runid, merge=True, deletetxt=deletetxt,
                     verbose=verbose, subsize=subsize, nprocess=nprocess, amplplc=amplplc, cdist=cdist, mindp=mindp, pers=pers,
-                            incat=qc_cat, evid_lst=evid_lst)
+                            incat = qc_cat, evid_lst=evid_lst)
             print '=== elasped time = '+str(time.time() - start)+' sec'
         return
 
     def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
-                spacing_ani=0.6, use_numba=True, coverage=0.1):
+                spacing_ani=0.6, coverage=0.1, use_numba=True):
         """
         Stack gradient results to perform Eikonal Tomography
         =================================================================================================================
@@ -1440,7 +1726,10 @@ class EikonalTomoDataSet(h5py.File):
         runid           - run id
         minazi/maxazi   - min/max azimuth for anisotropic parameters determination
         N_bin           - number of bins for anisotropic parameters determination
+        threshmeasure   - minimum number of measurements required to perform stacking
+        spacing_ani     - grid spacing for anisotropic stacking
         anisotropic     - perform anisotropic parameters determination or not
+        coverage        - required coverage rate ({Number of valid grid points}/{Number of total grid points})
         use_numba       - use numba for large array manipulation or not, faster and much less memory requirement
         -----------------------------------------------------------------------------------------------------------------
         version history:
@@ -1477,7 +1766,7 @@ class EikonalTomoDataSet(h5py.File):
         group_out.attrs.create(name = 'maxazi', data = maxazi)
         group_out.attrs.create(name = 'fieldtype', data = group.attrs['fieldtype'])
         for per in pers:
-            print 'Stacking Eikonal results for: '+str(per)+' sec'
+            print '--- stacking eikonal results for: '+str(per)+' sec'
             per_group   = group['%g_sec'%( per )]
             Nevent      = len(per_group.keys())
             # initialize data arrays 
@@ -1490,7 +1779,7 @@ class EikonalTomoDataSet(h5py.File):
             #-----------------------------------------------------
             # Loop over events to get eikonal maps for each event
             #-----------------------------------------------------
-            print '--- Reading data'
+            print '*** reading data'
             for iev in range(Nevent):
                 evid                        = per_group.keys()[iev]
                 event_group                 = per_group[evid]
@@ -1516,9 +1805,9 @@ class EikonalTomoDataSet(h5py.File):
                         reason_nALL[iev, :, :]  = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
                 except:
                     pass
-            print '--- Stacking data'
+            print '*** Stacking data'
             if Nmeasure.max()< threshmeasure:
-                print ('No enough measurements for: '+str(per)+' sec')
+                print ('--- No enough measurements for: '+str(per)+' sec')
                 continue
             # discard grid points where number of raw measurements is low, added Sep 26th, 2018
             index_discard                   = Nmeasure < 50
@@ -1586,6 +1875,7 @@ class EikonalTomoDataSet(h5py.File):
             #-----------------------------------------------
             weightALLQC                     = weightALL.copy()
             index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>2.*slowness_stdALL
+            # # # index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>3.*slowness_stdALL
             index_outlier                   += reason_nALL != 0
             weightALLQC[index_outlier]      = 0
             weightsumQC                     = np.sum(weightALLQC, axis=0)
@@ -1898,6 +2188,252 @@ class EikonalTomoDataSet(h5py.File):
                 # vel_un[:, NmeasureAni<Ntotal_thresh]    = 0
                 # # # # print NmeasureAni.shape, vel_un.shape
                 # histArr[:, 3:-3, 3:-3]                  = histArr_cutted
+
+                # save data to database
+                s_anidset       = per_group_out.create_dataset(name='slownessAni', data=slow_sum_ani)
+                s_anisemdset    = per_group_out.create_dataset(name='slownessAni_sem', data=slow_un)
+                v_anisemdset    = per_group_out.create_dataset(name='velAni_sem', data=vel_un)
+                histdset        = per_group_out.create_dataset(name='histArr', data=histArr)
+                NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
+        return
+    
+    def eikonal_stack_new(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
+                spacing_ani=0.3, coverage=0.1, use_numba=True):
+        """
+        Stack gradient results to perform Eikonal Tomography
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - run id
+        minazi/maxazi   - min/max azimuth for anisotropic parameters determination
+        N_bin           - number of bins for anisotropic parameters determination
+        threshmeasure   - minimum number of measurements required to perform stacking
+        spacing_ani     - grid spacing for anisotropic stacking
+        anisotropic     - perform anisotropic parameters determination or not
+        coverage        - required coverage rate ({Number of valid grid points}/{Number of total grid points})
+        use_numba       - use numba for large array manipulation or not, faster and much less memory requirement
+        -----------------------------------------------------------------------------------------------------------------
+        version history:
+            Dec 6th, 2016   - add function to use numba, faster and much less memory consumption
+            Feb 7th, 2018   - bug fixed by adding signALL,
+                                originally stdArr = np.sum( (weightALL-avgArr)**2, axis=0), 2018-02-07
+        =================================================================================================================
+        """
+        # read attribute information
+        pers            = self.attrs['period_array']
+        minlon          = self.attrs['minlon']
+        maxlon          = self.attrs['maxlon']
+        minlat          = self.attrs['minlat']
+        maxlat          = self.attrs['maxlat']
+        dlon            = self.attrs['dlon']
+        dlat            = self.attrs['dlat']
+        Nlon            = int(self.attrs['Nlon'])
+        Nlat            = int(self.attrs['Nlat'])
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        nlat_lplc       = self.attrs['nlat_lplc']
+        nlon_lplc       = self.attrs['nlon_lplc']
+        group           = self['Eikonal_run_'+str(runid)]
+        try:
+            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
+        except ValueError:
+            warnings.warn('Eikonal_stack_'+str(runid)+' exists! Will be recomputed!', UserWarning, stacklevel=1)
+            del self['Eikonal_stack_'+str(runid)]
+            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
+        # attributes for output group
+        group_out.attrs.create(name = 'anisotropic', data = anisotropic)
+        group_out.attrs.create(name = 'N_bin', data = N_bin)
+        group_out.attrs.create(name = 'minazi', data = minazi)
+        group_out.attrs.create(name = 'maxazi', data = maxazi)
+        group_out.attrs.create(name = 'fieldtype', data = group.attrs['fieldtype'])
+        for per in pers:
+            print '--- stacking eikonal results for: '+str(per)+' sec'
+            per_group   = group['%g_sec'%( per )]
+            Nevent      = len(per_group.keys())
+            # initialize data arrays 
+            Nmeasure    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
+            weightALL   = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            slownessALL = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            aziALL      = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
+            reason_nALL = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            validALL    = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
+            #-----------------------------------------------------
+            # Loop over events to get eikonal maps for each event
+            #-----------------------------------------------------
+            print '*** reading data'
+            for iev in range(Nevent):
+                evid                        = per_group.keys()[iev]
+                event_group                 = per_group[evid]
+                az                          = event_group['az'].value
+                #-------------------------------------------------
+                # get apparent velocities for individual event
+                #-------------------------------------------------
+                velocity                    = event_group['appV'].value
+                reason_n                    = event_group['reason_n'].value
+                oneArr                      = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
+                oneArr[reason_n!=0]         = 0
+                slowness                    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.float32)
+                slowness[velocity!=0]       = 1./velocity[velocity!=0]                
+                slownessALL[iev, :, :]      = slowness
+                reason_nALL[iev, :, :]      = reason_n
+                aziALL[iev, :, :]           = az
+                Nmeasure                    += oneArr
+                # quality control of coverage
+                try:
+                    Ntotal_grd              = event_group.attrs['Ntotal_grd']
+                    Nvalid_grd              = event_group.attrs['Nvalid_grd']
+                    if float(Nvalid_grd)/float(Ntotal_grd)< coverage:
+                        reason_nALL[iev, :, :]  = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                except:
+                    pass
+            #----------------------------
+            # isotropic stacking
+            #----------------------------
+            print '*** Stacking data'
+            if Nmeasure.max()< threshmeasure:
+                print ('--- No enough measurements for: '+str(per)+' sec')
+                continue
+            # discard grid points where number of raw measurements is low, added Sep 26th, 2018
+            index_discard                   = Nmeasure < 50
+            reason_nALL[:, index_discard]   = 10
+            #-----------------------------------------------
+            # Get weight for each grid point per event
+            #-----------------------------------------------
+            if use_numba:
+                validALL[reason_nALL==0]    = 1
+                weightALL                   = _get_azi_weight(aziALL, validALL)
+                weightALL[reason_nALL!=0]   = 0
+                weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
+                weightsum                   = np.sum(weightALL, axis=0)
+            else:
+                azi_event1                  = np.broadcast_to(aziALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                azi_event2                  = np.swapaxes(azi_event1, 0, 1)
+                validALL[reason_nALL==0]    = 1
+                validALL4                   = np.broadcast_to(validALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                # use numexpr for very large array manipulations
+                del_aziALL                  = numexpr.evaluate('abs(azi_event1-azi_event2)')
+                index_azi                   = numexpr.evaluate('(1*(del_aziALL<20)+1*(del_aziALL>340))*validALL4')
+                weightALL                   = numexpr.evaluate('sum(index_azi, 0)')
+                weightALL[reason_nALL!=0]   = 0
+                weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
+                weightsum                   = np.sum(weightALL, axis=0)
+            #-----------------------------------------------
+            # reduce large weight to some value.
+            #-----------------------------------------------
+            avgArr                          = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            avgArr[Nmeasure!=0]             = weightsum[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
+            # bug fixed, 02/07/2018
+            signALL                         = weightALL.copy()
+            signALL[signALL!=0]             = 1.
+            stdArr                          = np.sum( signALL*(weightALL-avgArr)**2, axis=0)
+            stdArr[Nmeasure!=0]             = stdArr[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
+            stdArr                          = np.sqrt(stdArr)
+            threshhold                      = np.broadcast_to(avgArr+3.*stdArr, weightALL.shape)
+            weightALL[weightALL>threshhold] = threshhold[weightALL>threshhold] # threshhold truncated weightALL
+            # recompute weight arrays after large weight value reduction
+            weightsum                       = np.sum(weightALL, axis=0)
+            weightsumALL                    = np.broadcast_to(weightsum, weightALL.shape)
+            # weight over all events, note that before this, weightALL is weight over events in azimuth bin
+            weightALL[weightsumALL!=0]      = weightALL[weightsumALL!=0]/weightsumALL[weightsumALL!=0] 
+            ###
+            weightALL[weightALL==1.]        = 0. # data will be discarded if no other data within 20 degree
+            #-----------------------------------------------
+            # Compute mean/std of slowness
+            #-----------------------------------------------
+            slownessALL2                    = slownessALL*weightALL
+            slowness_sum                    = np.sum(slownessALL2, axis=0)
+            slowness_sumALL                 = np.broadcast_to(slowness_sum, weightALL.shape)
+            # weighted standard deviation
+            # formula: https://www.itl.nist.gov/div898/software/dataplot/refman2/ch2/weightsd.pdf
+            signALL                         = weightALL.copy()
+            signALL[signALL!=0]             = 1.
+            MArr                            = np.sum(signALL, axis=0)
+            temp                            = weightALL*(slownessALL-slowness_sumALL)**2
+            temp                            = np.sum(temp, axis=0)
+            slowness_std                    = np.zeros(temp.shape)
+            tind                            = (weightsum!=0)*(MArr!=1)*(MArr!=0)
+            slowness_std[tind]              = np.sqrt(temp[tind]/ ( weightsum[tind]*(MArr[tind]-1)/MArr[tind] ) )
+            slowness_stdALL                 = np.broadcast_to(slowness_std, weightALL.shape)
+            #-----------------------------------------------
+            # discard outliers of slowness
+            #-----------------------------------------------
+            weightALLQC                     = weightALL.copy()
+            index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>2.*slowness_stdALL
+            # # # index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>3.*slowness_stdALL
+            index_outlier                   += reason_nALL != 0
+            weightALLQC[index_outlier]      = 0
+            weightsumQC                     = np.sum(weightALLQC, axis=0)
+            NmALL                           = np.sign(weightALLQC)
+            NmeasureQC                      = np.sum(NmALL, axis=0)
+            weightsumQCALL                  = np.broadcast_to(weightsumQC, weightALL.shape)
+            weightALLQC[weightsumQCALL!=0]  = weightALLQC[weightsumQCALL!=0]/weightsumQCALL[weightsumQCALL!=0]
+            temp                            = weightALLQC*slownessALL
+            slowness_sumQC                  = np.sum(temp, axis=0)
+            # new
+            signALLQC                       = weightALLQC.copy()
+            signALLQC[signALLQC!=0]         = 1.
+            MArrQC                          = np.sum(signALLQC, axis=0)
+            temp                            = weightALLQC*(slownessALL-slowness_sumQC)**2
+            temp                            = np.sum(temp, axis=0)
+            slowness_stdQC                  = np.zeros(temp.shape)
+            tind                            = (weightsumQC!=0)*(MArrQC!=1)
+            slowness_stdQC[tind]            = np.sqrt(temp[tind]/ ( weightsumQC[tind]*(MArrQC[tind]-1)/MArrQC[tind] ))
+            #---------------------------------------------------------------
+            # mask, velocity, and sem arrays of shape Nlat, Nlon
+            #---------------------------------------------------------------
+            mask                            = np.ones((Nlat, Nlon), dtype=np.bool)
+            tempmask                        = (weightsumQC == 0)
+            mask[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
+                                            = tempmask
+            vel_iso                         = np.zeros((Nlat, Nlon), dtype=np.float32)
+            tempvel                         = slowness_sumQC.copy()
+            tempvel[tempvel!=0]             = 1./ tempvel[tempvel!=0]
+            vel_iso[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
+                                            = tempvel
+            #----------------------------------------------------------------------------------------
+            # standard error of the mean, updated on 09/20/2018
+            # formula: https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Statistical_properties
+            #----------------------------------------------------------------------------------------
+            slownessALL_temp                = slownessALL.copy()
+            slownessALL_temp[slownessALL_temp==0.]\
+                                            = 0.3
+            if np.any(weightALLQC[slownessALL==0.]> 0.):
+                raise ValueError('Check weight array!')
+            temp                            = (weightALLQC*(1./slownessALL_temp-tempvel))**2
+            temp                            = np.sum(temp, axis=0)
+            tempsem                         = np.zeros(temp.shape)
+            tind                            = (weightsumQC!=0)*(MArrQC!=1)
+            tempsem[tind]                   = np.sqrt( temp[tind] * ( MArrQC[tind]/(weightsumQC[tind])**2/(MArrQC[tind]-1) ) ) 
+            vel_sem                         = np.zeros((Nlat, Nlon), dtype=np.float32)
+            vel_sem[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
+                                            = tempsem
+            #---------------------------------------
+            # save isotropic velocity to database
+            #---------------------------------------
+            per_group_out                   = group_out.create_group( name='%g_sec'%( per ) )
+            sdset                           = per_group_out.create_dataset(name='slowness', data=slowness_sumQC)
+            s_stddset                       = per_group_out.create_dataset(name='slowness_std', data=slowness_stdQC)
+            Nmdset                          = per_group_out.create_dataset(name='Nmeasure', data=Nmeasure)
+            NmQCdset                        = per_group_out.create_dataset(name='NmeasureQC', data=NmeasureQC)
+            maskdset                        = per_group_out.create_dataset(name='mask', data=mask)
+            visodset                        = per_group_out.create_dataset(name='vel_iso', data=vel_iso)
+            vsemdset                        = per_group_out.create_dataset(name='vel_sem', data=vel_sem)
+            #----------------------------------------------------------------------------
+            # determine anisotropic parameters, need benchmark and further verification
+            #----------------------------------------------------------------------------
+            if anisotropic:
+                grid_factor                 = int(np.ceil(spacing_ani/dlat))
+                gridx                       = grid_factor
+                gridy                       = int(grid_factor*np.floor(dlon/dlat))
+                if gridx % 2 == 0:
+                    gridx                   += 1
+                if gridx % 2 == 0:
+                    gridy                   += 1
+                print 'anisotropic grid factor = '+ str(gridx)+'/'+str(gridy)
+                # print gridx, gridy
+                n1, n2 = _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin,  Nmeasure)
+                print np.allclose(n1, n2)
+                return 
+                   
 
                 # save data to database
                 s_anidset       = per_group_out.create_dataset(name='slownessAni', data=slow_sum_ani)
@@ -2699,10 +3235,10 @@ class EikonalTomoDataSet(h5py.File):
         elif projection=='lambert':
             distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
             distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
-            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='h', projection='lcc',\
+            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
                         lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,1], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
         m.drawcoastlines(linewidth=1.0)
         m.drawcountries(linewidth=1.)
         # m.drawmapboundary(fill_color=[1.0,1.0,1.0])
@@ -3320,6 +3856,143 @@ class hybridTomoDataSet(EikonalTomoDataSet):
     """
     Object for merging eikonal tomography results, ray tomography results
     """
+    #==================================================
+    # functions print the information of database
+    #==================================================
+    def print_attrs(self, print_to_screen=True):
+        """
+        Print the attrsbute information of the dataset.
+        """
+        outstr      =  '======================================== Surface wave hybrid tomography database ======================================\n'
+        try:
+            outstr      += '--- period (s):                             - '+str(self.attrs['period_array'])+'\n'
+            try:
+                # outstr  += '--- per_xcorr (s):                          - '+str(self.attrs['per_xcorr'])+'\n'
+                outstr  += '    per_xcorr_min/per_xcorr_max (s):        - '+str(self.attrs['per_xcorr_min'])+'/'+str(self.attrs['per_xcorr_max'])+'\n'
+            except:
+                outstr  += '*** NO ambient noise eikonal data\n'
+            try:
+                # outstr  += '--- per_quake (s):                          - '+str(self.attrs['per_quake'])+'\n'
+                outstr  += '    per_quake_min/per_quake_max (s):        - '+str(self.attrs['per_quake_min'])+'/'+str(self.attrs['per_quake_max'])+'\n'
+            except:
+                outstr  += '*** NO earthquake eikonal/Helmholtz data\n'
+            outstr      += '--- period_array_ray (s):                   - '+str(self.attrs['period_array_ray'])+'\n'
+            outstr      += '    longitude range                         - '+str(self.attrs['minlon'])+' ~ '+str(self.attrs['maxlon'])+'\n'
+            outstr      += '    longitude spacing/npts                  - '+str(self.attrs['dlon'])+'/'+str(self.attrs['Nlon'])+'\n'
+            outstr      += '    nlon_grad/nlon_lplc                     - '+str(self.attrs['nlon_grad'])+'/'+str(self.attrs['nlon_lplc'])+'\n'
+            outstr      += '    latitude range                          - '+str(self.attrs['minlat'])+' ~ '+str(self.attrs['maxlat'])+'\n'
+            outstr      += '    latitude spacing/npts                   - '+str(self.attrs['dlat'])+'/'+str(self.attrs['Nlat'])+'\n'
+            outstr      += '    nlat_grad/nlat_lplc                     - '+str(self.attrs['nlat_grad'])+'/'+str(self.attrs['nlat_lplc'])+'\n'
+            try:
+                outstr  += '!!! interpolated dlon/dlat:                 - '+str(self.attrs['dlon_interp'])+'/'+str(self.attrs['dlat_interp'])+'\n'
+            except:
+                outstr  += '*** NO interpolated data\n'
+            per_arr     = self.attrs['period_array']
+        except:
+            print 'Empty Database!'
+            return None
+        if print_to_screen:
+            print outstr
+        else:
+            return outstr
+        return
+    
+    def print_info(self, runid=0):
+        """print the information of given eikonal/Helmholz run
+        """
+        outstr      = self.print_attrs(print_to_screen=False)
+        if outstr is None:
+            return
+        try:
+            xcorr_grp   = self['xcorr_run']
+            perid       = '%d_sec' % self.attrs['per_xcorr_min']
+            pergrp      = xcorr_grp[perid]
+            Nevent      = len(pergrp.keys())
+            outstr      += '============================================= ambient noise correlation ===============================================\n'
+            outstr      += '--- number of virtual events                        - '+str(Nevent)+'\n'
+            evid        = pergrp.keys()[0]
+            evgrp       = pergrp[evid]
+            outstr      += '--- attributes for each event                       - Nvalid_grd, Ntotal_grd \n'
+            outstr      += '--- appV (apparent velocity)                        - '+str(evgrp['appV'].shape)+'\n'
+            outstr      += '--- az (azimuth)                                    - '+str(evgrp['az'].shape)+'\n'
+            outstr      += '--- reason_n (index array)                          - '+str(evgrp['reason_n'].shape)+'\n'
+            outstr      += '        0: accepted point \n' + \
+                           '        1: data point the has large difference between v1HD and v1HD02 \n' + \
+                           '        2: data point that does not have near neighbor points at all E/W/N/S directions\n' + \
+                           '        3: slowness is too large/small \n' + \
+                           '        4: near a zero field data point \n' + \
+                           '        5: epicentral distance is too small \n' + \
+                           '        6: large curvature              \n'
+        except:
+            pass
+        try:
+            quake_grp   = self['quake_run']
+            perid       = '%d_sec' % self.attrs['per_quake_min']
+            pergrp      = quake_grp[perid]
+            Nevent      = len(pergrp.keys())
+            outstr      += '================================================== earthquake data ====================================================\n'
+            outstr      += '--- number of events                                - period-dependent \n'
+            evid        = pergrp.keys()[0]
+            evgrp       = pergrp[evid]
+            outstr      += '--- attributes for each event                       - Nvalid_grd, Ntotal_grd \n'
+            outstr      += '--- appV (apparent velocity)                        - '+str(evgrp['appV'].shape)+'\n'
+            outstr      += '--- az (azimuth)                                    - '+str(evgrp['az'].shape)+'\n'
+            outstr      += '--- reason_n (index array)                          - '+str(evgrp['reason_n'].shape)+'\n'
+            # outstr      += '        0: accepted point \n' + \
+            #                '        1: data point the has large difference between v1HD and v1HD02 \n' + \
+            #                '        2: data point that does not have near neighbor points at all E/W/N/S directions\n' + \
+            #                '        3: slowness is too large/small \n' + \
+            #                '        4: near a zero field data point \n' + \
+            #                '        5: epicentral distance is too small \n' + \
+            #                '        6: large curvature              \n'
+        except:
+            pass
+        try:
+            subgroup= self['Eikonal_stack_%d' %runid]
+            outstr  += '============================================== eikonal stacked results id = %d'% runid +' =========================================\n'
+        except KeyError:
+            outstr  += '============================================= NO corresponding stacked results id = %d'% runid +'=================================\n'
+            return
+        if subgroup.attrs['anisotropic']:
+            tempstr = 'anisotropic'
+            outstr  += '--- isotropic/anisotropic                           - '+tempstr+'\n'
+            outstr  += '--- N_bin (number of bins, for ani run)             - '+str(subgroup.attrs['N_bin'])+'\n'
+            outstr  += '--- minazi/maxazi (min/max azi, for ani run)        - '+str(subgroup.attrs['minazi'])+'/'+str(subgroup.attrs['maxazi'])+'\n'
+        else:
+            tempstr = 'isotropic'
+            outstr  += '--- isotropic/anisotropic                           - '+tempstr+'\n'
+        pergrp      = subgroup[perid]
+        outstr      += '--- Nmeasure (number of raw measurements)           - '+str(pergrp['Nmeasure'].shape)+'\n'
+        outstr      += '--- NmeasureQC (number of qc measurements)          - '+str(pergrp['NmeasureQC'].shape)+'\n'
+        outstr      += '--- slowness                                        - '+str(pergrp['slowness'].shape)+'\n'
+        outstr      += '--- slowness_std                                    - '+str(pergrp['slowness_std'].shape)+'\n'
+        outstr      += '--- mask                                            - '+str(pergrp['mask'].shape)+'\n'
+        outstr      += '--- vel_iso (isotropic velocity)                    - '+str(pergrp['vel_iso'].shape)+'\n'
+        outstr      += '--- vel_sem (uncertainties for velocity)            - '+str(pergrp['vel_sem'].shape)+'\n'
+        
+        try:
+            subgroup= self['merged_tomo_%d' %runid]
+            outstr  += '============================================== merged tomography results id = %d'% runid +' =======================================\n'
+        except KeyError:
+            outstr  += '============================================== NO corresponding merged results id = %d'% runid +'=================================\n'
+            return
+        outstr      += '--- T_ray_max (s)                                   - '+str(subgroup.attrs['T_ray_max'])+'\n'
+        outstr      += '--- mask_ray (not attrs, determined over all pers)  - '+str(subgroup['mask_ray'].shape)+'\n'
+        outstr      += '!!! mask_ray_interp (not attrs, from mask_ray, MC)  - '+str(subgroup['mask_ray_interp'].shape)+'\n'
+        perid       = '%d_sec' % self.attrs['period_array'][-1]
+        pergrp      = subgroup[perid]
+        outstr      += '$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ in the period subdirectory $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ \n'
+        outstr      += '--- Nmeasure (number of (qc) measurements)          - '+str(pergrp['Nmeasure'].shape)+'\n'
+        outstr      += '--- mask (mask_ray or mask_eik)                     - '+str(pergrp['mask'].shape)+'\n'
+        outstr      += '--- mask_eik (mask of eikonal results)              - '+str(pergrp['mask_eik'].shape)+'\n'
+        outstr      += '!!! mask_interp (from mask_eik, T > T_ray_max, MC)  - '+str(pergrp['mask_interp'].shape)+'\n'
+        outstr      += '--- vel_iso (isotropic velocity)                    - '+str(pergrp['vel_iso'].shape)+'\n'
+        outstr      += '!!! vel_iso_interp (used for MC inversion)          - '+str(pergrp['vel_iso_interp'].shape)+'\n'
+        outstr      += '--- vel_sem (uncertainties for velocity)            - '+str(pergrp['vel_sem'].shape)+'\n'
+        outstr      += '!!! vel_sem_interp (used for MC inversion)          - '+str(pergrp['vel_sem_interp'].shape)+'\n'
+        print outstr
+        return
+    
     def _get_lon_lat_arr_interp(self, ncut=0):
         """Get longitude/latitude array
         """
@@ -3919,7 +4592,7 @@ class hybridTomoDataSet(EikonalTomoDataSet):
         return
     
     def merge_raytomo(self, inrayfname, runid=0, Nmeasure_thresh=50, percentage=None, num_thresh=None,\
-                    inrunid=0, gausspercent=1., gstd_thresh=100.):
+                    inrunid=0, gausspercent=1., gstd_thresh=100., Traymin=8., Traymax=50.):
         """
         Merge eikonal tomography results with ray tomography results
         Uncertainties will be extrapolated based on the resolution values yieled by the ray tomography method
@@ -3928,6 +4601,8 @@ class hybridTomoDataSet(EikonalTomoDataSet):
         indset      = h5py.File(inrayfname)
         raydataid   = 'reshaped_qc_run_'+str(inrunid)
         raypers     = indset.attrs['period_array']
+        raypers     = raypers[(raypers<=Traymax)*(raypers>=Traymin)]
+        print 'RayTomo Tmin/Tmax = '+str(raypers[0])+'/'+str(raypers[-1])
         raygrp      = indset[raydataid]
         isotropic   = raygrp.attrs['isotropic']
         org_raygrp  = indset['qc_run_'+str(inrunid)]
@@ -4052,7 +4727,7 @@ class hybridTomoDataSet(EikonalTomoDataSet):
             Nmdset          = out_pergrp.create_dataset(name='Nmeasure', data=Nmeasure)
         return
 
-    def interp_surface(self, Traymax=60., workingdir='./hybridtomo_interp_surface', dlon=None, dlat=None, runid=0, deletetxt=True):
+    def interp_surface(self, Traymax=50., workingdir='./hybridtomo_interp_surface', dlon=None, dlat=None, runid=0, deletetxt=True):
         """interpolate inverted velocity maps and uncertainties to a grid for inversion of Vs
         =================================================================================================================
         ::: input parameters :::
@@ -4177,8 +4852,8 @@ class hybridTomoDataSet(EikonalTomoDataSet):
         else:
             mask    = pergrp['mask_interp']
         if datatype == 'vel_sem_interp':
-            data= data*2000.
-        mdata   = ma.masked_array(data, mask=mask )
+            data    = data*2000.
+        mdata       = ma.masked_array(data, mask=mask )
         #-----------
         # plot data
         #-----------
@@ -4283,6 +4958,3 @@ def helmhotz4mp(infieldpair, workingdir, channel, amplplc, cdist):
         tfield.get_lplc_amp(fieldamp = field2dAmp)
     tfield.write_binary(outfname = outfname_npz, amplplc = amplplc)
     return 
-
-
-

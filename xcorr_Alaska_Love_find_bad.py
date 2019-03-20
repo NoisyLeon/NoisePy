@@ -25,7 +25,10 @@ dset = noisedbase.noiseASDF('/work1/leon/ALASKA_work/ASDF_data/xcorr_Alaska_RTZ_
 # # dset.xcorr_raytomoinput(outdir='/work1/leon/ALASKA_work/xcorr_working_dir/raytomo_input_20190131_selected_three_lambda', staxml='/home/leon/code/DataRequest/ALASKA.xml',\
 # #         netcodelst=['AK', 'TA', 'PO', 'XR', 'AV', 'XN', 'XY', 'CN', 'US'])
 # dset.xcorr_raytomoinput(outdir='/work1/leon/ALASKA_work/xcorr_working_dir_Love/raytomo_input_20190131_all_three_lambda', snr_thresh=10., channel='TT')
-dset.xcorr_get_field( channel='TT', snr_thresh=10., netcodelst=['AK', 'TA'])
+# exclude_stalst='ex_sta.lst', \
+dset.xcorr_raytomoinput_debug(outdir='/work1/leon/ALASKA_work/xcorr_debug', exclude_stalst='ex_sta.lst', \
+                              snr_thresh=10., channel='TT', pers=np.array([50.]))
+# dset.xcorr_get_field( channel='TT', snr_thresh=10., netcodelst=['AK', 'TA'])
 # dset.write_stationtxt('sta_alaska.lst')
 
 #-----------------------------------------

@@ -625,7 +625,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
     
     def get_ray_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHZ', vmax=6.0, vmin=1.0, verbose=False,
                             startdate=None, enddate=None ):
-        """Get surface wave data from IRIS server
+        """Get Rayleigh wave data from IRIS server
         ====================================================================================================================
         ::: input parameters :::
         lon0, lat0      - center of array. If specified, all waveform will have the same starttime and endtime
@@ -687,6 +687,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
                         continue
                     starttime       = otime+dist/vmax
                     endtime         = otime+dist/vmin
+                # skip to next station if deployment date out of the range
+                st_date     = self.waveforms[staid].StationXML.networks[0].stations[0].start_date
+                ed_date     = self.waveforms[staid].StationXML.networks[0].stations[0].end_date
+                if starttime > ed_date or endtime < st_date:
+                    continue
                 try:
                     tr              = client.get_waveforms(network=netcode, station=stacode, location='*', channel=channel,
                                         starttime=starttime, endtime=endtime, attach_response=True)[0]
@@ -731,7 +736,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
     
     def get_love_waveforms(self, lon0=None, lat0=None, minDelta=-1, maxDelta=181, channel='LHE,LHN,LHZ', vmax=6.0, vmin=1.0, verbose=False,
                             startdate=None, enddate=None, do_rotation=True ):
-        """Get surface wave data from IRIS server
+        """Get Love wave data from IRIS server
         ====================================================================================================================
         ::: input parameters :::
         lon0, lat0      - center of array. If specified, all waveform will have the same starttime and endtime
@@ -758,6 +763,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             etime4down  = obspy.UTCDateTime()
         pre_filt            = (0.001, 0.005, 1, 100.0)
         for event in self.cat:
+            evnumb          +=1
             event_id        = event.resource_id.id.split('=')[-1]
             magnitude       = event.magnitudes[0].mag
             Mtype           = event.magnitudes[0].magnitude_type
@@ -765,7 +771,6 @@ class quakeASDF(pyasdf.ASDFDataSet):
             otime           = event.origins[0].time
             evlo            = event.origins[0].longitude
             evla            = event.origins[0].latitude
-            evnumb          +=1
             if otime < stime4down or otime > etime4down:
                 continue
             print('================================= Getting surface wave data ===================================')
@@ -795,6 +800,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if not commontime:
                     starttime       = otime + dist/vmax
                     endtime         = otime + dist/vmin
+                # skip to next station if deployment date out of the range
+                st_date     = self.waveforms[staid].StationXML.networks[0].stations[0].start_date
+                ed_date     = self.waveforms[staid].StationXML.networks[0].stations[0].end_date
+                if starttime > ed_date or endtime < st_date:
+                    continue
                 try:
                     temp_st        = client.get_waveforms(network=netcode, station=stacode, location=location, channel=channel,
                                         starttime=starttime, endtime=endtime, attach_response=True)
@@ -2366,11 +2376,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
             taglst              = self.waveforms[station_id].get_waveform_tags()
             with open(pathfname,'w') as f:
                 for tag in taglst:
-                    iev         = int(tag.split('_')[-1])-1
+                    iev         = int(tag.split('_')[-1]) - 1
                     event       = self.cat[iev]
                     evlo        = event.origins[0].longitude
                     evla        = event.origins[0].latitude
-                    evid        = 'E%05d' % (iev+1)
+                    evid        = 'E%05d' % (iev + 1) # evid, e.g. E01011 corresponds to cat[1010]
                     if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ):
                         continue
                     ievent      += 1
@@ -2389,12 +2399,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 l2                  = l1.rstrip().split()
                 if (len(l2)>8):
                     fout.close()
-                    # outname         = outdirL + "/%s.%s.pre" % (l2[3],l2[4])
                     outname         = outdirL + "/%s.%s.pre" % (l2[4],l2[3])
                     fout            = open(outname,"w")
                 elif (len(l2)>7):
                     fout.close()
-                    # outname         = outdirL + "/%s.%s.pre" % (l2[2],l2[3])
                     outname         = outdirL + "/%s.%s.pre" % (l2[3],l2[2])
                     fout            = open(outname,"w")                
                 else:
@@ -2403,12 +2411,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 l2                  = l1.rstrip().split()
                 if (len(l2)>8):
                     fout.close()
-                    # outname         = outdirR + "/%s.%s.pre" % (l2[3],l2[4])
                     outname         = outdirR + "/%s.%s.pre" % (l2[4],l2[3])
                     fout            = open(outname,"w")
                 elif (len(l2)>7):
                     fout.close()
-                    # outname         = outdirR + "/%s.%s.pre" % (l2[2],l2[3])
                     outname         = outdirR + "/%s.%s.pre" % (l2[3],l2[2])
                     fout            = open(outname,"w")         
                 else:
@@ -2442,15 +2448,17 @@ class quakeASDF(pyasdf.ASDFDataSet):
         =======================================================================================
         """
         staLst          = self.waveforms.list()
+        print ('=== aftan analysis for earthquake waveforms, channel = '+ channel)
         try:
             print self.cat
         except AttributeError:
             self.copy_catalog()
+        # Loop over stations
         Nsta            = len(staLst)
         ista            = 0
         for staid in staLst:
             ista                += 1
-            print ('aftan for station: '+staid+' '+str(ista)+'/'+str(Nsta))
+            print ('--- aftan for station: '+staid+' '+str(ista)+'/'+str(Nsta))
             netcode, stacode    = staid.split('.')
             stla, stz, stlo     = self.waveforms[staid].coordinates.values()
             Ndata               = 0
@@ -2459,8 +2467,9 @@ class quakeASDF(pyasdf.ASDFDataSet):
             if len(taglst) == 0:
                 print 'No data for station: '+ staid
                 continue
+            # Loop over tags(events)
             for tag in taglst:
-                iev                 = int(tag.split('_')[-1])-1
+                iev                 = int(tag.split('_')[-1]) - 1
                 event               = self.cat[iev]
                 porigin             = event.preferred_origin()
                 otime               = porigin.time
@@ -2471,11 +2480,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 pmag                = event.preferred_magnitude()
                 magnitude           = pmag.mag
                 Mtype               = pmag.magnitude_type
-                evid                = 'E%05d' % (iev+1)
+                evid                = 'E%05d' % (iev + 1) # evid, e.g. E01011 corresponds to cat[1010]
                 if ( abs(stlo-evlo) < 0.1 and abs(stla-evla)<0.1 ):
                     continue
                 staid_aux_temp      = netcode+'_'+stacode+'_'+channel
-                # appending data that not exists
+                # skip upon existence of aftan results
                 try:
                     if evid in self.auxiliary_data['DISPbasic1'].list():
                         if staid_aux_temp in self.auxiliary_data['DISPbasic1'][evid].list():
@@ -2486,19 +2495,19 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 dist                = dist/1000. 
                 if baz<0:
                     baz             += 360.
+                # get waveform data
                 try:
-                    if channel!='R' or channel!='T':
-                        inST    = self.waveforms[staid][tag].select(component=channel)
-                    else:
-                        st      = self.waveforms[staid][tag]
-                        st.rotate('NE->RT', backazimuth=baz) 
-                        inST    = st.select(component=channel)
+                    inST            = self.waveforms[staid][tag].select(component = channel)
+                    # if len(inST) == 0 and channel != 'Z':
+                    #     st          = self.waveforms[staid][tag]
+                    #     st.rotate('NE->RT', back_azimuth=baz) 
+                    #     inST        = st.select(component=channel)
                 except KeyError:
                     continue
-                if len(inST)==0:
+                if len(inST) == 0:
                     continue
                 else:
-                    tr          = inST[0]
+                    tr              = inST[0]
                 Ndata               += 1
                 stime               = tr.stats.starttime
                 etime               = tr.stats.endtime
@@ -2507,7 +2516,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 tr.stats.sac['b']   = stime-otime
                 tr.stats.sac['e']   = etime-otime
                 aftanTr             = pyaftan.aftantrace(tr.data, tr.stats)
-                if prephdir !=None:
+                if prephdir != None:
                     phvelname       = prephdir + "/%s.%s.pre" %(evid, staid)
                 else:
                     phvelname       = ''
@@ -2543,11 +2552,11 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 Ndata               += 1
                 outstr              += otime.date.isoformat()
                 outstr              += ' '
-            print(str(Ndata)+' data streams processed for aftan')
+            print('--- ' + str(Ndata)+' data traces processed for aftan')
             if verbose:
                 print('EVENT DATE: '+outstr)
             print('-----------------------------------------------------------------------------------------------------------')
-        print 'End aftan analysis!'
+        print '=== end aftan analysis'
         return
                
     def quake_aftan_mp(self, outdir, channel='Z', tb=0., inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True,
@@ -2715,9 +2724,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
         evnumb      = 0
         L           = len(self.cat)
         evlst       = self.auxiliary_data[data_type].list()
+        # Loop over events
         for event in self.cat:
             evnumb          += 1
-            evid            = 'E%05d' % evnumb
+            evid            = 'E%05d' % evnumb # evid, e.g. E01011 corresponds to cat[1010]
             Ndata           = 0
             outstr          = ''
             porigin         = event.preferred_origin()
@@ -2731,10 +2741,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
             if not evid in evlst:
-                # # # print(str(Ndata)+' data streams processed disp interpolation')
                 print(evid + ' not in the event list')
                 continue
             datalst         = self.auxiliary_data[data_type][evid].list()
+            # Loop over stations
             for staid in staLst:
                 netcode, stacode    = staid.split('.')
                 dataid              = netcode+'_'+stacode+'_'+channel
@@ -2744,7 +2754,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     subdset         = self.auxiliary_data[data_type][evid][dataid]
                 except KeyError:
                     continue
-                # added Sep 4th, 2018. skip upon existence
+                # added 2018-09-04. skip upon existence
                 staid_aux_temp      = netcode+'_'+stacode+'_'+channel
                 if data_type+'interp' in self.auxiliary_data.list():
                     if evid in self.auxiliary_data[data_type+'interp'].list():
@@ -2765,7 +2775,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 interpdata          = np.append(pers, U)
                 interpdata          = np.append(interpdata, C)
                 interpdata          = np.append(interpdata, amp)
-                if data_type=='DISPpmf2':
+                if data_type == 'DISPpmf2':
                     snr             = np.interp(pers, obsT, data[index['snr']][:Np] )
                     interpdata      = np.append(interpdata, snr)
                 interpdata          = np.append(interpdata, inbound)
@@ -2775,20 +2785,23 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 Ndata               += 1
                 outstr              += staid
                 outstr              += ' '
-            print(str(Ndata)+' data streams processed for disp interpolation')
+            print('--- ' +str(Ndata)+' data streams processed for disp interpolation')
             if verbose:
                 print('STATION CODE: '+outstr)
             print('-----------------------------------------------------------------------------------------------------------')
         return
     
-    def quake_get_field(self, outdir=None, channel='Z', pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
+    def quake_get_field(self, outdir=None, lambda_factor=3., snr_thresh=10., channel='Z', pers=np.array([]),\
+                    data_type='DISPpmf2interp', verbose=True):
         """ Get the field data for Eikonal/Helmholtz tomography
         ============================================================================================================================
         ::: input parameters :::
-        outdir      - directory for txt output (default is not to generate txt output)
-        channel     - channel name
-        pers        - period array
-        datatype    - dispersion data type (default = DISPpmf2interp, interpolated pmf aftan results after jump detection)
+        outdir          - directory for txt output (default is not to generate txt output)
+        lambda_factor   - wavelength factor for data selection (default = 3.)
+        snr_thresh      - threshold SNR (default = 10.)
+        channel         - channel name
+        pers            - period array
+        datatype        - dispersion data type (default = DISPpmf2interp, interpolated pmf aftan results after jump detection)
         ::: output :::
         self.auxiliary_data.FieldDISPpmf2interp
         ============================================================================================================================
@@ -2806,7 +2819,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
         evlst       = self.auxiliary_data[data_type].list()
         for event in self.cat:
             evnumb          += 1
-            evid            = 'E%05d' % evnumb
+            evid            = 'E%05d' % evnumb # evid, e.g. E01011 corresponds to cat[1010]
             Ndata           = 0
             outstr          = ''
             porigin         = event.preferred_origin()
@@ -2820,7 +2833,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
             event_descrip   = event.event_descriptions[0].text+', '+event.event_descriptions[0].type
             print('Event ' + str(evnumb)+'/'+str(L)+' : '+ str(otime)+' '+ event_descrip+', '+Mtype+' = '+str(magnitude))
             if not evid in evlst:
-                print(str(Ndata)+' data streams processed for field data')
+                # print(str(Ndata)+' data streams processed for field data')
                 continue
             field_lst       = []
             Nfplst          = []
@@ -2833,6 +2846,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 if evid+'_'+channel in self.auxiliary_data['Field'+data_type].list():
                     print '--- Skip upon existence!'
                     continue
+            # Loop over stations
             for staid in staLst:
                 netcode, stacode    = staid.split('.')
                 dataid              = netcode+'_'+stacode+'_'+channel
@@ -2852,7 +2866,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 index               = subdset.parameters
                 for iper in range(pers.size):
                     per             = pers[iper]
-                    if dist < 3.*per*3.5:
+                    if dist < lambda_factor*per*3.5:
                         continue
                     ind_per         = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
@@ -2865,10 +2879,10 @@ class quakeASDF(pyasdf.ASDFDataSet):
                     # quality control
                     if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10:
                         continue
-                    if inbound!=1.:
+                    if inbound != 1.:
                         continue
-                    if snr < 10.:
-                        continue # different from noise data
+                    if snr < snr_thresh:
+                        continue   
                     field_lst[iper] = np.append(field_lst[iper], stlo)
                     field_lst[iper] = np.append(field_lst[iper], stla)
                     field_lst[iper] = np.append(field_lst[iper], pvel)
@@ -2880,7 +2894,7 @@ class quakeASDF(pyasdf.ASDFDataSet):
                 Ndata               += 1
                 outstr              += staid
                 outstr              += ' '
-            print(str(Ndata)+' data streams processed for field data')
+            print('--- '+str(Ndata)+' data streams processed for field data')
             if verbose:
                 print('STATION CODE: '+outstr)
             print('-----------------------------------------------------------------------------------------------------------')

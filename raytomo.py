@@ -59,7 +59,7 @@ def to_percent(y, position):
     else:
         return s + '%'
 
-def _bad_station_detector(inarr, thresh=200.):
+def _bad_station_detector(inarr, thresh=250.):
     latlst1 = inarr[:, 1]
     lonlst1 = inarr[:, 2]
     latlst2 = inarr[:, 3]
@@ -69,39 +69,56 @@ def _bad_station_detector(inarr, thresh=200.):
     # get station lst
     stlas   = np.array([])
     stlos   = np.array([])
-    for i in range(Ndata):
-        if i == 0:
-            stlas       = np.append(stlas, latlst1[i])
-            stlos       = np.append(stlos, lonlst1[i])
-            continue
-        if latlst1[i] != latlst1[i-1] or lonlst1[i] != lonlst1[i-1]:
-            if np.any((stlas == latlst1[i])*(stlos == lonlst1[i])):
-                continue
-            stlas       = np.append(stlas, latlst1[i])
-            stlos       = np.append(stlos, lonlst1[i])
-    Nsta                = stlas.size
-    ressum              = np.zeros(Nsta, dtype=np.float64)
-    Nsum                = np.zeros(Nsta, dtype=np.float64)
-    for i in range(Ndata):
-        ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
-        ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
-        # # # ressum[ind1]    += abs(res[i])
-        # # # ressum[ind2]    += abs(res[i])
-        ressum[ind1]    += res[i]
-        ressum[ind2]    += res[i]
-        Nsum[ind1]      += 1
-        Nsum[ind2]      += 1
-    # # # avgres              = abs(ressum/Nsum)
-    absressum           = abs(ressum)
+    # for i in range(Ndata):
+    #     if i == 0:
+    #         stlas       = np.append(stlas, latlst1[i])
+    #         stlos       = np.append(stlos, lonlst1[i])
+    #         continue
+    #     if latlst1[i] != latlst1[i-1] or lonlst1[i] != lonlst1[i-1]:
+    #         if np.any((stlas == latlst1[i])*(stlos == lonlst1[i])):
+    #             continue
+    #         stlas       = np.append(stlas, latlst1[i])
+    #         stlos       = np.append(stlos, lonlst1[i])
+    # Nsta                = stlas.size
+    # ressum              = np.zeros(Nsta, dtype=np.float64)
+    # Nsum                = np.zeros(Nsta, dtype=np.float64)
+    # for i in range(Ndata):
+    #     ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
+    #     ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
+    #     ressum[ind1]    += abs(res[i])
+    #     ressum[ind2]    += abs(res[i])
+    #     # ressum[ind1]    += res[i]
+    #     # ressum[ind2]    += res[i]
+    #     Nsum[ind1]      += 1
+    #     Nsum[ind2]      += 1
+    # avgres              = abs(ressum/Nsum)
+    # absressum           = abs(ressum)
     validarr            = np.ones(Ndata, dtype=np.bool)
+    # for i in range(Ndata):
+    #     ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
+    #     ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
+    #     # if avgres[ind1] > thresh or avgres[ind2] > thresh:
+    #     #     validarr[i] = False
+    #     if absressum[ind1] > thresh or absressum[ind2] > thresh:
+    #         validarr[i] = False
+    
     for i in range(Ndata):
-        ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
-        ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
-        # print stlas[ind2], stlos[ind2]
-        if absressum[ind1] > thresh or absressum[ind2] > thresh:
+        # if (lonlst1[i] < 200. and (latlst1[i] > 62. and latlst1[i] < 68.)):
+        #     validarr[i] = False
+        # if (lonlst2[i] < 200. and (latlst2[i] > 62. and latlst2[i] < 68.)):
+        #     validarr[i] = False
+        # if (lonlst1[i] > 220. and (latlst1[i] < 65.)):
+        #     validarr[i] = False
+        # if (lonlst2[i] > 225. and (latlst2[i] < 65.)):
+        #     validarr[i] = False
+        if (lonlst1[i] < 205. and (latlst1[i] < 60.)):
             validarr[i] = False
-        # # # if avgres[ind1] > thresh or avgres[ind2] > thresh:
-        # # #     validarr[i] = False
+        if (lonlst2[i] < 205. and (latlst2[i] < 60.)):
+            validarr[i] = False
+        # ind1            = (latlst1[i] == stlas)*(lonlst1[i] == stlos)
+        # ind2            = (latlst2[i] == stlas)*(lonlst2[i] == stlos)
+        
+    
     return validarr
     
 def _bad_station_detector_old(inarr, thresh=1.):
@@ -205,9 +222,12 @@ class RayTomoDataSet(h5py.File):
         Dec 9th, 2016   - first version
     =================================================================================================================
     """
-    def print_info(self):
+    #==================================================
+    # functions print the information of database
+    #==================================================
+    def print_attrs(self, print_to_screen=True):
         """
-        Print information of the dataset.
+        Print the attrsbute information of the dataset.
         """
         outstr          = '================================= Surface wave ray tomography Database ==================================\n'
         try:
@@ -220,7 +240,217 @@ class RayTomoDataSet(h5py.File):
             per_arr     = self.attrs['period_array']
         except:
             print 'Empty Database!'
+            return None
+        if print_to_screen:
+            print outstr
+        else:
+            return outstr
+        return
+    
+    def print_smooth_info(self, runid=0):
+        """print all the data stored in the smooth run
+        """
+        outstr      = '----------------------------------------- Smooth run data : id = '+str(runid)+' -----------------------------------------------\n'
+        try:
+            subgroup1   = self['smooth_run_%d' %runid]
+            subgroup2   = self['reshaped_smooth_run_%d' %runid]
+        except KeyError:
+            print '*** No data for smooth run id = '+str(runid)
             return
+        outstr          += 'Channel                             - '+str(subgroup1.attrs['channel'])+'\n'
+        outstr          += 'datatype(ph: phase; gr: group)      - '+str(subgroup1.attrs['datatype'])+'\n'
+        outstr          += 'dlon, dlat                          - '+str(subgroup1.attrs['dlon'])+', '+str(subgroup1.attrs['dlat'])+'\n'
+        outstr          += 'Step of integration                 - '+str(subgroup1.attrs['step_of_integration'])+'\n'
+        outstr          += 'Smoothing coefficient (alpha1)      - '+str(subgroup1.attrs['alpha1'])+'\n'
+        outstr          += 'Path density damping (alpha2)       - '+str(subgroup1.attrs['alpha2'])+'\n'
+        outstr          += 'radius of correlation (sigma)       - '+str(subgroup1.attrs['sigma'])+'\n'
+        outstr          += 'Comments                            - '+str(subgroup1.attrs['comments'])+'\n'
+        outstr          += '$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n'
+        perid           = subgroup1.keys()[0]
+        outstr          += '*** Dvelocity:                      size    = '+str(subgroup1[perid]['Dvelocity'].value.shape)+ '; shape = '+\
+                            str(subgroup2[perid]['Dvelocity'].value.shape)+'\n'
+        outstr          += '*** velocity:                       size    = '+str(subgroup1[perid]['velocity'].value.shape)+ '; shape = '+\
+                            str(subgroup2[perid]['velocity'].value.shape)+'\n'
+        outstr          += '*** azi_coverage:                   size    = '+str(subgroup1[perid]['azi_coverage'].value.shape)+'\n'
+        outstr          += '*** azi_coverage1 (squared sum):    shape   = '+str(subgroup2[perid]['azi_coverage1'].value.shape)+'\n'
+        outstr          += '*** azi_coverage2 (max value):      shape   = '+str(subgroup2[perid]['azi_coverage2'].value.shape)+'\n'
+        outstr          += '*** path_density:                   size    = '+str(subgroup1[perid]['path_density'].value.shape)+ '; shape = '+\
+                            str(subgroup2[perid]['path_density'].value.shape)+'\n'
+        outstr          += '*** residual:                       size    = '+str(subgroup1[perid]['residual'].value.shape)+'\n'
+        outstr          += '    id fi0 lam0 f1 lam1 vel_obs weight res_tomo[:, 7] res_mod delta '+ '\n'
+        print outstr
+        return
+    
+    def print_qc_info(self, runid=0):
+        """print all the data stored in the qc run
+        """
+        outstr      = '------------------------------------ Quality controlled  run data : id = '+str(runid)+' -------------------------------------\n'
+        try:
+            subgroup1   = self['qc_run_%d' %runid]
+            subgroup2   = self['reshaped_qc_run_%d' %runid]
+        except KeyError:
+            print '*** No data for qc run id = '+str(runid)
+            return
+        pers        = self.attrs['period_array']
+        if subgroup1.attrs['isotropic']:
+            tempstr = 'isotropic'
+        else:
+            tempstr = 'anisotropic'
+        outstr      += '--- smooth run id                       - '+str(subgroup1.attrs['smoothid'])+'\n'
+        outstr      += '--- isotropic/anisotropic               - '+tempstr+'\n'
+        outstr      += '--- datatype(ph: phase; gr: group)      - '+str(subgroup1.attrs['datatype'])+'\n'
+        outstr      += '--- wavetype(R: Rayleigh; L: Love)      - '+str(subgroup1.attrs['wavetype'])+'\n'
+        outstr      += '--- Criteria factor/limit               - '+str(subgroup1.attrs['crifactor'])+'/'+str(subgroup1.attrs['crilimit'])+'\n'
+        outstr      += '--- dlon, dlat                          - '+str(subgroup1.attrs['dlon'])+', '+str(subgroup1.attrs['dlat'])+'\n'
+        try:
+            outstr  += '!!! dlon_LD, dlat_LD                    - '+str(subgroup1.attrs['dlon_LD'])+', '+str(subgroup1.attrs['dlat_LD'])+'\n'
+        except:
+            try:
+                outstr  += '!!! dlon_HD, dlat_HD                    - '+str(subgroup1.attrs['dlon_HD'])+', '+str(subgroup1.attrs['dlat_HD'])+'\n'
+            except:
+                try:
+                    outstr  += '!!! dlon_interp, dlat_interp            - '+str(subgroup1.attrs['dlon_interp'])+', '+str(subgroup1.attrs['dlat_interp'])+'\n'
+                except:
+                    outstr  += '!!! No interpolation for for MC inversion \n'
+        outstr      += '--- Step of integration                 - '+str(subgroup1.attrs['step_of_integration'])+'\n'
+        outstr      += '--- Size of main cell (degree)          - '+str(subgroup1.attrs['lengthcell'])+'\n'
+        if subgroup1.attrs['isotropic']:
+            outstr      += '--- Smoothing coefficient (alpha)       - '+str(subgroup1.attrs['alpha'])+'\n'
+            outstr      += '--- Path density damping (beta)         - '+str(subgroup1.attrs['beta'])+'\n'
+            outstr      += '--- Gaussian damping (sigma)            - '+str(subgroup1.attrs['sigma'])+'\n'
+        if not subgroup1.attrs['isotropic']:
+            outstr      += '--- Size of anisotropic cell (degree)   - '+str(subgroup1.attrs['lengthcellAni'])+'\n'
+            outstr      += '--- Anisotropic parameter               - '+str(subgroup1.attrs['anipara'])+'\n'
+            outstr      += '    0: isotropic'+'\n'
+            outstr      += '    1: 2 psi anisotropic'+'\n'
+            outstr      += '    2: 2&4 psi anisotropic '+'\n'
+            outstr      += '--- xZone                               - '+str(subgroup1.attrs['xZone'])+'\n'
+            outstr      += '--- 0th smoothing coefficient(alphaAni0)- '+str(subgroup1.attrs['alphaAni0'])+'\n'
+            outstr      += '--- 0th path density damping (betaAni0) - '+str(subgroup1.attrs['betaAni0'])+'\n'
+            outstr      += '--- 0th Gaussian damping (sigmaAni0)    - '+str(subgroup1.attrs['sigmaAni0'])+'\n'
+            outstr      += '--- 2rd smoothing coefficient(alphaAni2)- '+str(subgroup1.attrs['alphaAni2'])+'\n'
+            outstr      += '--- 2rd Gaussian damping (sigmaAni2)    - '+str(subgroup1.attrs['sigmaAni2'])+'\n'
+            outstr      += '--- 4th smoothing coefficient(alphaAni4)- '+str(subgroup1.attrs['alphaAni4'])+'\n'
+            outstr      += '--- 4th Gaussian damping (sigmaAni4)    - '+str(subgroup1.attrs['sigmaAni4'])+'\n'
+        outstr          += '--- Comments                            - '+str(subgroup1.attrs['comments'])+'\n'
+        perid           = '%d_sec' %pers[0]
+        if subgroup1.attrs['isotropic']:
+            outstr          += '$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n'
+            outstr          += '*** Dvelocity:                      size    = '+str(subgroup1[perid]['Dvelocity'].value.shape)+ '; shape = '+\
+                                str(subgroup2[perid]['Dvelocity'].value.shape)+'\n'
+            outstr          += '*** velocity:                       size    = '+str(subgroup1[perid]['velocity'].value.shape)+ '; shape = '+\
+                                str(subgroup2[perid]['velocity'].value.shape)+'\n'
+            outstr          += '*** azi_coverage:                   size    = '+str(subgroup1[perid]['azi_coverage'].value.shape)+'\n'
+            outstr          += '*** azi_coverage1 (squared sum):    shape   = '+str(subgroup2[perid]['azi_coverage1'].value.shape)+'\n'
+            outstr          += '*** azi_coverage2 (max value):      shape   = '+str(subgroup2[perid]['azi_coverage2'].value.shape)+'\n'
+            outstr          += '*** path_density:                   size    = '+str(subgroup1[perid]['path_density'].value.shape)+ '; shape = '+\
+                                str(subgroup2[perid]['path_density'].value.shape)+'\n'
+            outstr          += '*** residual:                       size    = '+str(subgroup1[perid]['residual'].value.shape)+'\n'
+            outstr          += '    id fi0 lam0 f1 lam1 vel_obs weight res_tomo[:, 7] res_mod delta '+ '\n'
+        else:
+            # velocity
+            outstr          += '=================================================================================================\n'
+            outstr          += '*** Dvelocity:                      size    = '+str(subgroup1[perid]['Dvelocity'].value.shape)+ '\n'
+            outstr          += '*** dv (reshaped):                  shape   = '+str(subgroup2[perid]['dv'].value.shape)+ '\n'
+            outstr          += '=================================================================================================\n'
+            outstr          += '*** velocity:                       size    = '+str(subgroup1[perid]['velocity'].value.shape)+ '\n'
+            outstr          += '!!! 0. vel_iso (reshaped):          shape   = '+str(subgroup2[perid]['vel_iso'].value.shape)+ '\n'
+            try:
+                outstr      += '    3. amp2 (reshaped):             shape   = '+str(subgroup2[perid]['amp2'].value.shape)+ '\n'
+                outstr      += '    4. psi2 (reshaped):             shape   = '+str(subgroup2[perid]['psi2'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- No psi2 inversion results \n'
+            try:
+                outstr      += '    7. amp4 (reshaped):             shape   = '+str(subgroup2[perid]['amp4'].value.shape)+ '\n'
+                outstr      += '    8. psi4 (reshaped):             shape   = '+str(subgroup2[perid]['psi4'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- No psi4 inversion results \n'
+            try:
+                outstr      += '!!! vel_iso_interp (reshaped):      shape   = '+str(subgroup2[perid]['vel_iso_interp'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- NO vel_iso_interp \n'
+            try:
+                outstr      += '!!! vel_iso_LD (reshaped):          shape   = '+str(subgroup2[perid]['vel_iso_LD'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- NO vel_iso_LD \n'
+            try:
+                outstr      += '!!! vel_iso_HD (reshaped):          shape   = '+str(subgroup2[perid]['vel_iso_HD'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- NO vel_iso_HD \n'
+            outstr          += '*** lons_lats(loc of velcotiy):     size    = '+str(subgroup1[perid]['lons_lats'].value.shape)+ '\n'
+            outstr          += '$$$ mask1 (NOT in per sub-directory)size    = '+str(subgroup2['mask1'].value.shape)+'\n'
+            outstr          += '=================================================================================================\n'
+            # resolution
+            outstr          += '!!! resolution:                     size    = '+str(subgroup1[perid]['resolution'].value.shape)+ '\n'
+            outstr          += '    0. cone_radius (reshaped):      shape   = '+str(subgroup2[perid]['cone_radius'].value.shape)+ '\n'
+            outstr          += '    1. gauss_std (reshaped):        shape   = '+str(subgroup2[perid]['gauss_std'].value.shape)+ '\n'
+            outstr          += '    2. max_resp (max response value, reshaped):   \n'+\
+                               '                                    shape   = '+str(subgroup2[perid]['max_resp'].value.shape)+ '\n'
+            outstr          += '    3. ncone (number of cells involved in cone base, reshaped): \n'+\
+                               '                                    shape   = '+str(subgroup2[perid]['ncone'].value.shape)+ '\n'
+            outstr          += '    4. ngauss (number of cells involved in Gaussian construction, reshaped):  \n'+\
+                               '                                    shape   = '+str(subgroup2[perid]['ngauss'].value.shape)+ '\n'
+            try:
+                outstr      += '!!! vel_sem (reshaped):             shape   = '+str(subgroup2[perid]['vel_sem'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- NO uncertainties estimated from eikonal tomography. No need for hybrid / group database! \n'
+            try:
+                outstr      += '!!! vel_sem_interp (reshaped):      shape   = '+str(subgroup2[perid]['vel_sem_interp'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- NO vel_sem_interp \n'
+            try:
+                outstr      += '!!! vel_sem_LD (reshaped):          shape   = '+str(subgroup2[perid]['vel_sem_LD'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- NO vel_sem_LD \n'
+            try:
+                outstr      += '!!! vel_sem_HD (reshaped):          shape   = '+str(subgroup2[perid]['vel_sem_HD'].value.shape)+ '\n'
+            except KeyError:
+                outstr      += '--- NO vel_sem_HD \n'
+            outstr          += '*** lons_lats_rea(loc of reso):     size    = '+str(subgroup1[perid]['lons_lats_rea'].value.shape)+ '\n'
+            outstr          += '$$$ mask2 (NOT in per sub-directory)size    = '+str(subgroup2['mask2'].value.shape)+'\n'
+            try:
+                outstr      += '!!! mask_inv(NOT in per sub-directory, determined by get_mask_inv. used for MC inversion): \n'+\
+                               '                                    size    = '+str(subgroup2['mask_inv'].value.shape)+'\n'
+            except:
+                outstr      += '--- NO mask_inv array. No need for hybrid / group database! \n'
+            try:
+                outstr      += '!!! mask_LD(NOT in per sub-directory, determined by interp_surface. used for MC inversion): \n'+\
+                               '                                    size    = '+str(subgroup2['mask_LD'].value.shape)+'\n'
+            except:
+                outstr      += '--- NO mask_LD array \n'
+            try:
+                outstr      += '!!! mask_HD(NOT in per sub-directory, determined by interp_surface. used for MC inversion): \n'+\
+                               '                                    size    = '+str(subgroup2['mask_HD'].value.shape)+'\n'
+            except:
+                outstr      += '--- NO mask_HD array \n'
+            try:
+                outstr      += '!!! mask_interp(NOT in per sub-directory, determined by interp_surface. used for MC inversion): \n'+\
+                               '                                    size    = '+str(subgroup2['mask_interp'].value.shape)+'\n'
+            except:
+                outstr      += '--- NO mask_interp array \n'
+            outstr          += '=================================================================================================\n'
+            outstr          += '!!! azi_coverage:                   size    = '+str(subgroup1[perid]['azi_coverage'].value.shape)+'\n'
+            outstr          += '    azi_coverage1 (squared sum):    shape   = '+str(subgroup2[perid]['azi_coverage1'].value.shape)+'\n'
+            outstr          += '    azi_coverage2 (max value):      shape   = '+str(subgroup2[perid]['azi_coverage2'].value.shape)+'\n'
+            outstr          += '=================================================================================================\n'
+            outstr          += '!!! path_density :                  size    = '+str(subgroup1[perid]['path_density'].value.shape)+ '\n'
+            outstr          += '    0. path_density(all orbits):    shape   = '+str(subgroup2[perid]['path_density1'].value.shape)+'\n'
+            outstr          += '    1. path_density1(first orbits): shape   = '+str(subgroup2[perid]['path_density1'].value.shape)+'\n'
+            outstr          += '    2. path_density2(second orbits):shape   = '+str(subgroup2[perid]['path_density2'].value.shape)+'\n'
+            outstr          += '=================================================================================================\n'
+            outstr          += '!!! residual :                      size    = (:, '+str(subgroup1[perid]['residual'].value.shape[1])+')\n'
+            outstr          += '    id fi0 lam0 f1 lam1 vel_obs weight orb res_tomo[:, 8] res_mod delta '+ '\n'
+        print outstr
+        return
+    
+    def print_info(self):
+        """
+        Print general information of the dataset.
+        """
+        outstr          = self.print_attrs(print_to_screen=False)
+        if outstr == None:
+            return
+        per_arr         = self.attrs['period_array']
         outstr          += '----------------------------------------- Smooth run data -----------------------------------------------\n'
         nid             = 0
         while True:
@@ -275,7 +505,7 @@ class RayTomoDataSet(h5py.File):
                 outstr      += 'Gaussian damping (sigma)            - '+str(subgroup.attrs['sigma'])+'\n'
             if not subgroup.attrs['isotropic']:
                 outstr      += 'Size of anisotropic cell (degree)   - '+str(subgroup.attrs['lengthcellAni'])+'\n'
-                outstr      += 'Anisotropic paramter                - '+str(subgroup.attrs['anipara'])+'\n'
+                outstr      += 'Anisotropic parameter               - '+str(subgroup.attrs['anipara'])+'\n'
                 outstr      += '0: isotropic'+'\n'
                 outstr      += '1: 2 psi anisotropic'+'\n'
                 outstr      += '2: 2&4 psi anisotropic '+'\n'
@@ -291,7 +521,7 @@ class RayTomoDataSet(h5py.File):
         outstr += '=========================================================================================================\n'
         print outstr
         return
-    
+  
     def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), data_pfx='raytomo_in_', smoothpfx='N_INIT_', qcpfx='QC_'):
         """
         Set input parameters for tomographic inversion.
@@ -317,6 +547,7 @@ class RayTomoDataSet(h5py.File):
         self.attrs.create(name = 'qcpfx', data=qcpfx)
         return
         
+    
     #==================================================================
     # functions performing tomography
     #==================================================================
@@ -544,6 +775,7 @@ class RayTomoDataSet(h5py.File):
         # positive bound
         ##
         bounds          = {18.: 10., 16.: 25., 14.: 25., 12.: 35., 10.: 35., 8.: 40.}
+        # bounds          = {22: 10., 20.: 10., 18.: 10., 16.: 25., 14.: 25., 12.: 35., 10.: 35., 8.: 40.}
         # bounds          = {}
         
         ##
@@ -568,13 +800,21 @@ class RayTomoDataSet(h5py.File):
             else:
                 cri_res     = min(crifactor*per, crilimit)
             ###
+            validarr        = _bad_station_detector(inArr)
+            QC_arr          = inArr[validarr, :]
+            res_tomo        = QC_arr[:, 7]
+            
             if per in bounds.keys():
                 ind         = (res_tomo > -(cri_res))*(res_tomo < bounds[per])
-                QC_arr      = inArr[ind, :]
+                QC_arr      = QC_arr[ind, :]
             else:
-                QC_arr      = inArr[np.abs(res_tomo)<cri_res, :]
-                # ind             = (res_tomo > -(cri_res))*(res_tomo < 50.)
-                # QC_arr          = inArr[ind, :]
+                QC_arr      = QC_arr[np.abs(res_tomo)<cri_res, :]
+            ###
+            # if per in bounds.keys():
+            #     ind         = (res_tomo > -(cri_res))*(res_tomo < bounds[per])
+            #     QC_arr      = inArr[ind, :]
+            # else:
+            #     QC_arr      = inArr[np.abs(res_tomo)<cri_res, :]
             ####
             # validarr        = _bad_station_detector(QC_arr)
             # # # print cri_res
@@ -1162,20 +1402,21 @@ class RayTomoDataSet(h5py.File):
         maxlon      = self.attrs['maxlon'] 
         minlat      = self.attrs['minlat']
         maxlat      = self.attrs['maxlat']        
-        # minlon      = -160.
-        # maxlon      = -138.
-        # minlat      = 58.
-        # maxlat      = 66.
+
         
         lat_centre  = (maxlat+minlat)/2.0
         lon_centre  = (maxlon+minlon)/2.0
         if projection=='merc':
+            minlon      = -165.
+            maxlon      = -135.
+            minlat      = 56.
+            maxlat      = 70.
             m       = Basemap(projection='merc', llcrnrlat=minlat, urcrnrlat=maxlat, llcrnrlon=minlon,
                       urcrnrlon=maxlon, lat_ts=0, resolution=resolution)
             # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
             m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,1,1,1])
-            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,1,1,1])
+            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,1,1,0])
             # m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
             # m.drawstates(color='g', linewidth=2.)
@@ -1194,11 +1435,11 @@ class RayTomoDataSet(h5py.File):
         elif projection=='lambert':
             distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
             distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
-            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='h', projection='lcc',\
+            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
                         lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,1], fontsize=15)
-        m.drawcoastlines(linewidth=1.0)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+        m.drawcoastlines(linewidth=1.0, color='grey')
         m.drawcountries(linewidth=1.)
         # # m.drawmapboundary(fill_color=[1.0,1.0,1.0])
         # m.fillcontinents(lake_color='#99ffff',zorder=0.2)
@@ -1310,9 +1551,9 @@ class RayTomoDataSet(h5py.File):
             # if datatype is 'vel_sem':
             #     mask    = ingroup['mask_inv']
             
-            tempdset    = h5py.File('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20181101.h5')
-            pergrp      = tempdset['merged_tomo_0']['%g_sec'%( period )]
-            mask        = pergrp['mask'].value
+            # # # tempdset    = h5py.File('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20181101.h5')
+            # # # pergrp      = tempdset['merged_tomo_0']['%g_sec'%( period )]
+            # # # mask        = pergrp['mask'].value
             
             mdata       = ma.masked_array(data, mask=mask )
         else:
@@ -1383,7 +1624,7 @@ class RayTomoDataSet(h5py.File):
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
         cb.set_label(clabel, fontsize=20, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
-        # cb.ax.tick_params(labelsize=15)
+        cb.ax.tick_params(labelsize=15)
         cb.set_alpha(1)
         cb.draw_all()
         print 'plotting data from '+dataid
@@ -1414,17 +1655,28 @@ class RayTomoDataSet(h5py.File):
             plt.show()
         return
     
-    def plot_fast_axis(self, runid, period, anipara = 1, factor=10, shpfx=None, clabel='', cmap='cv', projection='lambert', hillshade=False,\
-             geopolygons=None, vmin=None, vmax=None, thresh=100., semfactor=2., showfig=True):
-        """plot maps from the tomographic inversion
+    def plot_fast_axis(self, runid, period, anipara = 1, factor=10, normv=2., width=0.005, ampref=0.05, plot_vel=False, scaled=False, \
+            masked=True, clabel='C (km/sec)', cmap='cv', projection='lambert', hillshade=False, geopolygons=None, \
+                vmin=None, vmax=None, thresh=100., showfig=True):
+        """plot maps of fast axis from the tomographic inversion
         =================================================================================================================
         ::: input parameters :::
         runid           - id of run
-        datatype        - datatype for plotting
         period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
         clabel          - label of colorbar
         cmap            - colormap
         projection      - projection type
+        hillshade       - produce hill shade or not
         geopolygons     - geological polygons for plotting
         vmin, vmax      - min/max value of plotting
         thresh          - threhold value for Gaussian deviation to determine the mask for plotting
@@ -1441,189 +1693,173 @@ class RayTomoDataSet(h5py.File):
                 ingroup = self['reshaped_'+dataid]
             except KeyError:
                 raise KeyError(dataid+ ' not exists!')
+        # period array
         pers        = self.attrs['period_array']
         if not period in pers:
             raise KeyError('period = '+str(period)+' not included in the database')
         pergrp  = ingroup['%g_sec'%( period )]
+        # check the existence of fast axis
         if ingroup.attrs['isotropic'] or self[dataid].attrs['anipara'] == 0:
             print 'No fast axis information for isotropic run!'
             return
         if self[dataid].attrs['anipara'] != anipara:
             print 'No psi4 axis for psi2 run!'
             return
+        # get the amplitude and fast axis azimuth
         if anipara == 1:
             psi         = pergrp['psi2'].value
             amp         = pergrp['amp2'].value
         else:
             psi         = pergrp['psi4'].value
             amp         = pergrp['amp4'].value
+        # get velocity
+        vel_iso         = pergrp['vel_iso'].value
+        # get mask array
         mask            = ingroup['mask1']
+        if thresh is not None:
+            gauss_std   = pergrp['gauss_std'].value
+            mask_gstd   = gauss_std > thresh
+            mask        = mask + mask_gstd
         
-
-        # 
-        # if not isotropic:
-        #     if datatype == 'cone_radius' or datatype == 'gauss_std' or datatype == 'max_resp' or datatype == 'ncone' or \
-        #                  datatype == 'ngauss' or datatype == 'vel_sem':
-        #         mask    = ingroup['mask2']
-        #         # mask    = ingroup['mask_inv']
-        #     else:
-        #         mask    = ingroup['mask1']
-        #     if thresh is not None:
-        #         gauss_std   = pergrp['gauss_std'].value
-        #         mask_gstd   = gauss_std > thresh
-        #         mask        = mask + mask_gstd
-        #     # if datatype is 'vel_sem':
-        #     #     mask    = ingroup['mask_inv']
-        #     
-        #     tempdset    = h5py.File('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20181101.h5')
-        #     pergrp      = tempdset['merged_tomo_0']['%g_sec'%( period )]
-        #     mask        = pergrp['mask'].value
-        #     
-        #     mdata       = ma.masked_array(data, mask=mask )
-        # else:
-        #     mdata       = data.copy()
+        
         #-----------
         # plot data
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
-        x, y        = m(self.lonArr-360., self.latArr)
+        # # x, y        = m(self.lonArr-360., self.latArr)
         # shapefname  = '/home/leon/geological_maps/qfaults'
         # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        plot_fault_lines(m, 'AK_Faults.txt')
-        ampref  = amp.max()/2.
-        # U       = np.sin(psi/180.*np.pi)*amp/ampref
-        # V       = np.cos(psi/180.*np.pi)*amp/ampref
-        U       = np.sin(psi/180.*np.pi)
-        V       = np.cos(psi/180.*np.pi)
-        if factor!=None:
-            x   = x[0:self.Nlat:factor, 0:self.Nlon:factor]
-            y   = y[0:self.Nlat:factor, 0:self.Nlon:factor]
-            U   = U[0:self.Nlat:factor, 0:self.Nlon:factor]
-            V   = V[0:self.Nlat:factor, 0:self.Nlon:factor]
-        # Q       = m.quiver(x, y, U, V, scale=30, width=0.001, headaxislength=0)
-        Q1      = m.quiver(x, y, U, V, scale=30, width=.005, headaxislength=0, headlength=0, headwidth=0.5)
-        Q2      = m.quiver(x, y, -U, -V, scale=30, width=.005, headaxislength=0, headlength=0, headwidth=0.5)
-        # if cmap == 'ses3d':
-        #     cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
-        #                     0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
-        # elif cmap == 'cv':
-        #     import pycpt
-        #     cmap    = pycpt.load.gmtColormap('./cv.cpt')
-        # else:
-        #     try:
-        #         if os.path.isfile(cmap):
-        #             import pycpt
-        #             cmap    = pycpt.load.gmtColormap(cmap)
-        #     except:
-        #         pass
-        # ################################3
-        # if hillshade:
-        #     from netCDF4 import Dataset
-        #     from matplotlib.colors import LightSource
-        # 
-        #     etopodata   = Dataset('/projects/life9360/station_map/grd_dir/ETOPO2v2g_f4.nc')
-        #     etopo       = etopodata.variables['z'][:]
-        #     lons        = etopodata.variables['x'][:]
-        #     lats        = etopodata.variables['y'][:]
-        #     ls          = LightSource(azdeg=315, altdeg=45)
-        #     # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
-        #     etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
-        #     # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
-        #     ny, nx      = etopo.shape
-        #     topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
-        #     m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
-        #     mycm1=pycpt.load.gmtColormap('/projects/life9360/station_map/etopo1.cpt')
-        #     mycm2=pycpt.load.gmtColormap('/projects/life9360/station_map/bathy1.cpt')
-        #     mycm2.set_over('w',0)
-        #     m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
-        #     m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
-        # ###################################################################
-        # # if hillshade:
-        # #     m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
-        # # else:
-        # #     m.fillcontinents(lake_color='#99ffff',zorder=0.2)
-        # if hillshade:
-        #     im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
-        # else:
-        #     if datatype is 'path_density':
-        #         import matplotlib.colors as colors
-        #         im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', norm=colors.LogNorm(vmin=vmin, vmax=vmax),)
-        #     else:
-        #         im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        # # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
-        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
-        # cb.set_label(clabel, fontsize=20, rotation=0)
-        # plt.suptitle(str(period)+' sec', fontsize=20)
-        # # cb.ax.tick_params(labelsize=15)
-        # cb.set_alpha(1)
-        # cb.draw_all()
-        # print 'plotting data from '+dataid
-        # # # cb.solids.set_rasterized(True)
-        # cb.solids.set_edgecolor("face")
-        # if datatype is 'path_density':
-        #     cb.set_ticks([1, 10, 100, 1000, 10000])
-        #     cb.set_ticklabels([1, 10, 100, 1000, 10000])
-        # # m.shadedrelief(scale=1., origin='lower')
-        # # xc, yc      = m(np.array([-143]), np.array([61]))
-        # # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
-        # # xc, yc      = m(np.array([-149]), np.array([61]))
-        # # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
-        # # xc, yc      = m(np.array([-156]), np.array([71]))
-        # # m.plot(xc, yc,'o', ms=15)
-        # # xc, yc      = m(np.array([-156]), np.array([68]))
-        # # m.plot(xc, yc,'o', ms=15)
-        # # lons            = np.array([-170., -160., -150., -140., -130.,\
-        # #                             -160., -150., -140., -130.,\
-        # #                             -160., -150., -140., -130.])
-        # # lats            = np.array([60., 60., 60., 60., 60.,\
-        # #                             65., 65., 65., 65.,\
-        # #                             70., 70., 70., 70.])
-        # # xc, yc          = m(lons, lats)
-        # # m.plot(xc, yc,'o', ms=15)
-        # 
-        from netCDF4 import Dataset
-        from matplotlib.colors import LightSource
-        import pycpt
-        etopodata   = Dataset('/home/leon/station_map/grd_dir/ETOPO2v2g_f4.nc')
-        etopo       = etopodata.variables['z'][:]
-        lons        = etopodata.variables['x'][:]
-        lats        = etopodata.variables['y'][:]
-        ls          = LightSource(azdeg=315, altdeg=45)
-        # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
-        etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
-        # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
-        ny, nx      = etopo.shape
-        topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
-        m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
-        mycm1       = pycpt.load.gmtColormap('/home/leon/station_map/etopo1.cpt')
-        mycm2       = pycpt.load.gmtColormap('/home/leon/station_map/bathy1.cpt')
-        mycm2.set_over('w',0)
-        m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
-        m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
-        # ############################
-        slb_ctrlst      = read_slab_contour('alu_contours.in', depth=100.)
         
-        for slbctr in slb_ctrlst:
-            xslb, yslb  = m(np.array(slbctr[0])-360., np.array(slbctr[1]))
-            m.plot(xslb, yslb,  '--', lw = 5, color='black')
-            m.plot(xslb, yslb,  '--', lw = 3, color='white')
+        # shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='red')
+        
+        plot_fault_lines(m, 'AK_Faults.txt', lw=1, color='red')
+        
+        # for d in [20.,40., 60., 80., 100., 120.]:
+        for d in [100.]:
+            slb_ctrlst      = read_slab_contour('alu_contours.in', depth=d)
+            
+            for slbctr in slb_ctrlst:
+                xslb, yslb  = m(np.array(slbctr[0])-360., np.array(slbctr[1]))
+                m.plot(xslb, yslb,  '-', lw = 2, color='magenta', alpha=0.8)
+            # m.plot(xslb, yslb,  '--', lw = 3, color='white')
+        
+        # slab contour
+        # slb_ctrlst      = read_slab_contour('alu_contours.in', depth=100.)
+        # 
+        # for slbctr in slb_ctrlst:
+        #     xslb, yslb  = m(np.array(slbctr[0])-360., np.array(slbctr[1]))
+        #     m.plot(xslb, yslb,  '--', lw = 5, color='black')
+        #     m.plot(xslb, yslb,  '--', lw = 3, color='white')
         # #############################
         yakutat_slb_dat     = np.loadtxt('YAK_extent.txt')
         yatlons             = yakutat_slb_dat[:, 0]
         yatlats             = yakutat_slb_dat[:, 1]
         xyat, yyat          = m(yatlons, yatlats)
-        m.plot(xyat, yyat, lw = 5, color='black')
-        m.plot(xyat, yyat, lw = 3, color='white')
+        m.plot(xyat, yyat, lw = 3, color='black')
+        m.plot(xyat, yyat, lw = 1, color='white')
         # #############################
-        import shapefile
-        shapefname  = '/home/leon/volcano_locs/SDE_GLB_VOLC.shp'
-        shplst      = shapefile.Reader(shapefname)
-        for rec in shplst.records():
-            lon_vol = rec[4]
-            lat_vol = rec[3]
-            xvol, yvol            = m(lon_vol, lat_vol)
-            m.plot(xvol, yvol, '^', mfc='white', mec='k', ms=10)
-            
+        # import shapefile
+        # shapefname  = '/home/leon/volcano_locs/SDE_GLB_VOLC.shp'
+        # shplst      = shapefile.Reader(shapefname)
+        # for rec in shplst.records():
+        #     lon_vol = rec[4]
+        #     lat_vol = rec[3]
+        #     xvol, yvol            = m(lon_vol, lat_vol)
+        #     m.plot(xvol, yvol, '^', mfc='white', mec='k', ms=10)
+        #--------------------------
+        
+        if scaled:
+            # ampref  = amp.max()
+            # print ampref
+            U       = np.sin(psi/180.*np.pi)*amp/ampref/normv
+            V       = np.cos(psi/180.*np.pi)*amp/ampref/normv
+            Uref    = np.ones(self.lonArr.shape)*1./normv
+            Vref    = np.zeros(self.lonArr.shape)
+        else:
+            U       = np.sin(psi/180.*np.pi)/normv
+            V       = np.cos(psi/180.*np.pi)/normv
+        # rotate vectors to map projection coordinates
+        U, V, x, y  = m.rotate_vector(U, V, self.lonArr-360., self.latArr, returnxy=True)
+        if scaled:
+            Uref, Vref, xref, yref  = m.rotate_vector(Uref, Vref, self.lonArr-360., self.latArr, returnxy=True)
+        #--------------------------------------
+        # plot isotropic velocity
+        #--------------------------------------
+        if plot_vel:
+            if cmap == 'ses3d':
+                cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                                0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+            elif cmap == 'cv':
+                import pycpt
+                cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            else:
+                try:
+                    if os.path.isfile(cmap):
+                        import pycpt
+                        cmap    = pycpt.load.gmtColormap(cmap)
+                except:
+                    pass
+            if masked:
+                vel_iso = ma.masked_array(vel_iso, mask=mask )
+            im          = m.pcolormesh(x, y, vel_iso, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+            cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
+            cb.set_label(clabel, fontsize=20, rotation=0)
+            cb.ax.tick_params(labelsize=15)
+            cb.set_alpha(1)
+            cb.draw_all()
+            cb.solids.set_edgecolor("face")
+        #--------------------------------------
+        # plot fast axis
+        #--------------------------------------
+        x_psi       = x.copy()
+        y_psi       = y.copy()
+        mask_psi    = mask.copy()
+        if factor!=None:
+            x_psi   = x_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+            y_psi   = y_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+            U       = U[0:self.Nlat:factor, 0:self.Nlon:factor]
+            V       = V[0:self.Nlat:factor, 0:self.Nlon:factor]
+            mask_psi= mask_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+        # Q       = m.quiver(x, y, U, V, scale=30, width=0.001, headaxislength=0)
+        if masked:
+            U   = ma.masked_array(U, mask=mask_psi )
+            V   = ma.masked_array(V, mask=mask_psi )
+        Q1      = m.quiver(x_psi, y_psi, U, V, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='k')
+        Q2      = m.quiver(x_psi, y_psi, -U, -V, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='k')
+        if scaled:
+            mask_ref        = np.ones(self.lonArr.shape)
+            ind             = (self.lonArr == -146.+360.)*(self.latArr == 56.5)
+            # print ind
+            mask_ref[ind]   = False
+            Uref            = ma.masked_array(Uref, mask=mask_ref )
+            Vref            = ma.masked_array(Vref, mask=mask_ref )
+            m.quiver(xref, yref, Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
+            m.quiver(xref, yref, -Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
+            # 
+        
+        # from netCDF4 import Dataset
+        # from matplotlib.colors import LightSource
+        # import pycpt
+        # etopodata   = Dataset('/home/leon/station_map/grd_dir/ETOPO2v2g_f4.nc')
+        # etopo       = etopodata.variables['z'][:]
+        # lons        = etopodata.variables['x'][:]
+        # lats        = etopodata.variables['y'][:]
+        # ls          = LightSource(azdeg=315, altdeg=45)
+        # # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
+        # etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
+        # # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
+        # ny, nx      = etopo.shape
+        # topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
+        # m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
+        # mycm1       = pycpt.load.gmtColormap('/home/leon/station_map/etopo1.cpt')
+        # mycm2       = pycpt.load.gmtColormap('/home/leon/station_map/bathy1.cpt')
+        # mycm2.set_over('w',0)
+        # m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
+        # m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
+        # ############################
+        plt.suptitle(str(period)+' sec', fontsize=20)
+
             
         if showfig:
             plt.show()
@@ -2457,5 +2693,7 @@ class RayTomoDataSet(h5py.File):
         #         color='red')
         if showfig: plt.show()
         return
-        
+    
+    
+    
         

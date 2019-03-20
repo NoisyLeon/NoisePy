@@ -296,11 +296,11 @@ class xcorr_pair(object):
                     amp2    = st_amp2[ich2].data
                     ph2     = st_ph2[ich2].data
                     # quality control
-                    if np.any(amp1 > 1e20) or np.any(amp2 > 1e20):
+                    if (np.isnan(amp1)).any() or (np.isnan(amp2)).any() or \
+                            (np.isnan(ph1)).any() or (np.isnan(ph2)).any():
                         skip_this_day   = True
                         break
-                    if np.isnan(amp1).any() or np.isnan(amp2).any() or \
-                            np.isnan(ph1).any() or np.isnan(ph2).any():
+                    if np.any(amp1 > 1e20) or np.any(amp2 > 1e20):
                         skip_this_day   = True
                         break
                     # get amplitude correction array
@@ -325,6 +325,10 @@ class xcorr_pair(object):
                         cor_rec     = _CalcRecCor(arr1, arr2, np.int32(lagN))
                         # skip the day if the length of available data is too small
                         if cor_rec[0] < mintlen*sps or cor_rec[-1] < mintlen*sps:
+                            skip_this_day   = True
+                            break
+                        # skip the day if any data point has a weight of zero
+                        if np.any(cor_rec == 0.):
                             skip_this_day   = True
                             break
                     # comvert amp & ph files to xcorr
@@ -872,7 +876,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         return st
         
     
-    def read_xcorr(self, datadir, pfx='COR', fnametype=2, inchannels=None, verbose=True):
+    def read_xcorr(self, datadir, pfx='COR', fnametype=1, inchannels=None, verbose=True):
         """Read cross-correlation data in ASDF database
         ===========================================================================================================
         ::: input parameters :::
@@ -880,9 +884,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
         pfx                     - prefix
         inchannels              - input channels, if None, will read channel information from obspy inventory
         fnametype               - input sac file name type
-                                    =1: datadir/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
-                                    =2: datadir/COR/G12A/COR_G12A_R21A.SAC
-                                    =3: custom sac file name type, change corresponding line
+                                    =1: datadir/2011.JAN/COR/TA.G12A/COR_TA.G12A_BHZ_TA.R21A_BHZ.SAC
+                                    =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
+                                    =3: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
         -----------------------------------------------------------------------------------------------------------
         ::: output :::
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
@@ -921,13 +925,15 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         break
                     for chan2 in channels2:
                         if fnametype    == 1:
-                            fname   = datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'+staid2+'_'+chan2.code+'.SAC'
+                            fname   = datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'\
+                                            +staid2+'_'+chan2.code+'.SAC'
                         elif fnametype  == 2:
-                            fname   = datadir+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+staid2+'.SAC'
-                        ############
+                            fname   = datadir+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
+                        #----------------------------------------------------------
                         elif fnametype  == 3:
-                            fname   = '' # modify file name here
-                        ############
+                            fname   = datadir+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'\
+                                        +stacode2+'_'+chan2.code+'.SAC'
+                        #----------------------------------------------------------
                         try:
                             tr      = obspy.core.read(fname)[0]
                         except IOError:
@@ -968,7 +974,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         
     def compute_xcorr(self, datadir, startdate, enddate, chans=['LHZ', 'LHE', 'LHN'], \
             fskipxcorr = 0, ftlen = True, tlen = 84000., mintlen = 20000., sps = 1., lagtime = 3000., CorOutflag = 0, \
-                fprcs = False, fastfft=True, parallel=True, nprocess=None, subsize=600):
+                fprcs = False, fastfft=True, parallel=True, nprocess=None, subsize=1000):
         """
         compute ambient noise cross-correlation given preprocessed amplitude and phase files
         =================================================================================================================
@@ -1116,13 +1122,15 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     pool.map(XCORR, xcorr_lst) #make our results with a map call
                     pool.close() #we are not adding any more processes
                     pool.join() #tell it to wait until all threads are done before going on
+            print '=== Xcorr computation done: '+str(stime.year)+'.'+monthdict[stime.month]
             if stime.month == 12:
                 stime       = obspy.UTCDateTime(str(stime.year + 1)+'0101')
             else:
                 stime.month += 1
         return
     
-    def xcorr_stack(self, datadir, startyear, startmonth, endyear, endmonth, pfx='COR', outdir=None, inchannels=None, fnametype=2, verbose=False):
+    def xcorr_stack(self, datadir, startyear, startmonth, endyear, endmonth, pfx='COR', outdir=None, \
+                inchannels=None, fnametype=1, verbose=False):
         """Stack cross-correlation data from monthly-stacked sac files
         ===========================================================================================================
         ::: input parameters :::
@@ -1133,9 +1141,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
         outdir                  - output directory (None is not to save sac files)
         inchannels              - input channels, if None, will read channel information from obspy inventory
         fnametype               - input sac file name type
-                                    =1: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
+                                    =1: datadir/2011.JAN/COR/TA.G12A/COR_TA.G12A_BHZ_TA.R21A_BHZ.SAC
                                     =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
-                                    =3: custom sac file name type, change corresponding line
+                                    =3: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC, deprecated
         -----------------------------------------------------------------------------------------------------------
         ::: output :::
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
@@ -1145,7 +1153,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         #----------------------------------------
         # prepare year/month list for stacking
         #----------------------------------------
-        print('preparing month list for stacking')
+        print('=== preparing month list for stacking')
         utcdate                 = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
         ylst                    = np.array([], dtype=int)
         mlst                    = np.array([], dtype=int)
@@ -1161,7 +1169,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         #--------------------------------------------------
         # determine channels if inchannels is specified
         #--------------------------------------------------
-        if inchannels!=None:
+        if inchannels != None:
             try:
                 if not isinstance(inchannels[0], obspy.core.inventory.channel.Channel):
                     channels    = []
@@ -1172,39 +1180,54 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     channels    = inchannels
             except:
                 inchannels      = None
-        # # if inchannels==None:
-        # #     fnametype           = 2
-        # # else:
-        # #     if len(channels)!=1:
-        # #         fnametype       = 1
-        staLst                  = self.waveforms.list()
+        if inchannels != None:
+            chan_str_for_print      = ''
+            for chan in channels:
+                chan_str_for_print  += chan.code+' '
+            print '--- channels for stacking : '+ chan_str_for_print
         #--------------------------------------------------
         # main loop for station pairs
         #--------------------------------------------------
+        staLst                  = self.waveforms.list()
         Nsta                    = len(staLst)
         Ntotal_traces           = Nsta*(Nsta-1)/2
         itrstack                = 0
         Ntr_one_percent         = int(Ntotal_traces/100.)
         ipercent                = 0
-        print('start stacking')
+        print '--- start stacking: '+str(Ntotal_traces)+' pairs'
         for staid1 in staLst:
+            netcode1, stacode1  = staid1.split('.')
+            st_date1            = self.waveforms[staid1].StationXML.networks[0].stations[0].start_date
+            ed_date1            = self.waveforms[staid1].StationXML.networks[0].stations[0].end_date
+            lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+            lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
             for staid2 in staLst:
-                lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
-                lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+                netcode2, stacode2  = staid2.split('.')
+                st_date2            = self.waveforms[staid2].StationXML.networks[0].stations[0].start_date
+                ed_date2            = self.waveforms[staid2].StationXML.networks[0].stations[0].end_date
                 lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
                 lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
-                netcode1, stacode1  = staid1.split('.')
-                netcode2, stacode2  = staid2.split('.')
-                if stacode1 >= stacode2:
-                    continue
+                if fnametype == 1:
+                    if staid1 >= staid2:
+                        continue
+                else:
+                    if stacode1 >= stacode2:
+                        continue
                 itrstack            += 1
-                if np.fmod(itrstack, Ntr_one_percent) ==0:
-                    ipercent        += 1
-                    print ('Number of traces finished stacking: '+str(itrstack)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                # print the status of stacking
+                ipercent            = float(itrstack)/float(Ntotal_traces)*100.
+                if np.fmod(itrstack, 500) == 0 or np.fmod(itrstack, Ntr_one_percent) ==0:
+                    percent_str     = '%0.2f' %ipercent
+                    print '*** Number of traces finished stacking: '+str(itrstack)+'/'+str(Ntotal_traces)+' '+percent_str+'%'
+                # skip if no overlaped time
+                if st_date1 > ed_date2 or st_date2 > ed_date1:
+                    continue
                 stackedST           = []
-                cST                 = []
-                initflag            = True
-                if inchannels==None:
+                init_stack_flag     = False
+                #-------------------------------------------------------------
+                # determin channels for stacking if not specified beforehand
+                #-------------------------------------------------------------
+                if inchannels == None:
                     channels1       = []
                     channels2       = []
                     tempchans1      = self.waveforms[staid1].StationXML.networks[0].stations[0].channels
@@ -1253,30 +1276,55 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 else:
                     channels1       = channels
                     channels2       = channels
+                #--------------------------------
+                # Loop over month for stacking
+                #--------------------------------
                 for im in range(mnumb):
-                    skipflag        = False
+                    month           = monthdict[mlst[im]]
+                    yrmonth         = str(ylst[im])+'.'+month
+                    if fnametype == 1:
+                        subdir      = datadir+'/'+yrmonth+'/'+pfx+'/'+staid1
+                    else:
+                        subdir      = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1
+                    if not os.path.isdir(subdir):
+                        continue
+                    # define the first day and last day of the current month
+                    c_stime     = obspy.UTCDateTime(str(ylst[im])+'-'+str(mlst[im])+'-1')
+                    try:
+                        c_etime = obspy.UTCDateTime(str(ylst[im])+'-'+str(mlst[im]+1)+'-1')
+                    except ValueError:
+                        c_etime = obspy.UTCDateTime(str(ylst[im]+1)+'-1-1')
+                    # skip if either of the stations out of time range
+                    if st_date1 > c_etime or ed_date1 < c_stime or \
+                        st_date2 > c_etime or ed_date2 < c_stime:
+                        continue 
+                    skip_this_month = False
+                    cST             = []
                     for chan1 in channels1:
-                        if skipflag:
+                        if skip_this_month:
                             break
                         for chan2 in channels2:
-                            month       = monthdict[mlst[im]]
-                            yrmonth     = str(ylst[im])+'.'+month
                             if fnametype    == 1:
-                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
+                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'\
+                                            +staid2+'_'+chan2.code+'.SAC'
                             elif fnametype  == 2:
                                 fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
                             #----------------------------------------------------------
                             elif fnametype  == 3:
-                                fname   ='' # modify file name here
+                                fname   = ''
+                                # fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'\
+                                #             +stacode2+'_'+chan2.code+'.SAC'
                             #----------------------------------------------------------
                             if not os.path.isfile(fname):
-                                skipflag= True
+                                skip_this_month = True
                                 break
                             try:
-                                tr      = obspy.core.read(fname)[0]
+                                # I/O through obspy.io.sac.SACTrace.read() is ~ 10 times faster than obspy.read()
+                                tr              = obspy.io.sac.SACTrace.read(fname)
                             except TypeError:
-                                warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                                skipflag= True
+                                warnings.warn('Unable to read SAC for: ' + staid1 +'_'+staid2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
+                                skip_this_month = True
+                                break
                             # added on 2018-02-27
                             # # # if (abs(tr.stats.sac.evlo - lon1) > 0.001)\
                             # # #         or (abs(tr.stats.sac.evla - lat1) > 0.001) \
@@ -1286,78 +1334,74 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             # # #     print 'FILENAME: '+ fname
                             # # #     skipflag= True
                             # # #     break
-                            if np.isnan(tr.data).any() or abs(tr.data.max())>1e20:
-                                warnings.warn('NaN monthly SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                                skipflag= True
+                            if (np.isnan(tr.data)).any() or abs(tr.data.max())>1e20:
+                                warnings.warn('NaN monthly SAC for: ' + staid1 +'_'+staid2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
+                                skip_this_month = True
                                 break
                             cST.append(tr)
-                    if len(cST)!=len(channels1)*len(channels2) or skipflag:
-                        cST             = []
+                    if len(cST) != (len(channels1)*len(channels2)) or skip_this_month:
                         continue
-                    if initflag:
-                        stackedST       = copy.deepcopy(cST)
-                        initflag        = False
-                    else:
+                    # stacking
+                    if init_stack_flag:
                         for itr in range(len(cST)):
                             mtr                             = cST[itr]
                             stackedST[itr].data             += mtr.data
-                            stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
-                    cST                                     = []
-                if len(stackedST)==len(channels1)*len(channels2):
+                            stackedST[itr].user0            += mtr.user0
+                    else:
+                        stackedST                           = copy.deepcopy(cST)
+                        init_stack_flag                     = True
+                #------------------------------------------------------------
+                # finish stacking for a statin pair, save data
+                #------------------------------------------------------------
+                if len(stackedST) == (len(channels1)*len(channels2)):
                     if verbose:
                         print('Finished stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2)
                     # create sac output directory 
-                    if outdir!=None:
+                    if outdir != None:
                         if not os.path.isdir(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1):
                             os.makedirs(outdir+'/'+pfx+'/'+netcode1+'.'+stacode1)
                     # write cross-correlation header information
                     xcorr_header            = xcorr_header_default.copy()
-                    xcorr_header['b']       = stackedST[0].stats.sac.b
-                    xcorr_header['e']       = stackedST[0].stats.sac.e
+                    xcorr_header['b']       = stackedST[0].b
+                    xcorr_header['e']       = stackedST[0].e
                     xcorr_header['netcode1']= netcode1
                     xcorr_header['netcode2']= netcode2
                     xcorr_header['stacode1']= stacode1
                     xcorr_header['stacode2']= stacode2
-                    xcorr_header['npts']    = stackedST[0].stats.npts
-                    xcorr_header['delta']   = stackedST[0].stats.delta
-                    xcorr_header['stackday']= stackedST[0].stats.sac.user0
-                    try:
-                        xcorr_header['dist']= stackedST[0].stats.sac.dist
-                        xcorr_header['az']  = stackedST[0].stats.sac.az
-                        xcorr_header['baz'] = stackedST[0].stats.sac.baz
-                    except AttributeError:
-                        dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                        dist                = dist/1000.
-                        xcorr_header['dist']= dist
-                        xcorr_header['az']  = az
-                        xcorr_header['baz'] = baz
+                    xcorr_header['npts']    = stackedST[0].npts
+                    xcorr_header['delta']   = stackedST[0].delta
+                    xcorr_header['stackday']= stackedST[0].user0
+                    dist, az, baz           = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                    dist                    = dist/1000.
+                    xcorr_header['dist']    = dist
+                    xcorr_header['az']      = az
+                    xcorr_header['baz']     = baz
                     if staid1 > staid2:
                         staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
                     else:
                         staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
                     itrace                  = 0
-                    if len(channels1)>1:
-                        print staid1
-                        return channels1
-                    if len(channels2)>1:
-                        print staid2
-                        return channels2
                     for chan1 in channels1:
                         for chan2 in channels2:
                             stackedTr       = stackedST[itrace]
-                            if outdir!=None:
-                                outfname            = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                                                        pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
-                                stackedTr.write(outfname,format='SAC')
+                            if outdir != None:
+                                outfname            = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ pfx+'_'+netcode1+'.'+stacode1+\
+                                                        '_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
+                                stackedTr.write(outfname)
                             xcorr_header['chan1']   = chan1.code
                             xcorr_header['chan2']   = chan2.code
-                            # print staid_aux+'/'+chan1.code+'/'+chan2.code
-                            self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+                            # check channels
+                            if stackedST[itrace].kcmpnm != None:
+                                if stackedST[itrace].kcmpnm != xcorr_header['chan1'] + xcorr_header['chan2']:
+                                    raise ValueError('Inconsistent channels: '+ stackedST[itrace].kcmpnm+' '+\
+                                                xcorr_header['chan1']+' '+ xcorr_header['chan2'])
+                            self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr',\
+                                                    path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                             itrace                  += 1
         return
     
-    def xcorr_stack_mp(self, datadir, outdir, startyear, startmonth, endyear, endmonth,
-                    pfx='COR', inchannels=None, fnametype=1, subsize=1000, deletesac=True, nprocess=4):
+    def xcorr_stack_mp(self, datadir, outdir, startyear, startmonth, endyear, endmonth, pfx='COR', inchannels=None,\
+                       fnametype=1, do_compute = True, subsize=1000, deletesac=False, nprocess=10):
         """Stack cross-correlation data from monthly-stacked sac files with multiprocessing
         ===========================================================================================================
         ::: input parameters :::
@@ -1368,9 +1412,9 @@ class noiseASDF(pyasdf.ASDFDataSet):
         pfx                     - prefix
         inchannels              - input channels, if None, will read channel information from obspy inventory
         fnametype               - input sac file name type
-                                    =1: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
+                                    =1: datadir/2011.JAN/COR/TA.G12A/COR_TA.G12A_BHZ_TA.R21A_BHZ.SAC
                                     =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
-                                    =3: custom sac file name type, change corresponding line
+                                    =3: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
         subsize                 - subsize of processing list, use to prevent lock in multiprocessing process
         deletesac               - delete output sac files
         nprocess                - number of processes
@@ -1380,24 +1424,26 @@ class noiseASDF(pyasdf.ASDFDataSet):
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
         """
-        #----------------------------------------------------------
-        # preparing station pair list for multiprocessing stacking
-        #----------------------------------------------------------
+        #----------------------------------------
+        # prepare year/month list for stacking
+        #----------------------------------------
+        print('=== preparing month list for stacking')
         utcdate                 = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
         ylst                    = np.array([], dtype=int)
         mlst                    = np.array([], dtype=int)
-        print('Preparing data for stacking')
         while (utcdate.year<endyear or (utcdate.year<=endyear and utcdate.month<=endmonth) ):
             ylst                = np.append(ylst, utcdate.year)
             mlst                = np.append(mlst, utcdate.month)
             try:
-                utcdate.month   += 1
+                utcdate.month   +=1
             except ValueError:
-                utcdate.year    += 1
+                utcdate.year    +=1
                 utcdate.month   = 1
         mnumb                   = mlst.size
-        staLst                  = self.waveforms.list()
-        if inchannels!=None:
+        #--------------------------------------------------
+        # determine channels if inchannels is specified
+        #--------------------------------------------------
+        if inchannels != None:
             try:
                 if not isinstance(inchannels[0], obspy.core.inventory.channel.Channel):
                     channels    = []
@@ -1408,63 +1454,86 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     channels    = inchannels
             except:
                 inchannels      = None
-        # if inchannels==None:
-        #     fnametype           = 1
-        # else:
-        #     if len(channels)!=1:
-        #         fnametype       = 1
+        if inchannels != None:
+            chan_str_for_print      = ''
+            for chan in channels:
+                chan_str_for_print  += chan.code+' '
+            print '--- channels for stacking : '+ chan_str_for_print
+        #--------------------------------------------------
+        # main loop for station pairs
+        #--------------------------------------------------
+        print '--- Preparing station pair list for stacking'
+        staLst                  = self.waveforms.list()
         stapairInvLst           = []
+        Nsta                    = len(staLst)
+        Ntotal_traces           = Nsta*(Nsta-1)/2
+        itrstack                = 0
+        Ntr_one_percent         = int(Ntotal_traces/100.)
         for staid1 in staLst:
             if not os.path.isdir(outdir+'/'+pfx+'/'+staid1):
                 os.makedirs(outdir+'/'+pfx+'/'+staid1)
             for staid2 in staLst:
                 netcode1, stacode1  = staid1.split('.')
                 netcode2, stacode2  = staid2.split('.')
-                if stacode1 >= stacode2:
-                    continue
-                inv                 = self.waveforms[staid1].StationXML + self.waveforms[staid2].StationXML
-                if inchannels!=None:
-                    inv.networks[0].stations[0].channels    = channels
-                    inv.networks[1].stations[0].channels    = channels
-                stapairInvLst.append(inv) 
+                if fnametype == 1:
+                    if staid1 >= staid2:
+                        continue
+                else:
+                    if stacode1 >= stacode2:
+                        continue
+                itrstack            += 1
+                ipercent            = float(itrstack)/float(Ntotal_traces)*100.
+                if np.fmod(itrstack, Ntr_one_percent) ==0:
+                    percent_str     = '%1.0f' %ipercent
+                    print '*** Number of traces finished preparing: '+str(itrstack)+'/'+str(Ntotal_traces)+' '+percent_str+'%'
+                inv1                = self.waveforms[staid1].StationXML
+                inv2                = self.waveforms[staid2].StationXML
+                if inchannels != None:
+                    inv1.networks[0].stations[0].channels   = channels
+                    inv2.networks[0].stations[0].channels   = channels
+                stapairInvLst.append([inv1, inv2]) 
         #------------------------------------------------------
         # Stacking with multiprocessing
         #------------------------------------------------------
-        print('Start multiprocessing stacking !')
-        if len(stapairInvLst) > subsize:
-            Nsub            = int(len(stapairInvLst)/subsize)
-            for isub in range(Nsub):
-                print isub,'in',Nsub
-                cstapairs   = stapairInvLst[isub*subsize:(isub+1)*subsize]
-                STACKING    = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
-                pool        = multiprocessing.Pool(processes=nprocess)
-                pool.map(STACKING, cstapairs) #make our results with a map call
-                pool.close() #we are not adding any more processes
-                pool.join() #tell it to wait until all threads are done before going on
-            cstapairs       = stapairInvLst[(isub+1)*subsize:]
-            STACKING        = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
-            pool            = multiprocessing.Pool(processes=nprocess)
-            pool.map(STACKING, cstapairs) 
-            pool.close() 
-            pool.join() 
-        else:
-            STACKING        = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
-            pool            = multiprocessing.Pool(processes=nprocess)
-            pool.map(STACKING, stapairInvLst) 
-            pool.close() 
-            pool.join() 
-        print('End of multiprocessing stacking !')
+        if do_compute:
+            print('Start multiprocessing stacking !')
+            if len(stapairInvLst) > subsize:
+                Nsub            = int(len(stapairInvLst)/subsize)
+                for isub in range(Nsub):
+                    print 'xcorr stacking : ', isub,'in',Nsub
+                    cstapairs   = stapairInvLst[isub*subsize:(isub+1)*subsize]
+                    STACKING    = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
+                    pool        = multiprocessing.Pool(processes=nprocess)
+                    pool.map(STACKING, cstapairs) #make our results with a map call
+                    pool.close() #we are not adding any more processes
+                    pool.join() #tell it to wait until all threads are done before going on
+                cstapairs       = stapairInvLst[(isub+1)*subsize:]
+                STACKING        = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
+                pool            = multiprocessing.Pool(processes=nprocess)
+                pool.map(STACKING, cstapairs) 
+                pool.close() 
+                pool.join() 
+            else:
+                STACKING        = partial(stack4mp, datadir=datadir, outdir=outdir, ylst=ylst, mlst=mlst, pfx=pfx, fnametype=fnametype)
+                pool            = multiprocessing.Pool(processes=nprocess)
+                pool.map(STACKING, stapairInvLst) 
+                pool.close() 
+                pool.join() 
+            print('End of multiprocessing stacking !')
         #------------------------------------------------------
         # read stacked data
         #------------------------------------------------------
         print('Reading data into ASDF database')
-        for inv in stapairInvLst:
-            channels1               = inv.networks[0].stations[0].channels
-            netcode1                = inv.networks[0].code
-            stacode1                = inv.networks[0].stations[0].code
-            channels2               = inv.networks[1].stations[0].channels
-            netcode2                = inv.networks[1].code
-            stacode2                = inv.networks[1].stations[0].code
+        itrstack                    = 0
+        for invpair in stapairInvLst:
+            # station 1
+            channels1               = invpair[0].networks[0].stations[0].channels
+            netcode1                = invpair[0].networks[0].code
+            stacode1                = invpair[0].networks[0].stations[0].code
+            # station 2
+            channels2               = invpair[1].networks[0].stations[0].channels
+            netcode2                = invpair[1].networks[0].code
+            stacode2                = invpair[1].networks[0].stations[0].code
             skipflag                = False
             xcorr_header            = xcorr_header_default.copy()
             xcorr_header['netcode1']= netcode1
@@ -1475,8 +1544,14 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
             else:
                 staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+            itrstack                += 1
+            ipercent                = float(itrstack)/float(Ntotal_traces)*100.
+            if np.fmod(itrstack, Ntr_one_percent) ==0:
+                percent_str         = '%0.1f' %ipercent
+                print '*** Number of traces finished preparing: '+str(itrstack)+'/'+str(Ntotal_traces)+' '+percent_str+'%'
             for chan1 in channels1:
-                if skipflag: break
+                if skipflag:
+                    break
                 for chan2 in channels2:
                     sacfname        = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
                                         pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
@@ -1493,10 +1568,10 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             xcorr_header['az']  = tr.stats.sac.az
                             xcorr_header['baz'] = tr.stats.sac.baz
                         except AttributeError:
-                            lon1                = inv.networks[0].stations[0].longitude
-                            lat1                = inv.networks[0].stations[0].latitude
-                            lon2                = inv.networks[1].stations[0].longitude
-                            lat2                = inv.networks[1].stations[0].latitude
+                            lon1                = invpair[0].networks[0].stations[0].longitude
+                            lat1                = invpair[0].networks[0].stations[0].latitude
+                            lon2                = invpair[1].networks[0].stations[0].longitude
+                            lat2                = invpair[1].networks[0].stations[0].latitude
                             dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
                             dist                = dist/1000.
                             xcorr_header['dist']= dist
@@ -1504,7 +1579,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                             xcorr_header['baz'] = baz
                         xcorr_header['chan1']   = chan1.code
                         xcorr_header['chan2']   = chan2.code
-                        self.add_auxiliary_data(data=tr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+                        self.add_auxiliary_data(data=tr.data, data_type='NoiseXcorr', \
+                                        path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                     except IOError:
                         skipflag                = True
                         break
@@ -1514,7 +1590,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         return
                     
     def xcorr_append(self, inasdffname, datadir, startyear, startmonth, endyear, endmonth,\
-                        pfx='COR', outdir=None, inchannels=None, fnametype=2, verbose=False):
+                        pfx='COR', outdir=None, inchannels=None, fnametype=1, verbose=False):
         """Append cross-correlation data from monthly-stacked sac files to an existing ASDF database
         ===========================================================================================================
         ::: input parameters :::
@@ -1526,13 +1602,13 @@ class noiseASDF(pyasdf.ASDFDataSet):
         outdir                  - output directory (None is not to save sac files)
         inchannels              - input channels, if None, will read channel information from obspy inventory
         fnametype               - input sac file name type
-                                    =1: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
+                                    =1: datadir/2011.JAN/COR/TA.G12A/COR_TA.G12A_BHZ_TA.R21A_BHZ.SAC
                                     =2: datadir/2011.JAN/COR/G12A/COR_G12A_R21A.SAC
-                                    =3: custom sac file name type, change corresponding line
+                                    =3: datadir/2011.JAN/COR/G12A/COR_G12A_BHZ_R21A_BHZ.SAC
         -----------------------------------------------------------------------------------------------------------
         ::: output :::
         ASDF path           : self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
-        sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
+        sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHZ_TA.R21A_BHZ.SAC
         ===========================================================================================================
         """
         #----------------------------------------
@@ -1545,7 +1621,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         #----------------------------------------
         # prepare year/month list for stacking
         #----------------------------------------
-        print('preparing month list for stacking')
+        print('=== preparing month list for appending')
         utcdate                 = obspy.core.utcdatetime.UTCDateTime(startyear, startmonth, 1)
         ylst                    = np.array([], dtype=int)
         mlst                    = np.array([], dtype=int)
@@ -1558,10 +1634,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 utcdate.year    +=1
                 utcdate.month   = 1
         mnumb                   = mlst.size
+        # # print mlst, ylst
         #--------------------------------------------------
-        # create channels if inchannels is specified
+        # determine channels if inchannels is specified
         #--------------------------------------------------
-        if inchannels is not None:
+        if inchannels != None:
             try:
                 if not isinstance(inchannels[0], obspy.core.inventory.channel.Channel):
                     channels    = []
@@ -1572,6 +1649,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     channels    = inchannels
             except:
                 inchannels      = None
+        if inchannels != None:
+            chan_str_for_print      = ''
+            for chan in channels:
+                chan_str_for_print  += chan.code+' '
+            print '--- channels for stacking : '+ chan_str_for_print
         #--------------------------------------------------
         # main loop for station pairs
         #--------------------------------------------------
@@ -1581,20 +1663,38 @@ class noiseASDF(pyasdf.ASDFDataSet):
         itrstack                = 0
         Ntr_one_percent         = int(Ntotal_traces/100.)
         ipercent                = 0
-        print('start stacking')
+        print '--- start stacking: '+str(Ntotal_traces)+' pairs'
         for staid1 in staLst:
+            netcode1, stacode1  = staid1.split('.')
+            lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+            lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+            st_date1            = self.waveforms[staid1].StationXML.networks[0].stations[0].start_date
+            ed_date1            = self.waveforms[staid1].StationXML.networks[0].stations[0].end_date
             for staid2 in staLst:
-                netcode1, stacode1  = staid1.split('.')
                 netcode2, stacode2  = staid2.split('.')
-                if stacode1 >= stacode2:
-                    continue
+                lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                st_date2            = self.waveforms[staid2].StationXML.networks[0].stations[0].start_date
+                ed_date2            = self.waveforms[staid2].StationXML.networks[0].stations[0].end_date
+                if fnametype == 1:
+                    if staid1 >= staid2:
+                        continue
+                else:
+                    if stacode1 >= stacode2:
+                        continue
                 itrstack            += 1
-                if np.fmod(itrstack, Ntr_one_percent) ==0:
-                    ipercent        += 1
-                    print ('Number of traces finished stacking: '+str(itrstack)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                # print the status of stacking
+                ipercent            = float(itrstack)/float(Ntotal_traces)*100.
+                if np.fmod(itrstack, 500) == 0 or np.fmod(itrstack, Ntr_one_percent) ==0:
+                    percent_str     = '%0.2f' %ipercent
+                    print '*** Number of traces finished stacking: '+str(itrstack)+'/'+str(Ntotal_traces)+\
+                                ' '+percent_str+'%'
+                # if no overlaped time
+                if st_date1 > ed_date2 or st_date2 > ed_date1:
+                    continue
                 stackedST           = []
-                cST                 = []
-                initflag            = True
+                init_stack_flag     = False
+                # determine channels if not specified
                 if inchannels is None:
                     channels1       = []
                     channels2       = []
@@ -1644,48 +1744,73 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 else:
                     channels1       = channels
                     channels2       = channels
+                # Loop over months
                 for im in range(mnumb):
-                    skipflag        = False
+                    month           = monthdict[mlst[im]]
+                    yrmonth         = str(ylst[im])+'.'+month
+                    # skip if directory not exist
+                    if fnametype == 1:
+                        subdir      = datadir+'/'+yrmonth+'/'+pfx+'/'+staid1
+                    else:
+                        subdir      = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1
+                    if not os.path.isdir(subdir):
+                        continue
+                    # define the first day and last day of the current month
+                    c_stime     = obspy.UTCDateTime(str(ylst[im])+'-'+str(mlst[im])+'-1')
+                    try:
+                        c_etime = obspy.UTCDateTime(str(ylst[im])+'-'+str(mlst[im]+1)+'-1')
+                    except ValueError:
+                        c_etime = obspy.UTCDateTime(str(ylst[im]+1)+'-1-1')
+                    # skip if either of the stations out of time range
+                    if st_date1 > c_etime or ed_date1 < c_stime or \
+                        st_date2 > c_etime or ed_date2 < c_stime:
+                        continue 
+                    skip_this_month = False
+                    cST             = []
                     for chan1 in channels1:
-                        if skipflag:
+                        if skip_this_month:
                             break
                         for chan2 in channels2:
                             month       = monthdict[mlst[im]]
                             yrmonth     = str(ylst[im])+'.'+month
                             if fnametype    == 1:
-                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
+                                fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'\
+                                            +staid2+'_'+chan2.code+'.SAC'
                             elif fnametype  == 2:
                                 fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
                             #----------------------------------------------------------
                             elif fnametype  == 3:
-                                fname   ='' # modify file name here
+                                fname   = ''
+                                # fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'\
+                                #             +stacode2+'_'+chan2.code+'.SAC'
                             #----------------------------------------------------------
                             if not os.path.isfile(fname):
-                                skipflag= True
+                                skip_this_month = True
                                 break
                             try:
-                                tr      = obspy.core.read(fname)[0]
+                                # I/O through obspy.io.sac.SACTrace.read() is ~ 10 times faster than obspy.read()
+                                tr              = obspy.io.sac.SACTrace.read(fname)
                             except TypeError:
-                                warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                                skipflag= True
-                            if np.isnan(tr.data).any() or abs(tr.data.max())>1e20:
+                                warnings.warn('Unable to read SAC for: ' + staid1 +'_'+staid2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
+                                skip_this_month = True
+                                break
+                            if (np.isnan(tr.data)).any() or abs(tr.data.max())>1e20:
                                 warnings.warn('NaN monthly SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                                skipflag= True
+                                skip_this_month = True
                                 break
                             cST.append(tr)
-                    if len(cST) != len(channels1)*len(channels2) or skipflag:
-                        cST             = []
+                    if len(cST) != (len(channels1)*len(channels2)) or skip_this_month:
                         continue
-                    if initflag:
-                        stackedST       = copy.deepcopy(cST)
-                        initflag        = False
-                    else:
+                    if init_stack_flag:
                         for itr in range(len(cST)):
-                            mtr                             = cST[itr]
-                            stackedST[itr].data             += mtr.data
-                            stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
-                    cST                                     = []
-                if len(stackedST)==len(channels1)*len(channels2):
+                            mtr                     = cST[itr]
+                            stackedST[itr].data     += mtr.data
+                            stackedST[itr].user0    += mtr.user0
+                    else:
+                        stackedST                   = copy.deepcopy(cST)
+                        init_stack_flag             = True
+                # end of loop over month
+                if len(stackedST)== (len(channels1)*len(channels2)):
                     if verbose:
                         print('Finished stacking for:'+netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2)
                     # create sac output directory 
@@ -1696,85 +1821,88 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     # write cross-correlation header information
                     #----------------------------------------------
                     xcorr_header            = xcorr_header_default.copy()
-                    xcorr_header['b']       = stackedST[0].stats.sac.b
-                    xcorr_header['e']       = stackedST[0].stats.sac.e
+                    xcorr_header['b']       = stackedST[0].b
+                    xcorr_header['e']       = stackedST[0].e
                     xcorr_header['netcode1']= netcode1
                     xcorr_header['netcode2']= netcode2
                     xcorr_header['stacode1']= stacode1
                     xcorr_header['stacode2']= stacode2
-                    xcorr_header['npts']    = stackedST[0].stats.npts
-                    xcorr_header['delta']   = stackedST[0].stats.delta
-                    xcorr_header['stackday']= stackedST[0].stats.sac.user0
-                    try:
-                        xcorr_header['dist']= stackedST[0].stats.sac.dist
-                        xcorr_header['az']  = stackedST[0].stats.sac.az
-                        xcorr_header['baz'] = stackedST[0].stats.sac.baz
-                    except AttributeError:
-                        lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
-                        lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
-                        lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
-                        lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
-                        dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
-                        dist                = dist/1000.
-                        xcorr_header['dist']= dist
-                        xcorr_header['az']  = az
-                        xcorr_header['baz'] = baz
+                    xcorr_header['npts']    = stackedST[0].npts
+                    xcorr_header['delta']   = stackedST[0].delta
+                    xcorr_header['stackday']= stackedST[0].user0
+                    dist, az, baz           = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                    dist                    = dist/1000.
+                    xcorr_header['dist']    = dist
+                    xcorr_header['az']      = az
+                    xcorr_header['baz']     = baz
+                    # determine whether append data or not
+                    is_append               = True
                     if staid1 > staid2:
-                        staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+                        staid_aux                   = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+                        try:
+                            instapair               = indset.auxiliary_data['NoiseXcorr'][netcode2][stacode2][netcode1][stacode1]
+                        except KeyError:
+                            is_append               = False
                     else:
-                        staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
-                    itrace                  = 0
-                    if len(channels1)>1:
-                        print staid1
-                        return channels1
-                    if len(channels2)>1:
-                        print staid2
-                        return channels2
+                        staid_aux                   = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                        try:
+                            instapair               = indset.auxiliary_data['NoiseXcorr'][netcode1][stacode1][netcode2][stacode2]
+                        except KeyError:
+                            is_append               = False
+                    itrace                          = 0
                     for chan1 in channels1:
                         for chan2 in channels2:
-                            stackedTr       = stackedST[itrace]
+                            stackedTr               = stackedST[itrace]
                             if outdir is not None:
                                 outfname            = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
                                                         pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
-                                stackedTr.write(outfname, format='SAC')
+                                stackedTr.write(outfname)
                             xcorr_header['chan1']   = chan1.code
                             xcorr_header['chan2']   = chan2.code
-                            try:
+                            if is_append:
                                 #---------------------------------
                                 # get data from original database
                                 #---------------------------------
-                                indata              = indset.auxiliary_data['NoiseXcorr'][netcode1][stacode1][netcode2][stacode2][chan1.code][chan2.code]
+                                indata              = instapair[chan1.code][chan2.code]
                                 orig_sdays          = indata.parameters['stackday']
                                 orig_data           = indata.data.value
                                 xcorr_header['stackday']\
                                                     += orig_sdays
                                 stackedTr.data      += orig_data
-                                self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
-                                # # # print 'appending: '+staid1+' '+staid2
-                            except KeyError:
-                                self.add_auxiliary_data(data=stackedTr.data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+                                self.add_auxiliary_data(data = stackedTr.data, data_type='NoiseXcorr', \
+                                                    path = staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+                            else:
+                                self.add_auxiliary_data(data = stackedTr.data, data_type='NoiseXcorr', \
+                                                    path = staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
                             itrace                  += 1
                 else:
+                    #--------------------------
+                    # copy existing xcorr data
+                    #--------------------------
+                    is_copy                         = True
                     if staid1 > staid2:
-                        staid_aux           = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+                        staid_aux                   = netcode2+'/'+stacode2+'/'+netcode1+'/'+stacode1
+                        try:
+                            instapair               = indset.auxiliary_data['NoiseXcorr'][netcode2][stacode2][netcode1][stacode1]
+                        except KeyError:
+                            is_copy                 = False
                     else:
-                        staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
-                    for chan1 in channels1:
-                        for chan2 in channels2:
-                            try:
-                                #---------------------------------
-                                # get data from original database
-                                #---------------------------------
-                                indata              = indset.auxiliary_data['NoiseXcorr'][netcode1][stacode1][netcode2][stacode2][chan1.code][chan2.code]
+                        staid_aux                   = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                        try:
+                            instapair               = indset.auxiliary_data['NoiseXcorr'][netcode1][stacode1][netcode2][stacode2]
+                        except KeyError:
+                            is_copy                 = False
+                    if is_copy:
+                        for chan1 in channels1:
+                            for chan2 in channels2:
+                                indata              = instapair[chan1.code][chan2.code]
                                 xcorr_header        = indata.parameters
                                 xcorr_data          = indata.data.value
-                                self.add_auxiliary_data(data=xcorr_data, data_type='NoiseXcorr', path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
-                            except KeyError:
-                                pass
-        return            
+                                self.add_auxiliary_data(data=xcorr_data, data_type='NoiseXcorr', \
+                                            path=staid_aux+'/'+chan1.code+'/'+chan2.code, parameters=xcorr_header)
+        return
     
-    
-    def xcorr_rotation(self, outdir=None, pfx='COR'):
+    def xcorr_rotation(self, outdir = None, pfx = 'COR', verbose=False):
         """Rotate cross-correlation data 
         ===========================================================================================================
         ::: input parameters :::
@@ -1786,72 +1914,124 @@ class noiseASDF(pyasdf.ASDFDataSet):
         sac file(optional)  : outdir/COR/TA.G12A/COR_TA.G12A_BHT_TA.R21A_BHT.SAC
         ===========================================================================================================
         """
-        staLst=self.waveforms.list()
+        staLst                  = self.waveforms.list()
+        Nsta                    = len(staLst)
+        Ntotal_traces           = Nsta*(Nsta-1)/2
+        itrstack                = 0
+        Ntr_one_percent         = int(Ntotal_traces/100.)
+        irotate                 = 0
+        print '=== start rotation: '+str(Ntotal_traces)+' pairs'
         for staid1 in staLst:
+            lon1                    = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+            lat1                    = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
             for staid2 in staLst:
-                netcode1, stacode1=staid1.split('.')
-                netcode2, stacode2=staid2.split('.')
-                if stacode1 >= stacode2: continue
-                chan1E=None; chan1N=None; chan1Z=None; chan2E=None; chan2N=None; chan2Z=None
-                try:
-                    channels1=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
-                    channels2=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
-                    cpfx1=channels1[0][:2]
-                    cpfx2=channels2[0][:2]
-                    for chan in channels1:
-                        if chan[2]=='E': chan1E=chan
-                        if chan[2]=='N': chan1N=chan
-                        if chan[2]=='Z': chan1Z=chan
-                    for chan in channels2:
-                        if chan[2]=='E': chan2E=chan
-                        if chan[2]=='N': chan2N=chan
-                        if chan[2]=='Z': chan2Z=chan
-                except AttributeError:
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2:
                     continue
-                subdset=self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2]
+                lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                irotate            += 1
+                # print the status of rotation
+                ipercent            = float(irotate)/float(Ntotal_traces)*100.
+                if np.fmod(irotate, 500) == 0 or np.fmod(irotate, Ntr_one_percent) == 0:
+                    percent_str     = '%0.2f' %ipercent
+                    print '*** Number of traces finished rotation: '+str(irotate)+'/'+str(Ntotal_traces)+' '+percent_str+'%'
+                #-------------------------
+                # determine the channels
+                #-------------------------
+                chan1E  = None
+                chan1N  = None
+                chan1Z  = None
+                chan2E  = None
+                chan2N  = None
+                chan2Z  = None
+                try:
+                    channels1   = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
+                    channels2   = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
+                    cpfx1       = channels1[0][:2]
+                    cpfx2       = channels2[0][:2]
+                    for chan in channels1:
+                        if chan[2]=='E':
+                            chan1E  = chan
+                        if chan[2]=='N':
+                            chan1N  = chan
+                        if chan[2]=='Z':
+                            chan1Z  = chan
+                    for chan in channels2:
+                        if chan[2]=='E':
+                            chan2E  = chan
+                        if chan[2]=='N':
+                            chan2N  = chan
+                        if chan[2]=='Z':
+                            chan2Z  = chan
+                except KeyError:
+                    continue
+                subdset             = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2]
                 if chan1E==None or chan1N==None or chan2E==None or chan2N==None:
                     continue
                 if chan1Z==None or chan2Z==None:
-                    print 'Do rotation(RT) for:'+netcode1+'.'+stacode1+' and '+netcode2+'.'+stacode2
+                    if verbose:
+                        print 'Do rotation(RT) for:'+staid1+' and '+staid2
                 else:
-                    print 'Do rotation(RTZ) for:'+netcode1+'.'+stacode1+' and '+netcode2+'.'+stacode2
-                dsetEE=subdset[chan1E][chan2E]
-                dsetEN=subdset[chan1E][chan2N]
-                dsetNE=subdset[chan1N][chan2E]
-                dsetNN=subdset[chan1N][chan2N]
+                    if verbose:
+                        print 'Do rotation(RTZ) for:'+staid1+' and '+staid2
+                # get data
+                dsetEE      = subdset[chan1E][chan2E]
+                dsetEN      = subdset[chan1E][chan2N]
+                dsetNE      = subdset[chan1N][chan2E]
+                dsetNN      = subdset[chan1N][chan2N]
                 temp_header = dsetEE.parameters.copy()
-                chan1R      = cpfx1+'R'; chan1T=cpfx1+'T'; chan2R=cpfx2+'R'; chan2T=cpfx2+'T'
-                theta       = temp_header['az']
-                psi         = temp_header['baz']
+                chan1R      = cpfx1+'R'
+                chan1T      = cpfx1+'T'
+                chan2R      = cpfx2+'R'
+                chan2T      = cpfx2+'T'
+                # define azimuth/back-azimuth
+                theta           = temp_header['az']
+                psi             = temp_header['baz']
+                # check az/baz
+                dist, az, baz   = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2)
+                dist            = dist/1000.
+                if abs(az - theta) > 0.01 and abs(abs(az - theta) - 360.) > 0.01:
+                    raise ValueError('computed az = '+str(az)+' stored az = '+str(theta)+' '+staid1+'_'+staid2)
+                if abs(baz - psi) > 0.01 and abs(abs(baz - psi) - 360.) > 0.01:
+                    raise ValueError('computed baz = '+str(baz)+' stored baz = '+str(psi)+' '+staid1+'_'+staid2)
                 Ctheta      = np.cos(np.pi*theta/180.)
                 Stheta      = np.sin(np.pi*theta/180.)
                 Cpsi        = np.cos(np.pi*psi/180.)
                 Spsi        = np.sin(np.pi*psi/180.)
-                tempTT=-Ctheta*Cpsi*dsetEE.data.value+Ctheta*Spsi*dsetEN.data.value - \
-                    Stheta*Spsi*dsetNN.data.value + Stheta*Cpsi*dsetNE.data.value
+                #------------------------------- perform EN -> RT rotation ------------------------------
+                tempTT      = -Ctheta*Cpsi* dsetEE.data.value + Ctheta*Spsi* dsetEN.data.value - \
+                                    Stheta*Spsi* dsetNN.data.value + Stheta*Cpsi* dsetNE.data.value
                 
-                tempRR=- Stheta*Spsi*dsetEE.data.value - Stheta*Cpsi*dsetEN.data.value \
-                    - Ctheta*Cpsi*dsetNN.data.value - Ctheta*Spsi*dsetNE.data.value
+                tempRR      = - Stheta*Spsi* dsetEE.data.value - Stheta*Cpsi* dsetEN.data.value \
+                                    -Ctheta*Cpsi*dsetNN.data.value - Ctheta*Spsi*dsetNE.data.value
                 
-                tempTR=-Ctheta*Spsi*dsetEE.data.value - Ctheta*Cpsi*dsetEN.data.value  \
-                    + Stheta*Cpsi*dsetNN.data.value + Stheta*Spsi*dsetNE.data.value
+                tempTR      = -Ctheta*Spsi* dsetEE.data.value - Ctheta*Cpsi* dsetEN.data.value  \
+                                    + Stheta*Cpsi*dsetNN.data.value + Stheta*Spsi*dsetNE.data.value
                 
-                tempRT=-Stheta*Cpsi*dsetEE.data.value +Stheta*Spsi*dsetEN.data.value \
-                    + Ctheta*Spsi*dsetNN.data.value - Ctheta*Cpsi*dsetNE.data.value
-                staid_aux=netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
-                temp_header['chan1']=chan1T; temp_header['chan2']=chan2T
+                tempRT      = -Stheta*Cpsi* dsetEE.data.value + Stheta*Spsi* dsetEN.data.value \
+                                    + Ctheta*Spsi* dsetNN.data.value - Ctheta*Cpsi* dsetNE.data.value
+                #----------------------------------------------------------------------------------------
+                # save horizontal components
+                staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2
+                temp_header['chan1']= chan1T
+                temp_header['chan2']= chan2T
                 self.add_auxiliary_data(data=tempTT, data_type='NoiseXcorr', path=staid_aux+'/'+chan1T+'/'+chan2T, parameters=temp_header)
                 
-                temp_header['chan1']=chan1R; temp_header['chan2']=chan2R
+                temp_header['chan1']= chan1R
+                temp_header['chan2']= chan2R
                 self.add_auxiliary_data(data=tempRR, data_type='NoiseXcorr', path=staid_aux+'/'+chan1R+'/'+chan2R, parameters=temp_header)
                 
-                temp_header['chan1']=chan1T; temp_header['chan2']=chan2R
+                temp_header['chan1']= chan1T
+                temp_header['chan2']= chan2R
                 self.add_auxiliary_data(data=tempTR, data_type='NoiseXcorr', path=staid_aux+'/'+chan1T+'/'+chan2R, parameters=temp_header)
                 
-                temp_header['chan1']=chan1R; temp_header['chan2']=chan2T
+                temp_header['chan1']= chan1R
+                temp_header['chan2']= chan2T
                 self.add_auxiliary_data(data=tempRT, data_type='NoiseXcorr', path=staid_aux+'/'+chan1R+'/'+chan2T, parameters=temp_header)
                 # write to sac files
-                if outdir!=None:
+                if outdir != None:
                     self.wsac_xcorr(netcode1=netcode1, stacode1=stacode1, netcode2=netcode2,
                             stacode2=stacode2, chan1=chan1T, chan2=chan2T, outdir=outdir, pfx=pfx)
                     self.wsac_xcorr(netcode1=netcode1, stacode1=stacode1, netcode2=netcode2,
@@ -1861,22 +2041,29 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     self.wsac_xcorr(netcode1=netcode1, stacode1=stacode1, netcode2=netcode2,
                             stacode2=stacode2, chan1=chan1R, chan2=chan2T, outdir=outdir, pfx=pfx)
                 # RTZ rotation
-                if chan1Z!=None and chan2Z!=None:
-                    dsetEZ=subdset[chan1E][chan2Z]
-                    dsetZE=subdset[chan1Z][chan2E]
-                    dsetNZ=subdset[chan1N][chan2Z]
-                    dsetZN=subdset[chan1Z][chan2N]
-                    tempRZ = Ctheta*dsetNZ.data.value + Stheta*dsetEZ.data.value
-                    tempZR = - Cpsi*dsetZN.data.value -Spsi*dsetZE.data.value
-                    tempTZ = -Stheta*dsetNZ.data.value + Ctheta*dsetEZ.data.value
-                    tempZT =  Spsi*dsetZN.data.value - Cpsi*dsetZE.data.value
-                    temp_header['chan1']=chan1R; temp_header['chan2']=chan2Z
+                if chan1Z != None and chan2Z != None:
+                    # get data
+                    dsetEZ  = subdset[chan1E][chan2Z]
+                    dsetZE  = subdset[chan1Z][chan2E]
+                    dsetNZ  = subdset[chan1N][chan2Z]
+                    dsetZN  = subdset[chan1Z][chan2N]
+                    # ----------------------- perform ENZ -> RTZ rotation ---------------------
+                    tempRZ  = Ctheta* dsetNZ.data.value + Stheta* dsetEZ.data.value
+                    tempZR  = -Cpsi* dsetZN.data.value - Spsi* dsetZE.data.value
+                    tempTZ  = -Stheta* dsetNZ.data.value + Ctheta* dsetEZ.data.value
+                    tempZT  = Spsi* dsetZN.data.value - Cpsi* dsetZE.data.value
+                    #--------------------------------------------------------------------------
+                    temp_header['chan1']    = chan1R
+                    temp_header['chan2']    = chan2Z
                     self.add_auxiliary_data(data=tempRZ, data_type='NoiseXcorr', path=staid_aux+'/'+chan1R+'/'+chan2Z, parameters=temp_header)
-                    temp_header['chan1']=chan1Z; temp_header['chan2']=chan2R
+                    temp_header['chan1']    = chan1Z
+                    temp_header['chan2']    = chan2R
                     self.add_auxiliary_data(data=tempZR, data_type='NoiseXcorr', path=staid_aux+'/'+chan1Z+'/'+chan2R, parameters=temp_header)
-                    temp_header['chan1']=chan1T; temp_header['chan2']=chan2Z
+                    temp_header['chan1']    = chan1T
+                    temp_header['chan2']    = chan2Z
                     self.add_auxiliary_data(data=tempTZ, data_type='NoiseXcorr', path=staid_aux+'/'+chan1T+'/'+chan2Z, parameters=temp_header)
-                    temp_header['chan1']=chan1Z; temp_header['chan2']=chan2T
+                    temp_header['chan1']    = chan1Z
+                    temp_header['chan2']    = chan2T
                     self.add_auxiliary_data(data=tempZT, data_type='NoiseXcorr', path=staid_aux+'/'+chan1Z+'/'+chan2T, parameters=temp_header)
                     # write to sac files
                     if outdir!=None:
@@ -1890,7 +2077,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                                 stacode2=stacode2, chan1=chan1Z, chan2=chan2T, outdir=outdir, pfx=pfx)
         return
     
-    def count_data(self, channel='ZZ', threshstackday=0):
+    def count_data(self, chan1='LHZ', chan2='LHZ', threshstackday=0):
         """count the number of available xcorr traces
         """
         staLst                      = self.waveforms.list()
@@ -1904,23 +2091,32 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 if staid1 >= staid2:
                     continue
                 try:
-                    channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
-                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
-                    for chan in channels1:
-                        if chan[-1]==channel[0]:
-                            chan1   = chan
-                    for chan in channels2:
-                        if chan[-1]==channel[1]:
-                            chan2   = chan
+                    subdset         = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1][chan2]
                 except KeyError:
                     continue
-                try:
-                    tr              = self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
-                    if tr.stats.sac.user0 < threshstackday:
+                if threshstackday > 0:
+                    if subdset.parameters['stackday'] < threshstackday:
                         continue
-                    itrace          += 1
-                except NameError:
-                    pass
+                itrace              += 1
+                # try:
+                #     channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
+                #     channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
+                #     for chan in channels1:
+                #         if chan[-1]==channel[0]:
+                #             chan1   = chan
+                #     for chan in channels2:
+                #         if chan[-1]==channel[1]:
+                #             chan2   = chan
+                # except KeyError:
+                #     continue
+                
+                # try:
+                #     tr              = self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
+                #     if tr.stats.sac.user0 < threshstackday:
+                #         continue
+                #     itrace          += 1
+                # except NameError:
+                #     pass
         print('Number of available xcorr traces: '+str(itrace)+'/'+str(Ntotal_traces))
         return
     
@@ -2003,8 +2199,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
             os.remove('PREDICTION_R'+'_'+evid)
         return
     
-    def xcorr_aftan(self, channel='ZZ', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True, \
-            pmf1=True, pmf2=True, verbose=False, prephdir=None, f77=True, pfx='DISP'):
+    def xcorr_aftan(self, channel='ZZ', tb=0., outdir=None, inftan=pyaftan.InputFtanParam(),\
+            basic1=True, basic2=True, pmf1=True, pmf2=True, verbose=False, prephdir=None, f77=True, pfx='DISP'):
         """ aftan analysis of cross-correlation data 
         =======================================================================================
         ::: input parameters :::
@@ -2025,7 +2221,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         self.auxiliary_data.DISPpmf1, self.auxiliary_data.DISPpmf2
         =======================================================================================
         """
-        print 'Start aftan analysis!'
+        print '=== start aftan analysis'
         staLst                      = self.waveforms.list()
         Nsta                        = len(staLst)
         Ntotal_traces               = Nsta*(Nsta-1)/2
@@ -2038,29 +2234,38 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 netcode2, stacode2  = staid2.split('.')
                 if staid1 >= staid2:
                     continue
+                # print how many traces has been processed
                 iaftan              += 1
                 if np.fmod(iaftan, Ntr_one_percent) ==0:
                     ipercent        += 1
-                    print ('Number of traces finished aftan analysis: '+str(iaftan)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                    print ('*** Number of traces finished aftan analysis: '+str(iaftan)+'/'+\
+                           str(Ntotal_traces)+' '+str(ipercent)+'%')
+                # determine channels
                 try:
                     channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
-                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][channels1[0]].list()
                     for chan in channels1:
-                        if chan[-1]==channel[0]:
+                        if chan[-1] == channel[0]:
                             chan1   = chan
+                            break
+                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1].list()
                     for chan in channels2:
-                        if chan[-1]==channel[1]:
+                        if chan[-1] == channel[1]:
                             chan2   = chan
+                            break
                 except KeyError:
                     continue
+                # get data
                 try:
                     tr              = self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
                 except NameError:
-                    print netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel+' not exists!'
+                    print netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+' not exists!'
                     continue
                 aftanTr             = pyaftan.aftantrace(tr.data, tr.stats)
-                if abs(aftanTr.stats.sac.b+aftanTr.stats.sac.e)<aftanTr.stats.delta:
+                if abs(aftanTr.stats.sac.b+aftanTr.stats.sac.e) < aftanTr.stats.delta:
                     aftanTr.makesym()
+                else:
+                    print netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel+' NOT symmetric'
+                    continue
                 if prephdir != None:
                     phvelname       = prephdir + "/%s.%s.pre" %(netcode1+'.'+stacode1, netcode2+'.'+stacode2)
                 else:
@@ -2082,25 +2287,33 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 staid_aux           = netcode1+'/'+stacode1+'/'+netcode2+'/'+stacode2+'/'+channel
                 # save aftan results to ASDF dataset
                 if basic1:
-                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_1}
-                    self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_1, data_type='DISPbasic1', path=staid_aux, parameters=parameters)
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6,\
+                                            'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_1}
+                    self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_1, data_type='DISPbasic1', path=staid_aux,\
+                                            parameters=parameters)
                 if basic2:
-                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'Np': aftanTr.ftanparam.nfout2_1}
-                    self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_1, data_type='DISPbasic2', path=staid_aux, parameters=parameters)
+                    parameters      = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6,\
+                                            'amp': 7, 'Np': aftanTr.ftanparam.nfout2_1}
+                    self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_1, data_type='DISPbasic2', path=staid_aux,\
+                                            parameters=parameters)
                 if inftan.pmf:
                     if pmf1:
-                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6, 'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_2}
-                        self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_2, data_type='DISPpmf1', path=staid_aux, parameters=parameters)
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'dis': 5, 'snrdb': 6,\
+                                            'mhw': 7, 'amp': 8, 'Np': aftanTr.ftanparam.nfout1_2}
+                        self.add_auxiliary_data(data=aftanTr.ftanparam.arr1_2, data_type='DISPpmf1', path=staid_aux,\
+                                                parameters=parameters)
                     if pmf2:
-                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6, 'amp': 7, 'snr':8, 'Np': aftanTr.ftanparam.nfout2_2}
-                        self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_2, data_type='DISPpmf2', path=staid_aux, parameters=parameters)
+                        parameters  = {'Tc': 0, 'To': 1, 'U': 2, 'C': 3, 'ampdb': 4, 'snrdb': 5, 'mhw': 6,\
+                                            'amp': 7, 'snr':8, 'Np': aftanTr.ftanparam.nfout2_2}
+                        self.add_auxiliary_data(data=aftanTr.ftanparam.arr2_2, data_type='DISPpmf2', path=staid_aux,\
+                                                parameters=parameters)
                 if outdir != None:
                     if not os.path.isdir(outdir+'/'+pfx+'/'+staid1):
                         os.makedirs(outdir+'/'+pfx+'/'+staid1)
                     foutPR          = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
                                         pfx+'_'+netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+'.SAC'
                     aftanTr.ftanparam.writeDISP(foutPR)
-        print 'End aftan analysis!'
+        print '== end aftan analysis'
         return
                
     def xcorr_aftan_mp(self, outdir, channel='ZZ', tb=0., inftan=pyaftan.InputFtanParam(), basic1=True, basic2=True,
@@ -2275,7 +2488,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 iinterp             += 1
                 if np.fmod(iinterp, Ntr_one_percent) ==0:
                     ipercent        += 1
-                    print ('Number of traces finished interpolating dispersion curve: '+str(iinterp)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                    print ('*** Number of traces finished interpolating dispersion curve: '+\
+                                    str(iinterp)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
                 try:
                     subdset         = self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
                 except KeyError:
@@ -2309,93 +2523,32 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 self.add_auxiliary_data(data=interpdata, data_type=data_type+'interp', path=staid_aux, parameters=outindex)
         return
     
-    def xcorr_raytomoinput_deprecated(self, outdir, channel='ZZ', pers=np.array([]), outpfx='raytomo_in_', data_type='DISPpmf2interp', verbose=True):
-        """
-        Generate Input files for Barmine's straight ray surface wave tomography code.
-        =======================================================================================================
-        ::: input parameters :::
-        outdir      - output directory
-        channel     - channel for tomography
-        pers        - period array
-        outpfx      - prefix for output files, default is 'MISHA_in_'
-        data_type   - dispersion data type (default = DISPpmf2, pmf aftan results after jump detection)
-        -------------------------------------------------------------------------------------------------------
-        Output format:
-        outdir/outpfx+per_channel_ph.lst
-        =======================================================================================================
-        """
-        if not os.path.isdir(outdir):
-            os.makedirs(outdir)
-        if pers.size==0:
-            pers=np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
-        staLst=self.waveforms.list()
-        for per in pers:
-            print 'Generating Tomo Input for period:', per
-            fname_ph=outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_ph.lst' %( per )
-            fname_gr=outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_gr.lst' %( per )
-            fph=open(fname_ph, 'w')
-            fgr=open(fname_gr, 'w')
-            i=-1
-            for staid1 in staLst:
-                for staid2 in staLst:
-                    netcode1, stacode1=staid1.split('.')
-                    netcode2, stacode2=staid2.split('.')
-                    if staid1 >= staid2: continue
-                    i=i+1
-                    try:
-                        subdset=self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
-                    except:
-                        # warnings.warn('No interpolated dispersion curve: ' + netcode1+'.'+stacode1+'_'+netcode2+'.'+stacode2+'_'+channel,
-                        #             UserWarning, stacklevel=1)
-                        continue
-                    lat1, elv1, lon1=self.waveforms[staid1].coordinates.values()
-                    lat2, elv2, lon2=self.waveforms[staid2].coordinates.values()
-                    dist, az, baz=obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
-                    dist=dist/1000.
-                    if dist < 2.*per*3.5: continue
-                    if lon1<0: lon1+=360.
-                    if lon2<0: lon2+=360.
-                    data=subdset.data.value
-                    index=subdset.parameters
-                    ind_per=np.where(data[index['To']][:] == per)[0]
-                    if ind_per.size==0:
-                        raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
-                    pvel=data[index['Vph']][ind_per]
-                    gvel=data[index['Vgr']][ind_per]
-                    snr=data[index['snr']][ind_per]
-                    amp=data[index['amp']][ind_per]
-                    inbound=data[index['inbound']][ind_per]
-                    # quality control
-                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10 or amp >1e10: continue
-                    if inbound!=1.: continue
-                    if snr < 15.: continue
-                    fph.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(i, lat1, lon1, lat2, lon2, pvel, staid1, staid2))
-                    fgr.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(i, lat1, lon1, lat2, lon2, gvel, staid1, staid2))
-            fph.close()
-            fgr.close()
-        print 'End of Generating Misha Tomography Input File!'
-        return
-    
-    def xcorr_raytomoinput(self, outdir, staxml=None, netcodelst=[], channel='ZZ',\
+    def xcorr_raytomoinput(self, outdir, staxml=None, netcodelst=[], lambda_factor=3., snr_thresh=15., channel='ZZ',\
                            pers=np.array([]), outpfx='raytomo_in_', data_type='DISPpmf2interp', verbose=True):
         """
         Generate input files for Barmine's straight ray surface wave tomography code.
         =======================================================================================================
         ::: input parameters :::
-        outdir      - output directory
-        channel     - channel for tomography
-        pers        - period array
-        outpfx      - prefix for output files, default is 'raytomo_in_'
-        data_type   - dispersion data type (default = DISPpmf2, pmf aftan results after jump detection)
+        outdir          - output directory
+        staxml          - input StationXML for data selection
+        netcodelst      - network list for data selection
+        lambda_factor   - wavelength factor for data selection (default = 3.)
+        snr_thresh      - threshold SNR (default = 15.)
+        channel         - channel for tomography
+        pers            - period array
+        outpfx          - prefix for output files, default is 'raytomo_in_'
+        data_type       - dispersion data type (default = DISPpmf2, pmf aftan results after jump detection)
         -------------------------------------------------------------------------------------------------------
         Output format:
         outdir/outpfx+per_channel_ph.lst
         =======================================================================================================
         """
+        print ('=== Generating straight ray tomography input files')
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         if pers.size==0:
             pers        = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        # open output files
         fph_lst         = []
         fgr_lst         = []
         for per in pers:
@@ -2413,18 +2566,25 @@ class noiseASDF(pyasdf.ASDFDataSet):
             waveformLst     = []
             for network in inv:
                 netcode     = network.code
-                if len(netcodelst) != 0:
-                    if not netcode in netcodelst:
-                        continue
                 for station in network:
                     stacode = station.code
                     waveformLst.append(netcode+'.'+stacode)
             staLst          = waveformLst
-            print 'Using stations from input StationXML file'
-        #--------------------------------------------------------------------------
+            print '--- Load stations from input StationXML file'
         else:
-            print 'Using all the stations from database'
+            print '--- Load all the stations from database'
             staLst          = self.waveforms.list()
+        # network selection
+        if len(netcodelst) != 0:
+            staLst_ALL      = copy.deepcopy(staLst)
+            staLst          = []
+            for staid in staLst_ALL:
+                netcode, stacode    = staid.split('.')
+                if not (netcode in netcodelst):
+                    continue
+                staLst.append(staid)
+            print '--- Select stations according to network code: '+str(len(staLst))+'/'+str(len(staLst_ALL))+' (selected/all)'
+        # Loop over stations
         Nsta            = len(staLst)
         Ntotal_traces   = Nsta*(Nsta-1)/2
         Ntr_one_percent = int(Ntotal_traces/100.)
@@ -2436,10 +2596,12 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 netcode2, stacode2  = staid2.split('.')
                 if staid1 >= staid2:
                     continue
+                # print how many rays has been processed 
                 iray                += 1
                 if np.fmod(iray+1, Ntr_one_percent) ==0:
                     ipercent        += 1
-                    print ('Number of traces finished generating raytomo input: '+str(iray)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                    print ('*** Number of traces finished generating raytomo input: '+str(iray)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                # get data
                 try:
                     subdset         = self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
                 except:
@@ -2456,9 +2618,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 index               = subdset.parameters
                 for iper in range(pers.size):
                     per             = pers[iper]
-                    # three wavelength
-                    if dist < 3.*per*3.5:
+                    # wavelength criteria
+                    if dist < lambda_factor*per*3.5:
                         continue
+                    # if dist > 1200.:
+                    #     continue 
                     ind_per         = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
                         raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
@@ -2467,11 +2631,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     snr             = data[index['snr']][ind_per]
                     inbound         = data[index['inbound']][ind_per]
                     # quality control
-                    if inbound!=1.:
+                    if inbound != 1.:
                         continue
                     if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10:
                         continue
-                    if snr < 15.:
+                    if snr < snr_thresh: # SNR larger than 15.
                         continue
                     fph             = fph_lst[iper]
                     fgr             = fgr_lst[iper]
@@ -2482,30 +2646,48 @@ class noiseASDF(pyasdf.ASDFDataSet):
             fgr                     = fgr_lst[iper]
             fph.close()
             fgr.close()
-        print ('End of generating Misha tomography input files!')
+        print ('=== end of generating straight ray tomography input files')
         return
     
-    def xcorr_get_field(self, outdir=None, staxml=None, channel='ZZ', pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
-        """ Get the field data for Eikonal tomography
-        ============================================================================================================================
-        ::: input parameters :::
-        outdir      - directory for txt output (default is not to generate txt output)
-        channel     - channel name
-        pers        - period array
-        datatype    - dispersion data type (default = DISPpmf2interp, interpolated pmf aftan results after jump detection)
-        staxml      - input StationXML file (optional)
-        ::: output :::
-        self.auxiliary_data.FieldDISPpmf2interp
-        
-        ============================================================================================================================
+    def xcorr_raytomoinput_debug(self, outdir, exclude_stalst=None, staxml=None, netcodelst=[], stacodelst=[],  lambda_factor=3.,\
+                snr_thresh=15., channel='ZZ', pers=np.array([]), outpfx='raytomo_in_', data_type='DISPpmf2interp', verbose=True):
         """
+        Generate input files for Barmine's straight ray surface wave tomography code.
+        =======================================================================================================
+        ::: input parameters :::
+        outdir          - output directory
+        staxml          - input StationXML for data selection
+        netcodelst      - network list for data selection
+        lambda_factor   - wavelength factor for data selection (default = 3.)
+        snr_thresh      - threshold SNR (default = 15.)
+        channel         - channel for tomography
+        pers            - period array
+        outpfx          - prefix for output files, default is 'raytomo_in_'
+        data_type       - dispersion data type (default = DISPpmf2, pmf aftan results after jump detection)
+        -------------------------------------------------------------------------------------------------------
+        Output format:
+        outdir/outpfx+per_channel_ph.lst
+        =======================================================================================================
+        """
+        print ('=== Generating straight ray tomography input files')
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
         if pers.size==0:
             pers        = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
-        outindex        = { 'longitude': 0, 'latitude': 1, 'C': 2,  'U':3, 'snr': 4, 'dist': 5 }
+        # open output files
+        fph_lst         = []
+        fgr_lst         = []
+        for per in pers:
+            fname_ph    = outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_ph.lst' %( per )
+            fname_gr    = outdir+'/'+outpfx+'%g'%( per ) +'_'+channel+'_gr.lst' %( per )
+            fph         = open(fname_ph, 'w')
+            fgr         = open(fname_gr, 'w')
+            fph_lst.append(fph)
+            fgr_lst.append(fgr)
         #--------------------------------------------------------------------------
         # added the functionality of using stations from an input StationXML file
         #--------------------------------------------------------------------------
-        try:
+        if staxml != None:
             inv             = obspy.read_inventory(staxml)
             waveformLst     = []
             for network in inv:
@@ -2514,11 +2696,161 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     stacode = station.code
                     waveformLst.append(netcode+'.'+stacode)
             staLst          = waveformLst
-            print 'Using stations from input StationXML file'
-        #--------------------------------------------------------------------------
-        except:
-            print 'Using all the stations from database'
+            print '--- Load stations from input StationXML file'
+        else:
+            print '--- Load all the stations from database'
             staLst          = self.waveforms.list()
+        #
+        ex_stalst           = []
+        if exclude_stalst != None:
+            with open(exclude_stalst, 'rb') as fio:
+                for line in fio.readlines():
+                    stacode = line.split()[0]
+                    netcode = line.split()[-1]
+                    exlon   = float(line.split()[1])
+                    exlat   = float(line.split()[2])
+                    dist, az, baz       = obspy.geodetics.gps2dist_azimuth(exlat, exlon, 64.5, -149.5) # distance is in m
+                    if dist/1000. > 100.:
+                        continue
+                    # if not (abs(exlon - (-150)) < 1. and abs(exlat - 64.) < 1. ):
+                        # continue
+                    # print netcode+'.'+stacode
+                    ex_stalst.append(netcode+'.'+stacode)
+        # network selection
+        if len(netcodelst) != 0 or len(stacodelst) != 0 or len(ex_stalst) != 0:
+            staLst_ALL      = copy.deepcopy(staLst)
+            staLst          = []
+            for staid in staLst_ALL:
+                netcode, stacode    = staid.split('.')
+                if len(netcodelst) != 0:
+                    if not (netcode in netcodelst):
+                        continue
+                if len(ex_stalst) != 0:
+                    if staid in ex_stalst:
+                        print staid
+                        continue
+                # print staid
+                # if netcode == 'TA':
+                #     continue
+                if len(stacodelst) != 0:
+                    if stacode in stacodelst:
+                        continue
+                staLst.append(staid)
+            print '--- Select stations according to network code: '+str(len(staLst))+'/'+str(len(staLst_ALL))+' (selected/all)'
+        # Loop over stations
+        # return
+        Nsta            = len(staLst)
+        Ntotal_traces   = Nsta*(Nsta-1)/2
+        Ntr_one_percent = int(Ntotal_traces/100.)
+        ipercent        = 0
+        iray            = -1
+        for staid1 in staLst:
+            for staid2 in staLst:
+                netcode1, stacode1  = staid1.split('.')
+                netcode2, stacode2  = staid2.split('.')
+                if staid1 >= staid2:
+                    continue
+                # print how many rays has been processed 
+                iray                += 1
+                if np.fmod(iray+1, Ntr_one_percent) ==0:
+                    ipercent        += 1
+                    print ('*** Number of traces finished generating raytomo input: '+str(iray)+'/'+str(Ntotal_traces)+' '+str(ipercent)+'%')
+                # get data
+                try:
+                    subdset         = self.auxiliary_data[data_type][netcode1][stacode1][netcode2][stacode2][channel]
+                except:
+                    continue
+                lat1, elv1, lon1    = self.waveforms[staid1].coordinates.values()
+                lat2, elv2, lon2    = self.waveforms[staid2].coordinates.values()
+                dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
+                dist                = dist/1000.
+                if lon1<0:
+                    lon1            +=360.
+                if lon2<0:
+                    lon2            +=360.
+                data                = subdset.data.value
+                index               = subdset.parameters
+                for iper in range(pers.size):
+                    per             = pers[iper]
+                    # wavelength criteria
+                    if dist < lambda_factor*per*3.5:
+                        continue
+                    # if dist > 1200.:
+                    #     continue 
+                    ind_per         = np.where(data[index['To']][:] == per)[0]
+                    if ind_per.size==0:
+                        raise AttributeError('No interpolated dispersion curve data for period='+str(per)+' sec!')
+                    pvel            = data[index['C']][ind_per]
+                    gvel            = data[index['U']][ind_per]
+                    snr             = data[index['snr']][ind_per]
+                    inbound         = data[index['inbound']][ind_per]
+                    # quality control
+                    if inbound != 1.:
+                        continue
+                    if pvel < 0 or gvel < 0 or pvel>10 or gvel>10 or snr >1e10:
+                        continue
+                    if snr < snr_thresh: # SNR larger than 15.
+                        continue
+                    fph             = fph_lst[iper]
+                    fgr             = fgr_lst[iper]
+                    fph.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(iray, lat1, lon1, lat2, lon2, pvel, staid1, staid2))
+                    fgr.writelines("%d %g %g %g %g %g 1. %s %s 1 1 \n" %(iray, lat1, lon1, lat2, lon2, gvel, staid1, staid2))
+        for iper in range(pers.size):
+            fph                     = fph_lst[iper]
+            fgr                     = fgr_lst[iper]
+            fph.close()
+            fgr.close()
+        print ('=== end of generating straight ray tomography input files')
+        return
+    
+    def xcorr_get_field(self, outdir=None, staxml=None, netcodelst=[], lambda_factor=3., snr_thresh=15., channel='ZZ',\
+                        pers=np.array([]), data_type='DISPpmf2interp', verbose=True):
+        """ Get the field data for eikonal tomography
+        ============================================================================================================================
+        ::: input parameters :::
+        outdir          - directory for txt output (default is not to generate txt output)
+        staxml          - input StationXML for data selection
+        netcodelst      - network list for data selection
+        lambda_factor   - wavelength factor for data selection (default = 3.)
+        snr_thresh      - threshold SNR (default = 15.)
+        channel         - channel name
+        pers            - period array
+        datatype        - dispersion data type (default = DISPpmf2interp, interpolated pmf aftan results after jump detection)
+        ::: output :::
+        self.auxiliary_data.FieldDISPpmf2interp
+        ============================================================================================================================
+        """
+        print ('=== generating arrays for eikonal tomography')
+        if pers.size==0:
+            pers        = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+        outindex        = { 'longitude': 0, 'latitude': 1, 'C': 2,  'U':3, 'snr': 4, 'dist': 5 }
+        #--------------------------------------------------------------------------
+        # added the functionality of using stations from an input StationXML file
+        #--------------------------------------------------------------------------
+        if staxml != None:
+            inv             = obspy.read_inventory(staxml)
+            waveformLst     = []
+            for network in inv:
+                netcode     = network.code
+                for station in network:
+                    stacode = station.code
+                    waveformLst.append(netcode+'.'+stacode)
+            staLst          = waveformLst
+            print '--- Load stations from input StationXML file'
+        else:
+            print '--- Load all the stations from database'
+            staLst          = self.waveforms.list()
+        # network selection
+        if len(netcodelst) != 0:
+            staLst_ALL      = copy.deepcopy(staLst)
+            staLst          = []
+            for staid in staLst_ALL:
+                netcode, stacode    = staid.split('.')
+                if not (netcode in netcodelst):
+                    continue
+                staLst.append(staid)
+            print '--- Select stations according to network code: '+str(len(staLst))+'/'+str(len(staLst_ALL))+' (selected/all)'
+        # Loop over stations
         for staid1 in staLst:
             field_lst   = []
             Nfplst      = []
@@ -2528,11 +2860,11 @@ class noiseASDF(pyasdf.ASDFDataSet):
             try:
                 lat1, elv1, lon1    = self.waveforms[staid1].coordinates.values()
             except:
-                print 'No station:' +staid1+' in the database'
+                print 'WARNING: No station:' +staid1+' in the database'
                 continue
             Ndata       = 0
             for staid2 in staLst:
-                if staid1==staid2:
+                if staid1 == staid2:
                     continue
                 netcode1, stacode1  = staid1.split('.')
                 netcode2, stacode2  = staid2.split('.')
@@ -2557,7 +2889,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 for iper in range(pers.size):
                     per     = pers[iper]
                     # three wavelength, note that in eikonal_operator, another similar criteria will be applied
-                    if dist < 3.*per*3.5:
+                    if dist < lambda_factor*per*3.5:
                         continue
                     ind_per = np.where(data[index['To']][:] == per)[0]
                     if ind_per.size==0:
@@ -2571,7 +2903,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         continue
                     if inbound!=1.:
                         continue
-                    if snr < 15.:
+                    if snr < snr_thresh:
                         continue
                     field_lst[iper] = np.append(field_lst[iper], lon2)
                     field_lst[iper] = np.append(field_lst[iper], lat2)
@@ -2586,6 +2918,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
             if outdir is not None:
                 if not os.path.isdir(outdir):
                     os.makedirs(outdir)
+            # save data
             staid_aux   = netcode1+'/'+stacode1+'/'+channel
             for iper in range(pers.size):
                 per                 = pers[iper]
@@ -2593,19 +2926,151 @@ class noiseASDF(pyasdf.ASDFDataSet):
                 if field_lst[iper].size==0:
                     continue
                 field_lst[iper]     = field_lst[iper].reshape(Nfplst[iper], 6)
-                if del_per==0.:
-                    staid_aux_per   =staid_aux+'/'+str(int(per))+'sec'
+                if del_per == 0.:
+                    staid_aux_per   = staid_aux+'/'+str(int(per))+'sec'
                 else:
                     dper            = str(del_per)
                     staid_aux_per   = staid_aux+'/'+str(int(per))+'sec'+dper.split('.')[1]
-                self.add_auxiliary_data(data=field_lst[iper], data_type='Field'+data_type, path=staid_aux_per, parameters=outindex)
+                self.add_auxiliary_data(data=field_lst[iper], data_type='Field'+data_type,\
+                                        path=staid_aux_per, parameters=outindex)
                 if outdir is not None:
                     if not os.path.isdir(outdir+'/'+str(per)+'sec'):
                         os.makedirs(outdir+'/'+str(per)+'sec')
                     txtfname        = outdir+'/'+str(per)+'sec'+'/'+staid1+'_'+str(per)+'.txt'
                     header          = 'evlo='+str(lon1)+' evla='+str(lat1)
                     np.savetxt( txtfname, field_lst[iper], fmt='%g', header=header )
+        print ('=== end generating arrays for eikonal tomography')
         return
+    
+    def plot_waveforms(self, staxml=None, channel='ZZ', ndata=1000, dmin=1., dmax=1000.):
+        if staxml != None:
+            inv             = obspy.read_inventory(staxml)
+            waveformLst     = []
+            for network in inv:
+                netcode     = network.code
+                for station in network:
+                    stacode = station.code
+                    waveformLst.append(netcode+'.'+stacode)
+            staLst          = waveformLst
+            print '--- Load stations from input StationXML file'
+        else:
+            print '--- Load all the stations from database'
+            staLst          = self.waveforms.list()
+        interval        = (dmax-dmin)/(ndata-1)
+        dist_arr        = np.arange(ndata)*interval
+        is_data         = np.zeros(ndata, dtype=bool)
+        idata           = 0
+        ax  = plt.subplot()
+        for staid1 in staLst:
+            netcode1, stacode1  = staid1.split('.')
+            # lon1                = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+            # lat1                = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+            if idata >= ndata:
+                break
+            
+            for staid2 in staLst:
+                netcode2, stacode2  = staid2.split('.')
+                # lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                # lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                if staid1 >= staid2:
+                    continue
+                # # # dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
+                # # # dist                = dist/1000.
+                # # # if dist < dist_arr[0] or dist > dist_arr[-1]:
+                # # #     continue
+                # # # index               = (abs(dist_arr - dist)).argmin()
+                # # # if is_data[index]:
+                # # #     continue
+                # determine channels
+                try:
+                    channels1       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2].list()
+                    for chan in channels1:
+                        if chan[-1] == channel[0]:
+                            chan1   = chan
+                            break
+                    channels2       = self.auxiliary_data.NoiseXcorr[netcode1][stacode1][netcode2][stacode2][chan1].list()
+                    for chan in channels2:
+                        if chan[-1] == channel[1]:
+                            chan2   = chan
+                            break
+                except KeyError:
+                    continue
+                # get data
+                try:
+                    tr              = self.get_xcorr_trace(netcode1, stacode1, netcode2, stacode2, chan1, chan2)
+                except NameError:
+                    print netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+' not exists!'
+                    continue
+                # is_data[index]      = True
+                # idata               += 1
+                # print idata
+                time    = tr.stats.sac.b + np.arange(tr.stats.npts)*tr.stats.delta
+                plt.plot(time, tr.data/abs(tr.data.max())*10. + tr.stats.distance/1000., 'k-', lw= 0.1)
+                if idata >= ndata:
+                    break
+        plt.xlim([-1000., 1000.])
+        plt.ylim([-1., 1000.])
+        ax.tick_params(axis='x', labelsize=20)
+        ax.tick_params(axis='y', labelsize=20)
+        plt.ylabel('Distance (km)', fontsize=30)
+        plt.xlabel('Time (s)', fontsize=30)
+        plt.show()
+        
+    def plot_waveforms_monthly(self, datadir, monthdir, staxml=None, chan1='LHZ', chan2='LHZ'):
+        if staxml != None:
+            inv             = obspy.read_inventory(staxml)
+            waveformLst     = []
+            for network in inv:
+                netcode     = network.code
+                for station in network:
+                    stacode = station.code
+                    waveformLst.append(netcode+'.'+stacode)
+            staLst          = waveformLst
+            print '--- Load stations from input StationXML file'
+        else:
+            print '--- Load all the stations from database'
+            staLst          = self.waveforms.list()
+
+        ax              = plt.subplot()
+        for staid1 in staLst:
+            netcode1, stacode1  = staid1.split('.')
+            try:
+                lon1    = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+                lat1    = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+            except:
+                continue
+            for staid2 in staLst:
+                netcode2, stacode2  = staid2.split('.')
+                try:
+                    lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                    lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                except:
+                    continue
+                if staid1 >= staid2:
+                    continue
+                dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
+                dist                = dist/1000.
+                
+                infname             = datadir+'/'+monthdir+'/COR/'+staid1+'/COR_'+staid1+'_'+chan1+'_'+staid2+'_'+chan2+'.SAC'
+                # print infname
+                if not os.path.isfile(infname):
+                    continue
+                # get data
+                tr                  = obspy.read(infname)[0]
+                # is_data[index]      = True
+                # idata               += 1
+                # print idata
+                time    = tr.stats.sac.b + np.arange(tr.stats.npts)*tr.stats.delta
+                plt.plot(time, tr.data/abs(tr.data.max())*10. + dist, 'k-', lw= 0.1)
+
+        plt.xlim([-1000., 1000.])
+        plt.ylim([-1., 1000.])
+        ax.tick_params(axis='x', labelsize=20)
+        ax.tick_params(axis='y', labelsize=20)
+        plt.ylabel('Distance (km)', fontsize=30)
+        plt.xlabel('Time (s)', fontsize=30)
+        plt.title(monthdir, fontsize=40)
+        plt.show()
     
     # def plot_travel_time(self, netcode, stacode, period, channel='ZZ'):
     #     try:
@@ -2634,68 +3099,76 @@ class noiseASDF(pyasdf.ASDFDataSet):
     #             field2d.read_array(lonArr = inlons, latArr = inlats, ZarrIn = distArr/Zarr )
         
             
-def stack4mp(inv, datadir, outdir, ylst, mlst, pfx, fnametype):
-    stackedST   = []
-    cST         = []
-    initflag    = True
-    channels1   = inv.networks[0].stations[0].channels
-    channels2   = inv.networks[1].stations[0].channels
-    netcode1    = inv.networks[0].code
-    stacode1    = inv.networks[0].stations[0].code
-    netcode2    = inv.networks[1].code
-    stacode2    = inv.networks[1].stations[0].code
-    mnumb       = mlst.size
+def stack4mp(invpair, datadir, outdir, ylst, mlst, pfx, fnametype):
+    stackedST       = []
+    init_stack_flag = False
+    # station 1
+    netcode1        = invpair[0].networks[0].code
+    stacode1        = invpair[0].networks[0].stations[0].code
+    channels1       = invpair[0].networks[0].stations[0].channels
+    staid1          = netcode1+'.'+stacode1
+    # station 2
+    netcode2        = invpair[1].networks[0].code
+    stacode2        = invpair[1].networks[0].stations[0].code
+    channels2       = invpair[1].networks[0].stations[0].channels
+    staid2          = netcode2+'.'+stacode2
+    mnumb           = mlst.size
     for im in xrange(mnumb):
-        skipflag= False
+        skip_this_month = False
+        cST     = []
         for chan1 in channels1:
-            if skipflag:
+            if skip_this_month:
                 break
             for chan2 in channels2:
                 month       = monthdict[mlst[im]]
                 yrmonth     = str(ylst[im])+'.'+month
                 if fnametype    == 1:
-                    fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
+                    fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+staid1+'/'+pfx+'_'+staid1+'_'+chan1.code+'_'+staid2+'_'+chan2.code+'.SAC'
                 elif fnametype  == 2:
                     fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+stacode2+'.SAC'
                 ############
                 elif fnametype  == 3:
-                    fname   = '' # modify file name here
+                    fname   = datadir+'/'+yrmonth+'/'+pfx+'/'+stacode1+'/'+pfx+'_'+stacode1+'_'+chan1.code+'_'+stacode2+'_'+chan2.code+'.SAC'
                 ############
                 if not os.path.isfile(fname):
-                    skipflag= True
+                    skip_this_month = True
                     break
                 try:
-                    tr      = obspy.core.read(fname)[0]
+                    # # # tr              = obspy.core.read(fname)[0]
+                    tr              = obspy.io.sac.SACTrace.read(fname)
                 except TypeError:
-                    warnings.warn('Unable to read SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                    skipflag= True
-                if np.isnan(tr.data).any() or abs(tr.data.max())>1e20:
-                    warnings.warn('NaN monthly SAC for: ' + stacode1 +'_'+stacode2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
-                    skipflag= True
+                    warnings.warn('Unable to read SAC for: ' + staid1 +'_'+staid2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
+                    skip_this_month = True
+                if (np.isnan(tr.data)).any() or abs(tr.data.max())>1e20:
+                    warnings.warn('NaN monthly SAC for: ' + staid1 +'_'+staid2 +' Month: '+yrmonth, UserWarning, stacklevel=1)
+                    skip_this_month = True
                     break
                 cST.append(tr)
-        if len(cST)!=len(channels1)*len(channels2) or skipflag:
-            cST             = []
+        if len(cST) != (len(channels1)*len(channels2)) or skip_this_month:
             continue
-        if initflag:
-            stackedST       = copy.deepcopy(cST)
-            initflag        = False
-        else:
+        if init_stack_flag:
             for itr in xrange(len(cST)):
                 mtr                             = cST[itr]
                 stackedST[itr].data             += mtr.data
-                stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
-        cST                 = []
-    if len(stackedST)==len(channels1)*len(channels2):
-        print 'Finished Stacking for:'+stacode1+'_'+stacode2
-        i                   = 0
+                # # # stackedST[itr].stats.sac.user0  += mtr.stats.sac.user0
+                stackedST[itr].user0            += mtr.user0
+        else:
+            stackedST       = copy.deepcopy(cST)
+            init_stack_flag = True
+    if len(stackedST)== (len(channels1)*len(channels2)) :
+        # print 'Finished Stacking for:'+staid1+'_'+staid2
+        itrace              = 0
         for chan1 in channels1:
             for chan2 in channels2:
-                stackedTr   = stackedST[i]
-                outfname    = outdir+'/'+pfx+'/'+netcode1+'.'+stacode1+'/'+ \
-                            pfx+'_'+netcode1+'.'+stacode1+'_'+chan1.code+'_'+netcode2+'.'+stacode2+'_'+chan2.code+'.SAC'
+                stackedTr   = stackedST[itrace]
+                outfname    = outdir+'/'+pfx+'/'+staid1+'/'+ \
+                            pfx+'_'+staid1+'_'+chan1.code+'_'+staid2+'_'+chan2.code+'.SAC'
+                if 'kcmpnm' in stackedTr.stats.sac:
+                    if stackedTr.stats.sac.kcmpnm != chan1.code + chan2.code:
+                        raise ValueError('Inconsistent channels: '+ stackedTr.stats.sac.kcmpnm+' '+\
+                                    chan1.code+' '+ chan2.code)
                 stackedTr.write(outfname, format='SAC')
-                i           += 1
+                itrace      += 1
     return
 
 def aftan4mp(aTr, outdir, inftan, prephdir, f77, pfx):
