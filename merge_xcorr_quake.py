@@ -29,3 +29,5 @@ dset    = eikonaltomo.hybridTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eiko
 # import raytomo
 # cmap    = raytomo.discrete_cmap(10, 'jet_r')
 # dset.plot(0, 'vel_sem', 20., vmin=20., vmax=70., cmap=cmap, clabel='Uncertainties (m/sec)', semfactor=2.0, merged=True)
+
+# dset.compare_eiktomo('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_Love_20190318.h5', 0, 0, 10., clabel='CLove - CRayleigh (km/sec)')

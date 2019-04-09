@@ -415,6 +415,22 @@ def amph_to_xcorr_for_mp(in_xcorr_pair, datadir, chans=['LHZ', 'LHE', 'LHN'], ft
                     fprcs = fprcs, fastfft=fastfft)
     # # # in_xcorr_pair.print_info()
     return
+
+
+class beamforming_stream(obspy.Stream):
+    """ An object to for ambient noise cross-correlation computation
+    =================================================================================================================
+    ::: parameters :::
+    stacode1, netcode1  - station/network code for station 1
+    stacode2, netcode2  - station/network code for station 2
+    monthdir            - month directory (e.g. 2019.JAN)
+    daylst              - list includes the days for xcorr
+    =================================================================================================================
+    """
+    def get_addtional_info(self, datadir, bfUTCdate):
+        self.datadir    = datadir
+        self.bfUTCdate  = bfUTCdate
+        return
     
 class noiseASDF(pyasdf.ASDFDataSet):
     """ An object to for ambient noise cross-correlation analysis based on ASDF database
@@ -2896,6 +2912,8 @@ class noiseASDF(pyasdf.ASDFDataSet):
                         raise KeyError('No interpolated dispersion curve data for period='+str(per)+' sec!')
                     pvel    = data[index['C']][ind_per]
                     gvel    = data[index['U']][ind_per]
+                    # pvel    = data[index['Vph']][ind_per]
+                    # gvel    = data[index['Vgr']][ind_per]
                     snr     = data[index['snr']][ind_per]
                     inbound = data[index['inbound']][ind_per]
                     # quality control
@@ -3071,6 +3089,63 @@ class noiseASDF(pyasdf.ASDFDataSet):
         plt.xlabel('Time (s)', fontsize=30)
         plt.title(monthdir, fontsize=40)
         plt.show()
+        
+    def compute_xcorr_coef(self, datadir, monthdir, staxml=None, chan1='LHZ', chan2='LHZ'):
+        if staxml != None:
+            inv             = obspy.read_inventory(staxml)
+            waveformLst     = []
+            for network in inv:
+                netcode     = network.code
+                for station in network:
+                    stacode = station.code
+                    waveformLst.append(netcode+'.'+stacode)
+            staLst          = waveformLst
+            print '--- Load stations from input StationXML file'
+        else:
+            print '--- Load all the stations from database'
+            staLst          = self.waveforms.list()
+
+        ax              = plt.subplot()
+        for staid1 in staLst:
+            netcode1, stacode1  = staid1.split('.')
+            try:
+                lon1    = self.waveforms[staid1].StationXML.networks[0].stations[0].longitude
+                lat1    = self.waveforms[staid1].StationXML.networks[0].stations[0].latitude
+            except:
+                continue
+            for staid2 in staLst:
+                netcode2, stacode2  = staid2.split('.')
+                try:
+                    lon2                = self.waveforms[staid2].StationXML.networks[0].stations[0].longitude
+                    lat2                = self.waveforms[staid2].StationXML.networks[0].stations[0].latitude
+                except:
+                    continue
+                if staid1 >= staid2:
+                    continue
+                dist, az, baz       = obspy.geodetics.gps2dist_azimuth(lat1, lon1, lat2, lon2) # distance is in m
+                dist                = dist/1000.
+                
+                infname             = datadir+'/'+monthdir+'/COR/'+staid1+'/COR_'+staid1+'_'+chan1+'_'+staid2+'_'+chan2+'.SAC'
+                # print infname
+                if not os.path.isfile(infname):
+                    continue
+                # get data
+                tr                  = obspy.read(infname)[0]
+                # is_data[index]      = True
+                # idata               += 1
+                # print idata
+                time    = tr.stats.sac.b + np.arange(tr.stats.npts)*tr.stats.delta
+                plt.plot(time, tr.data/abs(tr.data.max())*10. + dist, 'k-', lw= 0.1)
+
+        plt.xlim([-1000., 1000.])
+        plt.ylim([-1., 1000.])
+        ax.tick_params(axis='x', labelsize=20)
+        ax.tick_params(axis='y', labelsize=20)
+        plt.ylabel('Distance (km)', fontsize=30)
+        plt.xlabel('Time (s)', fontsize=30)
+        plt.title(monthdir, fontsize=40)
+        plt.show()
+    
     
     # def plot_travel_time(self, netcode, stacode, period, channel='ZZ'):
     #     try:

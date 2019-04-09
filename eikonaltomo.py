@@ -38,6 +38,7 @@ import warnings
 from functools import partial
 import multiprocessing
 from numba import jit, float32, int32, boolean, float64
+import numba
 import time
 
 # compiled function to get weight for each event and each grid point
@@ -159,181 +160,120 @@ def _get_mask_interp(mask_in, lons_in, lats_in, lons, lats):
                     mask_out[i, j]  = mask_out[i, j]*mask_in[ind_lat-1, ind_lon-1]
     return mask_out
 
-@jit(float64[:, :](int32, int32, float32, float32, int32, float64[:, :], float64[:, :, :]))
-def _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL):
+def plot_fault_lines(mapobj, infname, lw=2, color='red'):
+    with open(infname, 'rb') as fio:
+        is_new  = False
+        lonlst  = []
+        latlst  = []
+        for line in fio.readlines():
+            if line.split()[0] == '>':
+                x, y  = mapobj(lonlst, latlst)
+                mapobj.plot(x, y,  lw = lw, color=color)
+                # # # m.plot(xslb, yslb,  lw = 3, color='white')
+                lonlst  = []
+                latlst  = []
+                continue
+            lonlst.append(float(line.split()[0]))
+            latlst.append(float(line.split()[1]))
+        x, y  = mapobj(lonlst, latlst)
+        mapobj.plot(x, y,  lw = lw, color=color)
+
+@jit(numba.types.Tuple((float64[:, :, :], float64[:, :, :], float64[:, :, :], float64[:, :]))\
+     (int32, int32, float32, float32, int32, float64[:, :], float64[:, :, :], float64[:, :], float64[:, :, :], numba.boolean[:, :, :]))
+def _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL,\
+        slowness_sumQC, slownessALL, index_outlier):
     Nevent, Nx, Ny  = aziALL.shape
     Nx_trim         = Nx - (gridx - 1)
     Ny_trim         = Ny - (gridy - 1)
-    NmeasureAni     = np.zeros((Nx, Ny), dtype=np.float64) # for quality control
+    NmeasureAni     = np.zeros((Nx_trim, Ny_trim), dtype=np.float64) # for quality control
     for ishift_x in range(gridx):
         for ishift_y in range(gridy):
             for ix in range(Nx_trim):
                 for iy in range(Ny_trim):
-                    NmeasureAni[ix + (gridx-1)/2, iy + (gridy-1)/2]  += Nmeasure[ix + ishift_x, iy + ishift_y]
+                    NmeasureAni[ix, iy]  += Nmeasure[ix + ishift_x, iy + ishift_y]
     # initialization of anisotropic parameters
-    d_bin           = int((maxazi-minazi)/N_bin)
+    d_bin           = float((maxazi-minazi)/N_bin)
     # number of measurements in each bin
-    histArr         = np.zeros((N_bin, Nx, Ny))
+    histArr         = np.zeros((N_bin, Nx_trim, Ny_trim))
     # slowness in each bin
-    slow_sum_ani    = np.zeros((N_bin, Nx, Ny))
+    dslow_sum_ani   = np.zeros((N_bin, Nx_trim, Ny_trim))
     # slowness uncertainties for each bin
-    slow_un         = np.zeros((N_bin, Nx, Ny))
+    dslow_un        = np.zeros((N_bin, Nx_trim, Ny_trim))
     # velocity uncertainties for each bin
-    vel_un          = np.zeros((N_bin, Nx, Ny))
+    vel_un          = np.zeros((N_bin, Nx_trim, Ny_trim))
     #----------------------------------------------------------------------------------
     # Loop over azimuth bins to get slowness, velocity and number of measurements
     #----------------------------------------------------------------------------------
-    # for ibin in range(N_bin):
-    #     sumNbin                     = np.zeros((Nx, Ny))
-    #     slowbin                     = np.zeros((Nx, Ny))
-    #     slow_un_ibin                = np.zeros((Nx, Ny))
-    #     velbin                      = np.zeros((Nx, Ny))
-    #     vel_un_ibin                 = np.zeros((Nx, Ny))
-    #     for ishift_x in range(gridx):
-    #         for ishift_y in range(gridy):
-    #             for ix in range(Nx_trim):
-    #                 for iy in range(Ny_trim):
-    # #                     
-    # #                     
-    # #     for i in range(9):
-    # #         indarr                  = index_dict[i]
-    # #         azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #         ibinarr                 = np.floor((azi_arr - minazi)/d_bin)
-    # #         weight_bin              = 1*(ibinarr==ibin)
-    # #         index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #         weight_bin[index_outlier_cutted] \
-    # #                                 = 0
-    # #         slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #         slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #         # differences in slowness numexpr.evaluate('sum(index_azi, 0)')
-    # #         temp_dslow              = numexpr.evaluate('weight_bin*(slownessALL_cutted-slowsumQC_cutted)')
-    # #         temp_dslow              = numexpr.evaluate('sum(temp_dslow, 0)')
-    # #         # velocities
-    # #         temp_vel                = slownessALL_cutted.copy()
-    # #         temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-    # #         temp_vel                = numexpr.evaluate('weight_bin*temp_vel')
-    # #         temp_vel                = numexpr.evaluate('sum(temp_vel, 0)')
-    # #         # number of measurements in this bin
-    # #         N_ibin                  = numexpr.evaluate('sum(weight_bin, 0)')
-    # #         # quality control
-    # #         ind_valid               = N_ibin >= nmin_bin
-    # #         sumNbin[ind_valid]      += N_ibin[ind_valid]
-    # #         slowbin[ind_valid]      += temp_dslow[ind_valid]
-    # #         velbin[ind_valid]       += temp_vel[ind_valid]
-    # #     vel_mean                    = velbin.copy()
-    # #     vel_mean[sumNbin!=0]        = velbin[sumNbin!=0]/sumNbin[sumNbin!=0]
-    # #     dslow_mean                  = slowbin.copy()
-    # #     dslow_mean[sumNbin!=0]      = dslow_mean[sumNbin!=0]/sumNbin[sumNbin!=0]
-    # # 
-    # # 
-    # # histArr_cutted  = histArr[:, gridx:-gridx, gridy:-gridy]
-    # #             # slowness in each bin
-    # #             slow_sum_ani                = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-    # #             slow_sum_ani_cutted         = slow_sum_ani[:, gridx:-gridx, gridy:-gridy]
-    # #             # slowness uncertainties for each bin
-    # #             slow_un                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-    # #             slow_un_cutted              = slow_un[:, gridx:-gridx, gridy:-gridy]
-    # #             # velocity uncertainties for each bin
-    # #             vel_un                      = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-    # #             vel_un_cutted               = vel_un[:, gridx:-gridx, gridy:-gridy]
-    # #             #
-    # #             index_dict                  = { 0: [0, -2*gridx, 0,         -2*gridy], \
-    # #                                             1: [0, -2*gridx, gridy,     -gridy],\
-    # #                                             2: [0, -2*gridx, 2*gridy,   Ny_size],\
-    # #                                             3: [gridx, -gridx, 0,       -2*gridy],\
-    # #                                             4: [gridx, -gridx, gridy, -gridy],\
-    # #                                             5: [gridx, -gridx, 2*gridy, Ny_size],\
-    # #                                             6: [2*gridx, Nx_size, 0,    -2*gridy],\
-    # #                                             7: [2*gridx, Nx_size, gridy,-gridy],\
-    # #                                             8: [2*gridx, Nx_size, 2*gridy, Ny_size]}
-    # #             nmin_bin                    = 2 # change
-    # #             #----------------------------------------------------------------------------------
-    # #             # Loop over azimuth bins to get slowness, velocity and number of measurements
-    # #             #----------------------------------------------------------------------------------
-    # #             for ibin in xrange(N_bin):
-    # #                 sumNbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-    # #                 slowbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-    # #                 slow_un_ibin                = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-    # #                 velbin                      = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-    # #                 vel_un_ibin                 = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-    # #                 for i in range(9):
-    # #                     indarr                  = index_dict[i]
-    # #                     azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     ibinarr                 = np.floor((azi_arr - minazi)/d_bin)
-    # #                     weight_bin              = 1*(ibinarr==ibin)
-    # #                     index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     weight_bin[index_outlier_cutted] \
-    # #                                             = 0
-    # #                     slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     # differences in slowness numexpr.evaluate('sum(index_azi, 0)')
-    # #                     temp_dslow              = numexpr.evaluate('weight_bin*(slownessALL_cutted-slowsumQC_cutted)')
-    # #                     temp_dslow              = numexpr.evaluate('sum(temp_dslow, 0)')
-    # #                     # velocities
-    # #                     temp_vel                = slownessALL_cutted.copy()
-    # #                     temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-    # #                     temp_vel                = numexpr.evaluate('weight_bin*temp_vel')
-    # #                     temp_vel                = numexpr.evaluate('sum(temp_vel, 0)')
-    # #                     # number of measurements in this bin
-    # #                     N_ibin                  = numexpr.evaluate('sum(weight_bin, 0)')
-    # #                     # quality control
-    # #                     ind_valid               = N_ibin >= nmin_bin
-    # #                     sumNbin[ind_valid]      += N_ibin[ind_valid]
-    # #                     slowbin[ind_valid]      += temp_dslow[ind_valid]
-    # #                     velbin[ind_valid]       += temp_vel[ind_valid]
-    # #                 vel_mean                    = velbin.copy()
-    # #                 vel_mean[sumNbin!=0]        = velbin[sumNbin!=0]/sumNbin[sumNbin!=0]
-    # #                 dslow_mean                  = slowbin.copy()
-    # #                 dslow_mean[sumNbin!=0]      = dslow_mean[sumNbin!=0]/sumNbin[sumNbin!=0]
-    # #                 # compute uncertainties
-    # #                 for i in range(9):
-    # #                     indarr                  = index_dict[i]
-    # #                     azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     ibinarr                 = np.floor((azi_arr-minazi)/d_bin)
-    # #                     weight_bin              = 1*(ibinarr==ibin)
-    # #                     index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     weight_bin[index_outlier_cutted] \
-    # #                                             = 0
-    # #                     slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-    # #                     temp_vel                = slownessALL_cutted.copy()
-    # #                     temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-    # #                     vel_un_ibin             = vel_un_ibin + numexpr.evaluate('sum( (weight_bin*(temp_vel-vel_mean))**2, 0)')
-    # #                     slow_un_ibin            = slow_un_ibin + numexpr.evaluate('sum( (weight_bin*(slownessALL_cutted-slowsumQC_cutted \
-    # #                                                             - dslow_mean))**2, 0)')
-    # #                 #------------------------------------
-    # #                 vel_un_ibin[sumNbin!=0]     = np.sqrt(vel_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-    # #                 vel_un_cutted[ibin, :, :]   = vel_un_ibin
-    # #                 slow_un_ibin[sumNbin!=0]    = np.sqrt(slow_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-    # #                 slow_un_cutted[ibin, :, :]  = slow_un_ibin
-    # #                 histArr_cutted[ibin, :, :]  = sumNbin
-    # #                 slow_sum_ani_cutted[ibin, :, :]  \
-    # #                                             = dslow_mean
-    # #             #-------------------------------------------
-    # #             N_thresh                                = 10 # change
-    # #             slow_sum_ani_cutted[histArr_cutted<N_thresh] \
-    # #                                                     = 0
-    # #             slow_sum_ani[:, gridx:-gridx, gridy:-gridy]\
-    # #                                                     = slow_sum_ani_cutted
-    # #             # uncertainties
-    # #             slow_un_cutted[histArr_cutted<N_thresh] = 0
-    # #             slow_un[:, gridx:-gridx, gridy:-gridy]  = slow_un_cutted
-    # #             # convert sem of slowness to sem of velocity
-    # #             vel_un_cutted[histArr_cutted<N_thresh]  = 0
-    # #             vel_un[:, gridx:-gridx, gridy:-gridy]   = vel_un_cutted
-    # #             # # # return vel_un
-    # #             # near neighbor quality control
-    # #             Ntotal_thresh                           = 45 # change
-    # #             slow_sum_ani[:, NmeasureAni<Ntotal_thresh]    \
-    # #                                                     = 0 
-    # #             slow_un[:, NmeasureAni<Ntotal_thresh]   = 0
-    # #             vel_un[:, NmeasureAni<Ntotal_thresh]    = 0
-    # #             histArr[:, gridx:-gridx, gridy:-gridy]  = histArr_cutted
-    # # 
-    # 
-    # 
-    # 
-    # return 
+    for ibin in range(N_bin):
+        sumNbin                     = np.zeros((Nx_trim, Ny_trim))
+        # slowness arrays
+        dslowbin                    = np.zeros((Nx_trim, Ny_trim))
+        dslow_un_ibin               = np.zeros((Nx_trim, Ny_trim))
+        dslow_mean                  = np.zeros((Nx_trim, Ny_trim))
+        # velocity arrays
+        velbin                      = np.zeros((Nx_trim, Ny_trim))
+        vel_un_ibin                 = np.zeros((Nx_trim, Ny_trim))
+        vel_mean                    = np.zeros((Nx_trim, Ny_trim))
+        for ix in range(Nx_trim):
+            for iy in range(Ny_trim):
+                for ishift_x in range(gridx):
+                    for ishift_y in range(gridy):
+                        for iev in range(Nevent):
+                            azi         = aziALL[iev, ix + ishift_x, iy + ishift_y]
+                            ibin_temp   = np.floor((azi - minazi)/d_bin)
+                            if ibin_temp != ibin:
+                                continue
+                            is_outlier  = index_outlier[iev, ix + ishift_x, iy + ishift_y]
+                            if is_outlier:
+                                continue
+                            temp_dslow  = slownessALL[iev, ix + ishift_x, iy + ishift_y] - slowness_sumQC[ix + ishift_x, iy + ishift_y]
+                            if slownessALL[iev, ix + ishift_x, iy + ishift_y] != 0.:
+                                temp_vel= 1./slownessALL[iev, ix + ishift_x, iy + ishift_y]
+                            else:
+                                temp_vel= 0.
+                            sumNbin[ix, iy]     += 1
+                            dslowbin[ix, iy]    += temp_dslow
+                            velbin[ix, iy]      += temp_vel
+                # end nested loop of grid shifting
+                if sumNbin[ix, iy] >= 2:
+                    vel_mean[ix, iy]            = velbin[ix, iy] / sumNbin[ix, iy]
+                    dslow_mean[ix, iy]          = dslowbin[ix, iy] / sumNbin[ix, iy]
+                else:
+                    sumNbin[ix, iy]             = 0
+        # compute uncertainties
+        for ix in range(Nx_trim):
+            for iy in range(Ny_trim):
+                for ishift_x in range(gridx):
+                    for ishift_y in range(gridy):
+                        for iev in range(Nevent):
+                            azi                     = aziALL[iev, ix + ishift_x, iy + ishift_y]
+                            ibin_temp               = np.floor((azi - minazi)/d_bin)
+                            if ibin_temp != ibin:
+                                continue
+                            is_outlier              = index_outlier[iev, ix + ishift_x, iy + ishift_y]
+                            if is_outlier:
+                                continue
+                            if slownessALL[iev, ix + ishift_x, iy + ishift_y] != 0.:
+                                temp_vel            = 1./slownessALL[iev, ix + ishift_x, iy + ishift_y]
+                            else:
+                                temp_vel            = 0.
+                            temp_vel_mean           = vel_mean[ix, iy]
+                            vel_un_ibin[ix, iy]     += (temp_vel - temp_vel_mean)**2
+                            temp_dslow              = slownessALL[iev, ix + ishift_x, iy + ishift_y] - slowness_sumQC[ix + ishift_x, iy + ishift_y]
+                            temp_dslow_mean         = dslow_mean[ix, iy]
+                            dslow_un_ibin[ix, iy]   += (temp_dslow - temp_dslow_mean)**2
+        for ix in range(Nx_trim):
+            for iy in range(Ny_trim):
+                if sumNbin[ix, iy] < 2:
+                    continue
+                vel_un_ibin[ix, iy]             = np.sqrt(vel_un_ibin[ix, iy]/(sumNbin[ix, iy] - 1)/sumNbin[ix, iy])
+                vel_un[ibin, ix, iy]            = vel_un_ibin[ix, iy]
+                dslow_un_ibin[ix, iy]           = np.sqrt(dslow_un_ibin[ix, iy]/(sumNbin[ix, iy] - 1)/sumNbin[ix, iy])
+                dslow_un[ibin, ix, iy]          = dslow_un_ibin[ix, iy]
+                histArr[ibin, ix, iy]           = sumNbin[ix, iy]
+                dslow_sum_ani[ibin, ix, iy]     = dslow_mean[ix, iy]
+    return dslow_sum_ani, dslow_un, vel_un, histArr, NmeasureAni
+        
 
 
 class EikonalTomoDataSet(h5py.File):
@@ -431,6 +371,12 @@ class EikonalTomoDataSet(h5py.File):
         outstr      += '--- mask                                            - '+str(pergrp['mask'].shape)+'\n'
         outstr      += '--- vel_iso (isotropic velocity)                    - '+str(pergrp['vel_iso'].shape)+'\n'
         outstr      += '--- vel_sem (uncertainties for velocity)            - '+str(pergrp['vel_sem'].shape)+'\n'
+        if subgroup.attrs['anisotropic']:
+            outstr  += '--- NmeasureAni (number of aniso measurements)      - '+str(pergrp['NmeasureAni'].shape)+'\n'
+            outstr  += '--- histArr (number of binned measurements)         - '+str(pergrp['histArr'].shape)+'\n'
+            outstr  += '--- slownessAni (aniso perturbation in slowness)    - '+str(pergrp['slownessAni'].shape)+'\n'
+            outstr  += '--- slownessAni_sem (uncertainties in slownessAni)  - '+str(pergrp['slownessAni_sem'].shape)+'\n'
+            outstr  += '--- velAni_sem (uncertainties in binned velocity)   - '+str(pergrp['velAni_sem'].shape)+'\n'
         print outstr
         return
     
@@ -1717,7 +1663,7 @@ class EikonalTomoDataSet(h5py.File):
             print '=== elasped time = '+str(time.time() - start)+' sec'
         return
 
-    def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
+    def eikonal_stack_old(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
                 spacing_ani=0.6, coverage=0.1, use_numba=True):
         """
         Stack gradient results to perform Eikonal Tomography
@@ -1937,21 +1883,6 @@ class EikonalTomoDataSet(h5py.File):
             #----------------------------------------------------------------------------
             # determine anisotropic parameters, need benchmark and further verification
             #----------------------------------------------------------------------------
-            # debug, synthetic anisotropy
-            # phi             = 72.
-            # A               = 0.01
-            # phi             = phi/180.*np.pi
-            # tempazi         = (aziALL+180.)/180.*np.pi
-            # vALL            = np.broadcast_to(slowness_sumQC.copy(), slownessALL.shape)
-            # vALL.setflags(write=1)
-            # index           = vALL==0
-            # vALL[vALL!=0]   = 1./vALL[vALL!=0]
-            # # return slownessALL, slowness_sumQC
-            # vALL            = vALL + A*np.cos(2*(tempazi-phi))
-            # vALL[index]     = 0.
-            # slownessALL     = vALL.copy()
-            # slownessALL[slownessALL!=0] \
-            #                 = 1./slownessALL[slownessALL!=0]
             
             if anisotropic:
                 grid_factor                 = int(np.ceil(spacing_ani/dlat))
@@ -2197,8 +2128,8 @@ class EikonalTomoDataSet(h5py.File):
                 NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
         return
     
-    def eikonal_stack_new(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
-                spacing_ani=0.3, coverage=0.1, use_numba=True):
+    def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
+                spacing_ani=0.3, coverage=0.1, use_numba=True, azi_amp_tresh=0.1):
         """
         Stack gradient results to perform Eikonal Tomography
         =================================================================================================================
@@ -2239,6 +2170,18 @@ class EikonalTomoDataSet(h5py.File):
             warnings.warn('Eikonal_stack_'+str(runid)+' exists! Will be recomputed!', UserWarning, stacklevel=1)
             del self['Eikonal_stack_'+str(runid)]
             group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
+        #
+        if anisotropic:
+            grid_factor                 = int(np.ceil(spacing_ani/dlat))
+            gridx                       = grid_factor
+            gridy                       = int(grid_factor*np.floor(dlon/dlat))
+            if gridx % 2 == 0:
+                gridx                   += 1
+            if gridy % 2 == 0:
+                gridy                   += 1
+            print '--- anisotropic grid factor = '+ str(gridx)+'/'+str(gridy)
+            group_out.attrs.create(name = 'gridx', data = gridx)
+            group_out.attrs.create(name = 'gridy', data = gridy)
         # attributes for output group
         group_out.attrs.create(name = 'anisotropic', data = anisotropic)
         group_out.attrs.create(name = 'N_bin', data = N_bin)
@@ -2358,7 +2301,6 @@ class EikonalTomoDataSet(h5py.File):
             #-----------------------------------------------
             weightALLQC                     = weightALL.copy()
             index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>2.*slowness_stdALL
-            # # # index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>3.*slowness_stdALL
             index_outlier                   += reason_nALL != 0
             weightALLQC[index_outlier]      = 0
             weightsumQC                     = np.sum(weightALLQC, axis=0)
@@ -2421,28 +2363,49 @@ class EikonalTomoDataSet(h5py.File):
             # determine anisotropic parameters, need benchmark and further verification
             #----------------------------------------------------------------------------
             if anisotropic:
-                grid_factor                 = int(np.ceil(spacing_ani/dlat))
-                gridx                       = grid_factor
-                gridy                       = int(grid_factor*np.floor(dlon/dlat))
-                if gridx % 2 == 0:
-                    gridx                   += 1
-                if gridx % 2 == 0:
-                    gridy                   += 1
-                print 'anisotropic grid factor = '+ str(gridx)+'/'+str(gridy)
-                # print gridx, gridy
-                n1, n2 = _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin,  Nmeasure)
-                print np.allclose(n1, n2)
-                return 
-                   
-
+                # quality control
+                slowness_sumQC_ALL          = np.broadcast_to(slowness_sumQC, slownessALL.shape)
+                # # # slowness_stdQC_ALL          = np.broadcast_to(slowness_stdQC, slownessALL.shape)
+                # # # index_outlier               = (np.abs(slownessALL-slowness_sumQC_ALL))>2.*slowness_stdQC_ALL
+                diff_slowness               = np.abs(slownessALL-slowness_sumQC_ALL)
+                ind_nonzero                 = slowness_sumQC_ALL!= 0.
+                diff_slowness[ind_nonzero]  = diff_slowness[ind_nonzero]/slowness_sumQC_ALL[ind_nonzero]
+                index_outlier               += diff_slowness > azi_amp_tresh
+                # stacking to get anisotropic parameters
+                dslow_sum_ani, dslow_un, vel_un, histArr, NmeasureAni    \
+                                            = _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL,\
+                                                slowness_sumQC, slownessALL, index_outlier.astype(bool))
+                #----------------------------
                 # save data to database
-                s_anidset       = per_group_out.create_dataset(name='slownessAni', data=slow_sum_ani)
-                s_anisemdset    = per_group_out.create_dataset(name='slownessAni_sem', data=slow_un)
-                v_anisemdset    = per_group_out.create_dataset(name='velAni_sem', data=vel_un)
-                histdset        = per_group_out.create_dataset(name='histArr', data=histArr)
-                NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
+                #----------------------------
+                out_arr         = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                out_arr[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = dslow_sum_ani
+                s_anidset       = per_group_out.create_dataset(name='slownessAni', data=out_arr)
+                
+                out_arr         = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                out_arr[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = dslow_un
+                s_anisemdset    = per_group_out.create_dataset(name='slownessAni_sem', data=out_arr)
+                
+                out_arr         = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                out_arr[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = vel_un
+                v_anisemdset    = per_group_out.create_dataset(name='velAni_sem', data=out_arr)
+                
+                out_arr         = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                out_arr[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = histArr
+                histdset        = per_group_out.create_dataset(name='histArr', data=out_arr)
+                
+                out_arr         = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                out_arr         = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                out_arr[(gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = NmeasureAni
+                NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=out_arr)
+                
         return
-    
+
     def helm_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
                 spacing_ani=0.6, use_numba=True, coverage=0.1, dv_thresh=None):
         """
@@ -2833,6 +2796,136 @@ class EikonalTomoDataSet(h5py.File):
                 NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
         return
     
+    def compute_azi_aniso(self, runid=0, fitpsi1=False, fitpsi2=True, helm=False, Ntotal_thresh=None, N_thresh=10, Nbin_thresh=5):
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup         = self[dataid]
+        gridx           = ingroup.attrs['gridx']
+        gridy           = ingroup.attrs['gridy']
+        pers            = self.attrs['period_array']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        maxazi          = ingroup.attrs['maxazi']
+        minazi          = ingroup.attrs['minazi']
+        Nbin_default    = ingroup.attrs['N_bin']
+        azArr           = np.mgrid[minazi:maxazi:Nbin_default*1j]
+        if Ntotal_thresh is None:
+            Ntotal_thresh   = N_thresh*gridx*gridy*Nbin_default/2.
+        self._get_lon_lat_arr()
+        for period in pers:
+            pergrp      = ingroup['%g_sec'%( period )]
+            mask        = pergrp['mask'].value
+            slowAni     = pergrp['slownessAni'].value + pergrp['slowness'].value
+            velAnisem   = pergrp['velAni_sem'].value
+            slowness    = pergrp['slowness'].value
+            histArr     = pergrp['histArr'].value
+            psiarr      = np.zeros((self.Nlat, self.Nlon))
+            amparr      = np.zeros((self.Nlat, self.Nlon))
+            misfitarr   = np.zeros((self.Nlat, self.Nlon))
+            Nbinarr     = np.zeros((self.Nlat, self.Nlon))
+            Nmarr       = np.zeros((self.Nlat, self.Nlon))
+            mask_aniso  = np.ones((self.Nlat, self.Nlon), dtype=bool)
+            for ilat in range(self.Nlat):
+                if (ilat-nlat_grad) < 0 or (ilat+nlat_grad) > (self.Nlat - 1) :
+                    continue
+                for ilon in range(self.Nlon):
+                    if (ilon-nlon_grad) < 0 or (ilon+nlon_grad) > (self.Nlon - 1) :
+                        continue
+                    outslowness = slowAni[:, ilat - nlat_grad, ilon - nlon_grad]
+                    outvel_sem  = velAnisem[:, ilat - nlat_grad, ilon - nlon_grad]
+                    avg_slowness= slowness[ilat - nlat_grad, ilon - nlon_grad]
+                    out_hist    = histArr[:, ilat - nlat_grad, ilon - nlon_grad]
+                    if out_hist.sum() < Ntotal_thresh*gridx*gridy:
+                        continue
+                    # get the valid binned data
+                    # quality control
+                    index       = np.where((outvel_sem != 0)*(out_hist > N_thresh ))[0]
+                    outslowness = outslowness[index]
+                    az_grd      = azArr[index]
+                    outvel_sem  = outvel_sem[index]
+                    Nbin        = index.size
+                    if Nbin < Nbin_thresh:
+                        continue
+                    Nmarr[ilat, ilon]   = int(out_hist.sum()/(gridx*gridy))
+                    Nbinarr[ilat, ilon] = Nbin
+                    try:
+                        if fitpsi1 or fitpsi2:
+                            indat           = (1./outslowness).reshape(1, Nbin)
+                            U               = np.zeros((Nbin, Nbin), dtype=np.float64)
+                            np.fill_diagonal(U, 1./outvel_sem)
+                            # construct forward operator matrix
+                            tG              = np.ones((Nbin, 1), dtype=np.float64)
+                            G               = tG.copy()
+                            # convert azimuth to the 'real' azimuth coordinate
+                            az_grd          += 180.
+                            az_grd          = 360. - az_grd
+                            az_grd          -= 90.
+                            az_grd[az_grd<0.]\
+                                            += 360.  
+                            tbaz            = np.pi*(az_grd)/180.
+                            if fitpsi1:
+                                tGsin       = np.sin(tbaz)
+                                tGcos       = np.cos(tbaz)
+                                G           = np.append(G, tGsin)
+                                G           = np.append(G, tGcos)
+                            if fitpsi2:
+                                tGsin2      = np.sin(tbaz*2)
+                                tGcos2      = np.cos(tbaz*2)
+                                G           = np.append(G, tGsin2)
+                                G           = np.append(G, tGcos2)
+                            if fitpsi1 and fitpsi2:
+                                G           = G.reshape((5, Nbin))
+                            else:
+                                G           = G.reshape((3, Nbin))
+                            G               = G.T
+                            G               = np.dot(U, G)
+                            # data
+                            d               = indat.T
+                            d               = np.dot(U, d)
+                            # least square inversion
+                            model           = np.linalg.lstsq(G, d)[0]
+                            A0              = model[0]
+                            if fitpsi1:
+                                A1          = np.sqrt(model[1]**2 + model[2]**2)
+                                phi1        = np.arctan2(model[1], model[2])/2.
+                                if fitpsi2:
+                                    A2      = np.sqrt(model[3]**2 + model[4]**2)
+                                    phi2    = np.arctan2(model[3], model[4])/2.
+                            else:
+                                A2          = np.sqrt(model[1]**2 + model[2]**2)
+                                phi2        = np.arctan2(model[1], model[2])/2.
+                    except:
+                        continue
+                    predat                  = A0 + A2*np.cos(2.*(np.pi/180.*(az_grd+180.)-phi2) )
+                    misfit                  = np.sqrt( ((predat - 1./outslowness)**2 / outvel_sem**2).sum()/ az_grd.size )
+                    amparr[ilat, ilon]      = A2
+                    psiarr[ilat, ilon]      = phi2/np.pi*180.
+                    mask_aniso[ilat, ilon]  = False
+                    misfitarr[ilat, ilon]   = misfit
+            try:
+                pergrp.create_dataset(name='amparr', data=amparr)
+                pergrp.create_dataset(name='psiarr', data=psiarr)
+                pergrp.create_dataset(name='mask_aniso', data=mask_aniso)
+                pergrp.create_dataset(name='misfit', data=misfitarr)
+                pergrp.create_dataset(name='Nmtotal', data=Nmarr)
+                pergrp.create_dataset(name='Nbin', data=Nbinarr)
+            except:
+                del pergrp['amparr']
+                del pergrp['psiarr']
+                del pergrp['mask_aniso']
+                del pergrp['misfit']
+                del pergrp['Nmtotal']
+                del pergrp['Nbin']
+                pergrp.create_dataset(name='amparr', data=amparr)
+                pergrp.create_dataset(name='psiarr', data=psiarr)
+                pergrp.create_dataset(name='mask_aniso', data=mask_aniso)
+                pergrp.create_dataset(name='misfit', data=misfitarr)
+                pergrp.create_dataset(name='Nmtotal', data=Nmarr)
+                pergrp.create_dataset(name='Nbin', data=Nbinarr)
+        return
+        
     def num_measure_info(self, runid=0, percentage=None, num_thresh=None, helm=False):
         pers            = self.attrs['period_array']
         if helm:
@@ -3200,56 +3293,67 @@ class EikonalTomoDataSet(h5py.File):
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
         plt.figure()
-        minlon      = self.attrs['minlon']
-        maxlon      = self.attrs['maxlon']
+        minlon      = self.attrs['minlon'] 
+        maxlon      = self.attrs['maxlon'] 
         minlat      = self.attrs['minlat']
-        maxlat      = self.attrs['maxlat']
+        maxlat      = self.attrs['maxlat']        
+        
+        minlon      = 188 - 360.
+        maxlon      = 238. - 360.
+        minlat      = 52.
+        maxlat      = 72.
+        
         lat_centre  = (maxlat+minlat)/2.0
         lon_centre  = (maxlon+minlon)/2.0
         if projection=='merc':
-            # m       = Basemap(projection='merc', llcrnrlat=minlat-5., urcrnrlat=maxlat+5., llcrnrlon=minlon-5.,
-            #             urcrnrlon=maxlon+5., lat_ts=20, resolution=resolution)
-            # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
-            # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
+            minlon      = -165.
+            maxlon      = -135.
+            minlat      = 56.
+            maxlat      = 70.
             m       = Basemap(projection='merc', llcrnrlat=minlat, urcrnrlat=maxlat, llcrnrlon=minlon,
-                        urcrnrlon=maxlon, lat_ts=20, resolution=resolution)
+                      urcrnrlon=maxlon, lat_ts=0, resolution=resolution)
             # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
             m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,1,1,1])
-            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,1,0])
+            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,1,1,0])
             # m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
-            m.drawstates(color='g', linewidth=2.)
+            # m.drawstates(color='g', linewidth=2.)
         elif projection=='global':
             m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
             # m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
             # m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
         elif projection=='regional_ortho':
-            m1      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
-            m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
-                        llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/mapfactor, urcrnry=m1.urcrnry/3.5)
+            m      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
+            # m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
+            #             llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/2., urcrnry=m1.urcrnry/3.5)
             m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
             # m.drawparallels(np.arange(-90.0,90.0,30.0),labels=[1,0,0,0], dashes=[10, 5], linewidth=2,  fontsize=20)
             # m.drawmeridians(np.arange(10,180.0,30.0), dashes=[10, 5], linewidth=2)
             m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
         elif projection=='lambert':
-            distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
-            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
+            
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon-15) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-6, minlon) # distance is in m
             m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
-                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
-            m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
-        m.drawcoastlines(linewidth=1.0)
+                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre-2., lat_0=lat_centre+2.4)
+            m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1., dashes=[2,2], labels=[1,1,0,1], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1., dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+            # # # 
+            # # # distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
+            # # # distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
+            # # # m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+            # # #             lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
+            # # # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
+            # # # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+        m.drawcoastlines(linewidth=0.5)
         m.drawcountries(linewidth=1.)
-        # m.drawmapboundary(fill_color=[1.0,1.0,1.0])
-        # m.fillcontinents(lake_color='#99ffff',zorder=0.2)
-        m.drawstates()
-        # m.drawmapboundary(fill_color="white")
         try:
             geopolygons.PlotPolygon(inbasemap=m)
         except:
             pass
         return m
+    
     
     def plot(self, runid, datatype, period, semfactor=2., Nthresh=None, helm=False, merged=False, clabel='', cmap='cv', projection='lambert',\
                 hillshade=False, geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True, v_rel=None):
@@ -3339,20 +3443,12 @@ class EikonalTomoDataSet(h5py.File):
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        shapefname  = '/home/leon/geological_maps/qfaults'
-        m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-        m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
-        if mfault:
-            try:
-                # shapefname  = '/scratch/summit/life9360/ALASKA_work/fault_maps/qfaults'
-                # m.readshapefile(shapefname, 'faultline', linewidth=2, color='r')
-                shapefname  = '/projects/life9360/geological_maps/qfaults'
-                m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-                shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-                m.readshapefile(shapefname, 'faultline', linewidth=1, color='grey')
-            except:
-                pass
+        # shapefname  = '/home/leon/geological_maps/qfaults'
+        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
+        # shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
+        
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
@@ -3393,7 +3489,14 @@ class EikonalTomoDataSet(h5py.File):
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
         else:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        # m.contour(x, y, mask2, colors='w')
+            
+        mask_eik    = pergrp['mask_eik'].value
+        if datatype == 'vel_iso':
+            m.contour(x, y, mask_eik, colors='black', lw=3)
+            # m.contour(x, y, mask_eik, colors='cyan', lw=1)
+        else:
+            m.contour(x, y, mask_eik, colors='black', lw=3)
+            # m.contour(x, y, mask_eik, colors='white', lw=1)
         # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
         # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
@@ -3404,6 +3507,122 @@ class EikonalTomoDataSet(h5py.File):
         if showfig:
             plt.show()
         return
+    
+    def plot_un_hist(self, runid, period, semfactor=2., Nthresh=None, helm=False, merged=False, showfig=True):
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        if merged:
+            dataid      = 'merged_tomo_'+str(runid)
+        ingroup         = self[dataid]
+        # pers            = self.attrs['period_array']
+        # self._get_lon_lat_arr()
+        # if not period in pers:
+        #     raise KeyError('period = '+str(period)+' not included in the database')
+        # pergrp          = ingroup['%g_sec'%( period )]
+        # if datatype == 'vel' or datatype=='velocity' or datatype == 'v':
+        #     datatype    = 'vel_iso'
+        # elif datatype == 'sem' or datatype == 'un' or datatype == 'uncertainty':
+        #     datatype    = 'vel_sem'
+        # elif datatype=='std':
+        #     datatype    = 'slowness_std'
+        # try:
+        #     data        = pergrp[datatype].value
+        #     if datatype=='slowness_std' or datatype=='Nmeasure' or datatype=='NmeasureQC':
+        #         if self.lonArr.shape != data.shape:
+        #             data2   = data.copy()
+        #             data    = np.zeros(self.lonArr.shape)
+        #             data[1:-1, 1:-1] = data2
+        # except:
+        #     outstr      = ''
+        #     for key in pergrp.keys():
+        #         outstr  +=key
+        #         outstr  +=', '
+        #     outstr      = outstr[:-1]
+        #     raise KeyError('Unexpected datatype: '+datatype+\
+        #                    ', available datatypes are: '+outstr)
+        # 
+        # mask        = pergrp['mask'].value
+        # # mask2       += mask
+        # if not (Nthresh is None):
+        #     Narr        = np.zeros(self.lonArr.shape)
+        #     Narr[1:-1, 1:-1]        \
+        #                 = pergrp['NmeasureQC'].value
+        #     mask        += Narr < Nthresh
+        # if (datatype=='Nmeasure' or datatype=='NmeasureQC') and merged:
+        #     mask    = pergrp['mask_eik'].value
+        # if datatype == 'vel_sem':
+        #     data    *= 1000.*semfactor
+        # 
+        # data       = data[mask==False]
+        # 
+        
+        def to_percent(y, position):
+            # Ignore the passed in position. This has the effect of scaling the default
+            # tick locations.
+            s = str(100. * y)
+            # s = str(y)
+            # The percent symbol needs escaping in latex
+            if matplotlib.rcParams['text.usetex'] is True:
+                return s + r'$\%$'
+            else:
+                return s + '%'
+            
+        ax      = plt.subplot()
+        pers    = [period]
+        N       = len(pers)
+        pers2   = [period]
+        # pers2   = [10., 30., 50.]
+        
+        # pers    = [10., 40., 70.]
+        # N       = len(pers)
+        # pers2   = [10., 40., 70.]
+        for i in range(N):
+            period  = pers[i]
+            pergrp  = ingroup['%g_sec'%( period )]
+            mask    = pergrp['mask'].value
+            data    = pergrp['vel_sem'].value*1000.*semfactor
+            data    = data[mask==False]
+            weights = np.ones_like(data)/float(data.size)
+            desired_bin_size    = 5.
+            min_val = np.min(data)
+            max_val = np.max(data)
+            min_boundary = -1.0 * (min_val % desired_bin_size - min_val)
+            max_boundary = max_val - max_val % desired_bin_size + desired_bin_size
+
+            n_bins = int((max_boundary - min_boundary) / desired_bin_size) + 1
+            plt.hist(data, bins=n_bins, weights=weights, label='Rayleigh wave, %g sec'%( pers2[i] ))
+            # plt.hist(data, bins=n_bins, weights=weights, label='Love wave, %g sec'%( pers2[i] ))
+            outstd  = data.std()
+            outmean = data.mean()
+        
+        # compute mad
+        from statsmodels import robust
+        mad     = robust.mad(data)
+        outmean = data.mean()
+        outstd  = data.std()
+        outmedian=np.median(data)
+        plt.title('Misfit mean = %g , median = %g, std = %g , mad = %g ' %(outmean, outmedian, outstd, mad), fontsize=20)
+        # plt.xlim(-.2, .2)
+        import matplotlib.mlab as mlab
+        from matplotlib.ticker import FuncFormatter
+        plt.ylabel('Percentage (%)', fontsize=30)
+        plt.xlabel('Uncertainties (m/s)', fontsize=30)
+        ax.tick_params(axis='x', labelsize=20)
+        ax.tick_params(axis='y', labelsize=20)
+        formatter = FuncFormatter(to_percent)
+        # Set the formatter
+        plt.gca().yaxis.set_major_formatter(formatter)
+        plt.xlim([10., 100.])
+        # plt.xlim([10., 55.])
+        # plt.legend(loc=0, fontsize=20)
+        # plt.xticks(np.arange(10.))
+        # plt.show()
+        if showfig:
+            plt.show()
+        return
+        
     
     def plot_diff(self, runid, datatype, period, helm=False, clabel='', cmap='cv', projection='lambert', hillshade=False,\
                   geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True):
@@ -3424,7 +3643,7 @@ class EikonalTomoDataSet(h5py.File):
         """
         # vdict       = {'ph': 'C', 'gr': 'U'}
         self._get_lon_lat_arr()
-        dataid          = 'Eikonal_stack_'+str(runid)
+        dataid          = 'merged_tomo_'+str(runid)
         # 
         ingroup         = self[dataid]
         pers            = self.attrs['period_array']
@@ -3458,7 +3677,7 @@ class EikonalTomoDataSet(h5py.File):
             outstr      = outstr[:-1]
             raise KeyError('Unexpected datatype: '+datatype+\
                            ', available datatypes are: '+outstr)
-        data        = (appV - corV)*1000.
+        data        = (appV - corV)
         mask        = pergrp['mask'].value
         mdata       = ma.masked_array(data, mask=mask )
         #-----------
@@ -3514,6 +3733,199 @@ class EikonalTomoDataSet(h5py.File):
             plt.show()
         return
     
+    def plot_fast_axis(self, runid, period, helm=False, factor=10, normv=5., width=0.005, ampref=0.05, datatype='',
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps of fast axis from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        hillshade       - produce hill shade or not
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi     = pergrp['psiarr'].value
+        amp     = pergrp['amparr'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value 
+        # return 
+        # get velocity
+        try:
+            data= pergrp[datatype].value
+            plot_data   = True
+        except:
+            plot_data   = False
+        #-----------
+        # plot data
+        #-----------
+        m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        # # x, y        = m(self.lonArr-360., self.latArr)
+        # shapefname  = '/home/leon/geological_maps/qfaults'
+        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
+        
+        # shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
+        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='red')
+        
+        plot_fault_lines(m, 'AK_Faults.txt', lw=1, color='red')
+        
+        # for d in [20.,40., 60., 80., 100., 120.]:
+        # for d in [100.]:
+        #     slb_ctrlst      = read_slab_contour('alu_contours.in', depth=d)
+        #     
+        #     for slbctr in slb_ctrlst:
+        #         xslb, yslb  = m(np.array(slbctr[0])-360., np.array(slbctr[1]))
+        #         m.plot(xslb, yslb,  '-', lw = 2, color='magenta', alpha=0.8)
+        #     # m.plot(xslb, yslb,  '--', lw = 3, color='white')
+        # 
+        # # slab contour
+        # # slb_ctrlst      = read_slab_contour('alu_contours.in', depth=100.)
+        # # 
+        # # for slbctr in slb_ctrlst:
+        # #     xslb, yslb  = m(np.array(slbctr[0])-360., np.array(slbctr[1]))
+        # #     m.plot(xslb, yslb,  '--', lw = 5, color='black')
+        # #     m.plot(xslb, yslb,  '--', lw = 3, color='white')
+        # # #############################
+        yakutat_slb_dat     = np.loadtxt('YAK_extent.txt')
+        yatlons             = yakutat_slb_dat[:, 0]
+        yatlats             = yakutat_slb_dat[:, 1]
+        xyat, yyat          = m(yatlons, yatlats)
+        m.plot(xyat, yyat, lw = 3, color='black')
+        m.plot(xyat, yyat, lw = 1, color='white')
+        # #############################
+        # import shapefile
+        # shapefname  = '/home/leon/volcano_locs/SDE_GLB_VOLC.shp'
+        # shplst      = shapefile.Reader(shapefname)
+        # for rec in shplst.records():
+        #     lon_vol = rec[4]
+        #     lat_vol = rec[3]
+        #     xvol, yvol            = m(lon_vol, lat_vol)
+        #     m.plot(xvol, yvol, '^', mfc='white', mec='k', ms=10)
+        #--------------------------
+        
+        if scaled:
+            # ampref  = amp.max()
+            # print ampref
+            U       = np.sin(psi/180.*np.pi)*amp/ampref/normv
+            V       = np.cos(psi/180.*np.pi)*amp/ampref/normv
+            Uref    = np.ones(self.lonArr.shape)*1./normv
+            Vref    = np.zeros(self.lonArr.shape)
+        else:
+            U       = np.sin(psi/180.*np.pi)/normv
+            V       = np.cos(psi/180.*np.pi)/normv
+        # rotate vectors to map projection coordinates
+        U, V, x, y  = m.rotate_vector(U, V, self.lonArr-360., self.latArr, returnxy=True)
+        if scaled:
+            Uref, Vref, xref, yref  = m.rotate_vector(Uref, Vref, self.lonArr-360., self.latArr, returnxy=True)
+        #--------------------------------------
+        # plot isotropic velocity
+        #--------------------------------------
+        if plot_data:
+            if cmap == 'ses3d':
+                cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                                0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+            elif cmap == 'cv':
+                import pycpt
+                cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            else:
+                try:
+                    if os.path.isfile(cmap):
+                        import pycpt
+                        cmap    = pycpt.load.gmtColormap(cmap)
+                except:
+                    pass
+            if masked:
+                data     = ma.masked_array(data, mask=mask )
+            im          = m.pcolormesh(x, y, data, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+            cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
+            cb.set_label(clabel, fontsize=20, rotation=0)
+            cb.ax.tick_params(labelsize=15)
+            cb.set_alpha(1)
+            cb.draw_all()
+            cb.solids.set_edgecolor("face")
+        
+        #--------------------------------------
+        # plot fast axis
+        #--------------------------------------
+        x_psi       = x.copy()
+        y_psi       = y.copy()
+        mask_psi    = mask.copy()
+        if factor!=None:
+            x_psi   = x_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+            y_psi   = y_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+            U       = U[0:self.Nlat:factor, 0:self.Nlon:factor]
+            V       = V[0:self.Nlat:factor, 0:self.Nlon:factor]
+            mask_psi= mask_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+        # Q       = m.quiver(x, y, U, V, scale=30, width=0.001, headaxislength=0)
+        if masked:
+            U   = ma.masked_array(U, mask=mask_psi )
+            V   = ma.masked_array(V, mask=mask_psi )
+        Q1      = m.quiver(x_psi, y_psi, U, V, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='k')
+        Q2      = m.quiver(x_psi, y_psi, -U, -V, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='k')
+        if scaled:
+            mask_ref        = np.ones(self.lonArr.shape)
+            ind             = (self.lonArr == -146.+360.)*(self.latArr == 56.5)
+            # print ind
+            mask_ref[ind]   = False
+            Uref            = ma.masked_array(Uref, mask=mask_ref )
+            Vref            = ma.masked_array(Vref, mask=mask_ref )
+            m.quiver(xref, yref, Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
+            m.quiver(xref, yref, -Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
+            # 
+        
+        # from netCDF4 import Dataset
+        # from matplotlib.colors import LightSource
+        # import pycpt
+        # etopodata   = Dataset('/home/leon/station_map/grd_dir/ETOPO2v2g_f4.nc')
+        # etopo       = etopodata.variables['z'][:]
+        # lons        = etopodata.variables['x'][:]
+        # lats        = etopodata.variables['y'][:]
+        # ls          = LightSource(azdeg=315, altdeg=45)
+        # # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
+        # etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
+        # # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
+        # ny, nx      = etopo.shape
+        # topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
+        # m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
+        # mycm1       = pycpt.load.gmtColormap('/home/leon/station_map/etopo1.cpt')
+        # mycm2       = pycpt.load.gmtColormap('/home/leon/station_map/bathy1.cpt')
+        # mycm2.set_over('w',0)
+        # m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
+        # m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
+        # ############################
+        plt.suptitle(str(period)+' sec', fontsize=20)
+
+            
+        if showfig:
+            plt.show()
+        return
     def compare_raytomo(self, inraytomofname, rayruntype, rayrunid, runid, period, showfig=True, projection='lambert', cmap='cv', clabel='C (km/s)'):
         """
         compare the eikonal tomography results with the ray tomography
@@ -3569,6 +3981,7 @@ class EikonalTomoDataSet(h5py.File):
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb.ax.tick_params(labelsize=20)
         cb.solids.set_edgecolor("face")
+        
         plt.show()
         
         ax      = plt.subplot()
@@ -3594,34 +4007,34 @@ class EikonalTomoDataSet(h5py.File):
             plt.show()
         
     def compare_eiktomo(self, ineiktomofname, inrunid, runid, period, Nmeasure=None, helm=False, \
-                showfig=True, projection='lambert', cmap='cv', clabel='C (km/s)'):
+                showfig=True, projection='lambert', cmap='cv', clabel='C (km/s)', vmin=None, vmax=None):
         """
         compare the eikonal tomography results with the another eikonal tomography
         """
         # input eikonal data
         dset_in     = h5py.File(ineiktomofname)
-        dataid      = 'Eikonal_stack_'+str(inrunid)
+        dataid      = 'merged_tomo_'+str(inrunid)
         ingroup     = dset_in[dataid]
         pergrp      = ingroup['%g_sec'%( period )]
         datatype    = 'vel_iso'
         indata      = pergrp[datatype].value
         inmask      = pergrp['mask'].value
-        Nm_in       = np.zeros(indata.shape)
-        Nm_in[1:-1, 1:-1] \
-                    = pergrp['NmeasureQC'].value
+        # Nm_in       = np.zeros(indata.shape)
+        # Nm_in[1:-1, 1:-1] \
+        #             = pergrp['NmeasureQC'].value
         # Eikonal data
         if helm:
-            dataid  = 'Helmholtz_stack_'+str(runid)
+            dataid  = 'merged_tomo_'+str(runid)
         else:
-            dataid  = 'Eikonal_stack_'+str(runid)
+            dataid  = 'merged_tomo_'+str(runid)
         ingroup     = self[dataid]
         pergrp      = ingroup['%g_sec'%( period )]
         datatype    = 'vel_iso'
         data        = pergrp[datatype].value
         mask        = pergrp['mask'].value
         Nm          = np.zeros(indata.shape)
-        Nm[1:-1, 1:-1] \
-                    = pergrp['NmeasureQC'].value
+        # Nm[1:-1, 1:-1] \
+        #             = pergrp['NmeasureQC'].value
         #
         # # # dataid  = 'Eikonal_stack_'+str(runid)
         # # # ingroup     = self[dataid]
@@ -3631,11 +4044,14 @@ class EikonalTomoDataSet(h5py.File):
         #
         self._get_lon_lat_arr()
         diffdata    = indata - data
-        Nm_mask     = np.zeros(data.shape, dtype=bool)
-        if Nmeasure is not None:
-            Nm_mask += Nm_in < Nmeasure
-            Nm_mask += Nm < Nmeasure
-        mdata       = ma.masked_array(diffdata, mask=mask + inmask + Nm_mask )
+        # Nm_mask     = np.zeros(data.shape, dtype=bool)
+        # if Nmeasure is not None:
+        #     Nm_mask += Nm_in < Nmeasure
+        #     Nm_mask += Nm < Nmeasure
+        # mdata       = ma.masked_array(diffdata, mask=mask + inmask + Nm_mask )
+        
+        
+        mdata       = ma.masked_array(diffdata, mask=mask + inmask )
         #-----------
         # plot data
         #-----------
@@ -3651,35 +4067,42 @@ class EikonalTomoDataSet(h5py.File):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
                 ################################
-        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=-0.1, vmax=0.1)
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
         cb.set_label(clabel, fontsize=30, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
         cb.ax.tick_params(labelsize=20)
         cb.solids.set_edgecolor("face")
+        ###
+        if np.any(diffdata < 0.):
+            negative        = diffdata < 0.
+            negative       = ma.masked_array(negative, mask=mask + inmask )
+            m.contour(x, y, negative, colors='w', lw=3)
+        ###
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
         plt.show()
-        
-        ax      = plt.subplot()
-        data    = diffdata[np.logical_not(mask + inmask + Nm_mask)]
-        plt.hist(data, bins=100, normed=True)
-        outstd  = data.std()
-        outmean = data.mean()
-        # compute mad
-        from statsmodels import robust
-        mad     = robust.mad(data)
-        plt.xlim(-.2, .2)
-        import matplotlib.mlab as mlab
-        from matplotlib.ticker import FuncFormatter
-        plt.ylabel('Percentage (%)', fontsize=30)
-        plt.xlabel('Differences (km/sec)', fontsize=30)
-        plt.title(str(period)+' sec, mean = %g m/s, std = %g m/s, mad = %g m/s' %(outmean*1000., outstd*1000., mad*1000.), fontsize=30)
-        ax.tick_params(axis='x', labelsize=20)
-        ax.tick_params(axis='y', labelsize=20)
-        formatter = FuncFormatter(to_percent)
-        # Set the formatter
-        plt.gca().yaxis.set_major_formatter(formatter)
-        if showfig:
-            plt.show()
+        # 
+        # ax      = plt.subplot()
+        # data    = diffdata[np.logical_not(mask + inmask + Nm_mask)]
+        # plt.hist(data, bins=100, normed=True)
+        # outstd  = data.std()
+        # outmean = data.mean()
+        # # compute mad
+        # from statsmodels import robust
+        # mad     = robust.mad(data)
+        # # plt.xlim(-.2, .2)
+        # import matplotlib.mlab as mlab
+        # from matplotlib.ticker import FuncFormatter
+        # plt.ylabel('Percentage (%)', fontsize=30)
+        # plt.xlabel('Differences (km/sec)', fontsize=30)
+        # plt.title(str(period)+' sec, mean = %g m/s, std = %g m/s, mad = %g m/s' %(outmean*1000., outstd*1000., mad*1000.), fontsize=30)
+        # ax.tick_params(axis='x', labelsize=20)
+        # ax.tick_params(axis='y', labelsize=20)
+        # formatter = FuncFormatter(to_percent)
+        # # Set the formatter
+        # plt.gca().yaxis.set_major_formatter(formatter)
+        # if showfig:
+        #     plt.show()
         
     def compare_eik_helm(self, period, eikrunid=0, helmrunid=0, Nmeasure=None, showfig=True,\
                          projection='lambert', cmap='cv', clabel='C (km/s)'):
