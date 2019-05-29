@@ -1441,22 +1441,39 @@ class RayTomoDataSet(h5py.File):
             distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-6, minlon) # distance is in m
             m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
                         lat_1=minlat, lat_2=maxlat, lon_0=lon_centre-2., lat_0=lat_centre+2.4)
-            m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1., dashes=[2,2], labels=[1,1,0,1], fontsize=15)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1., dashes=[2,2], labels=[0,0,1,0], fontsize=15)
-            
+            # # # m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1., dashes=[2,2], labels=[1,1,0,1], fontsize=15)
+            # # # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1., dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+            m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1., dashes=[2,2], labels=[0,0,0,0], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1., dashes=[2,2], labels=[0,0,0,0], fontsize=15)
+            # # # 
             # # # distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
             # # # distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
             # # # m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
             # # #             lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
             # # # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             # # # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
-        m.drawcoastlines(linewidth=0.5)
+        # m.drawcoastlines(linewidth=0.5)
         m.drawcountries(linewidth=1.)
-        # # m.drawmapboundary(fill_color=[1.0,1.0,1.0])
-        # m.fillcontinents(lake_color='#99ffff',zorder=0.2)
-        # # m.drawlsmask(land_color='0.8', ocean_color='#99ffff')
-        # m.drawmapboundary(fill_color="white")
-        # m.shadedrelief(scale=1., origin='lower')
+        #################
+        coasts = m.drawcoastlines(zorder=100,color= '0.9',linewidth=0.001)
+        
+        # Exact the paths from coasts
+        coasts_paths = coasts.get_paths()
+        
+        # In order to see which paths you want to retain or discard you'll need to plot them one
+        # at a time noting those that you want etc.
+        poly_stop = 10
+        for ipoly in xrange(len(coasts_paths)):
+            print ipoly
+            if ipoly > poly_stop:
+                break
+            r = coasts_paths[ipoly]
+            # Convert into lon/lat vertices
+            polygon_vertices = [(vertex[0],vertex[1]) for (vertex,code) in
+                                r.iter_segments(simplify=False)]
+            px = [polygon_vertices[i][0] for i in xrange(len(polygon_vertices))]
+            py = [polygon_vertices[i][1] for i in xrange(len(polygon_vertices))]
+            m.plot(px,py,'k-',linewidth=2.)
         try:
             geopolygons.PlotPolygon(inbasemap=m)
         except:
@@ -1548,6 +1565,7 @@ class RayTomoDataSet(h5py.File):
             data    = data*100.
         if datatype == 'vel_sem':
             data        = data*1000.*semfactor
+        
         if not isotropic:
             if datatype == 'cone_radius' or datatype == 'gauss_std' or datatype == 'max_resp' or datatype == 'ncone' or \
                          datatype == 'ngauss' or datatype == 'vel_sem':
@@ -1564,7 +1582,10 @@ class RayTomoDataSet(h5py.File):
             
             # # # tempdset    = h5py.File('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20181101.h5')
             # # # pergrp      = tempdset['merged_tomo_0']['%g_sec'%( period )]
-            # # # mask        = pergrp['mask'].value
+            # # # mask        = pergrp['mask'].value###
+            ###
+            # mask        += self.latArr<68.
+            # mask        += data>2.5
             
             mdata       = ma.masked_array(data, mask=mask )
         else:
@@ -1634,10 +1655,18 @@ class RayTomoDataSet(h5py.File):
             else:
                 im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
         # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
-        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
         cb.set_label(clabel, fontsize=20, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
-        cb.ax.tick_params(labelsize=15)
+        cb.ax.tick_params(labelsize=40)
+        
+        ###
+        consb       = mask.copy()
+        consb       += self.latArr<68.
+        consb       += data>2.5
+        m.contour(x, y, consb, linestyles='dashed', colors='blue', lw=1.)
+        ###
+        
         cb.set_alpha(1)
         cb.draw_all()
         print 'plotting data from '+dataid
@@ -1646,23 +1675,7 @@ class RayTomoDataSet(h5py.File):
         if datatype is 'path_density':
             cb.set_ticks([1, 10, 100, 1000, 10000])
             cb.set_ticklabels([1, 10, 100, 1000, 10000])
-        # m.shadedrelief(scale=1., origin='lower')
-        # xc, yc      = m(np.array([-143]), np.array([61]))
-        # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
-        # xc, yc      = m(np.array([-149]), np.array([61]))
-        # m.plot(xc, yc,'o', ms=15, markerfacecolor='None', markeredgecolor='k')
-        # xc, yc      = m(np.array([-156]), np.array([71]))
-        # m.plot(xc, yc,'o', ms=15)
-        # xc, yc      = m(np.array([-156]), np.array([68]))
-        # m.plot(xc, yc,'o', ms=15)
-        # lons            = np.array([-170., -160., -150., -140., -130.,\
-        #                             -160., -150., -140., -130.,\
-        #                             -160., -150., -140., -130.])
-        # lats            = np.array([60., 60., 60., 60., 60.,\
-        #                             65., 65., 65., 65.,\
-        #                             70., 70., 70., 70.])
-        # xc, yc          = m(lons, lats)
-        # m.plot(xc, yc,'o', ms=15)
+
         
         if showfig:
             plt.show()

@@ -3,7 +3,7 @@ import numpy as np
 #-----------------------
 #initialization
 #-----------------------
-dset    = eikonaltomo.hybridTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20190318.h5')
+dset    = eikonaltomo.hybridTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20190318_azi.h5')
 
 # pers    = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
 # pers    = np.append( pers, np.arange(6.)*5.+65.)

@@ -3074,8 +3074,11 @@ class EikonalTomoDataSet(h5py.File):
                 # v       = (1./outslowness)
                 # index   = np.logical_not( index * (v[:, 0]< 3.52) )
                 # plt.errorbar(azArr[index], 1./outslowness[index], yerr=outvel_sem[index], fmt='o', label='eikonal observed')
-                plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='eikonal observed')
-                
+                ind       = np.logical_not( (abs(azArr - 270.) <5.) * (1./outslowness[:, 0]>3.555))
+                # print azArr[ind]
+                # print azArr.shape, outslowness.shape
+                plt.errorbar(azArr[ind], 1./outslowness[ind], yerr=outvel_sem[ind]*4., fmt='o', color='k', label='eikonal observed', ms=10)
+                # plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', color='k', label='eikonal observed')
             if fitpsi1 or fitpsi2:
                 az_fit          = np.mgrid[minazi:maxazi:100*1j]
                 if fitpsi1:
@@ -3088,15 +3091,149 @@ class EikonalTomoDataSet(h5py.File):
                     predat      = A0 + A2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2) )
                     fitlabel    = 'A2: %g %%, phi2: %g deg' %(A2[0]/A0[0]*100., phi2/np.pi*180.)
                 if helm:
-                    plt.plot(az_fit+180., predat, '-', lw=3, label='Helmholtz fit \n'+fitlabel )
+                    plt.plot(az_fit+180., predat, 'b-', lw=3, label='Helmholtz fit \n'+fitlabel )
                 else:
-                    plt.plot(az_fit+180., predat, '-', lw=3, label='eikonal fit \n'+fitlabel )
+                    plt.plot(az_fit+180., predat, 'b-', lw=3, label='eikonal fit \n'+fitlabel )
                 # print phi1/np.pi*180.
                 # # plt.plot(azArr+180., predat, '-')
-            plt.ylabel('Phase velocity(km/sec)', fontsize=20)
-            plt.xlabel('Azimuth (degree)', fontsize=20)
-            ax.tick_params(axis='x', labelsize=20)
-            ax.tick_params(axis='y', labelsize=20)
+            plt.ylabel('Phase velocity(km/sec)', fontsize=50)
+            plt.xlabel('Azimuth (degree)', fontsize=50)
+            ax.tick_params(axis='x', labelsize=50)
+            ax.tick_params(axis='y', labelsize=50)
+            plt.legend()
+            # plt.title('lon = '+str(inlon-360.)+', lat = '+str(inlat), fontsize=30.)
+            if showfig:
+                plt.show()
+            if outfname is not None:
+                plt.savefig(outfname)
+        except:
+            return
+    
+    def plot_azimuthal_single_point_4psi(self, inlat, inlon, runid, period, helm=False, \
+                            fitpsi1=False, fitpsi4=True, getdata=False, showfig=True, outfname = None):
+        if inlon < 0:
+            inlon       += 360.
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup         = self[dataid]
+        pers            = self.attrs['period_array']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        self._get_lon_lat_arr()
+        index   = np.where((self.latArr==inlat)*(self.lonArr==inlon))
+        if index[0].size == 0 or index[1].size == 0:
+            print 'No data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp          = ingroup['%g_sec'%( period )]
+        mask            = pergrp['mask'].value
+        if mask[index[0], index[1]]:
+            print 'No valid data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
+        slowAni         = pergrp['slownessAni'].value + pergrp['slowness'].value
+        velAnisem       = pergrp['velAni_sem'].value
+        outslowness     = slowAni[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        outvel_sem      = velAnisem[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        avg_slowness    = pergrp['slowness'].value[index[0] - nlat_grad, index[1] - nlon_grad]
+        maxazi          = ingroup.attrs['maxazi']
+        minazi          = ingroup.attrs['minazi']
+        Nbin            = ingroup.attrs['N_bin']
+        azArr           = np.mgrid[minazi:maxazi:Nbin*1j]
+        
+        ind             = np.where(outvel_sem != 0)[0]
+        outslowness     = outslowness[ind]
+        azArr           = azArr[ind]
+        outvel_sem      = outvel_sem[ind]
+        Nbin            = ind.size
+        if getdata:
+            return azArr, 1./outslowness, outvel_sem, 1./avg_slowness
+        try:
+            if fitpsi1 or fitpsi4:
+                indat           = (1./outslowness).reshape(1, Nbin)
+                U               = np.zeros((Nbin, Nbin), dtype=np.float64)
+                np.fill_diagonal(U, 1./outvel_sem)
+                # construct forward operator matrix
+                tG              = np.ones((Nbin, 1), dtype=np.float64)
+                G               = tG.copy()
+                azArr           += 180.
+                azArr           = 360. - azArr
+                azArr           -= 90.
+                azArr[azArr<0.] += 360.  
+                tbaz            = np.pi*(azArr)/180.
+                if fitpsi1:
+                    tGsin       = np.sin(tbaz)
+                    tGcos       = np.cos(tbaz)
+                    G           = np.append(G, tGsin)
+                    G           = np.append(G, tGcos)
+                if fitpsi4:
+                    tGsin4      = np.sin(tbaz*4)
+                    tGcos4      = np.cos(tbaz*4)
+                    G           = np.append(G, tGsin4)
+                    G           = np.append(G, tGcos4)
+                if fitpsi1 and fitpsi4:
+                    G           = G.reshape((5, Nbin))
+                else:
+                    G           = G.reshape((3, Nbin))
+                G               = G.T
+                G               = np.dot(U, G)
+                # data
+                d               = indat.T
+                d               = np.dot(U, d)
+                # least square inversion
+                model           = np.linalg.lstsq(G, d)[0]
+                A0              = model[0]
+                if fitpsi1:
+                    A1          = np.sqrt(model[1]**2 + model[2]**2)
+                    phi1        = np.arctan2(model[1], model[2])/2.
+                    if fitpsi4:
+                        A4      = np.sqrt(model[3]**2 + model[4]**2)
+                        phi4    = np.arctan2(model[3], model[4])/2.
+                else:
+                    A4          = np.sqrt(model[1]**2 + model[2]**2)
+                    phi4        = np.arctan2(model[1], model[2])/2.
+                # # # predat          = np.dot(G, model) * outvel_sem
+                # # # az_fit          = np.mgrid[minazi:maxazi:100*1j]
+                # # # predat          = A1*np.cos(np.pi*(az_fit+180.) - phi1)
+            plt.figure(figsize=[18, 9.6])
+            ax      = plt.subplot()
+            if helm:
+                plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='Helmholtz observed')
+            else:
+                # index   = (azArr>263.)*(azArr<273.)
+                # v       = (1./outslowness)
+                # index   = np.logical_not( index * (v[:, 0]< 3.52) )
+                # plt.errorbar(azArr[index], 1./outslowness[index], yerr=outvel_sem[index], fmt='o', label='eikonal observed')
+                ind       = np.logical_not( (abs(azArr - 270.) <5.) * (1./outslowness[:, 0]>3.847) + (1./outslowness[:, 0] < 3.835))
+                # print azArr[ind]
+                # print azArr.shape, outslowness.shape
+                plt.errorbar(azArr[ind], 1./outslowness[ind], yerr=outvel_sem[ind]*4., fmt='o', color='k', ms=10, label='eikonal observed')
+                
+                # plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', color='k', label='eikonal observed')
+                
+            if fitpsi1 or fitpsi4:
+                az_fit          = np.mgrid[minazi:maxazi:100*1j]
+                if fitpsi1:
+                    predat      = A0 + A1*np.cos((np.pi/180.*(az_fit+180.)-phi1) )
+                    fitlabel    = 'A1: %g %%, phi1: %g deg \n' %(A1[0]/A0[0]*100., phi1/np.pi*180.)
+                    if fitpsi4:
+                         predat     += A4*np.cos(4.*(np.pi/180.*(az_fit+180.)-phi4) )
+                         fitlabel   += 'A4: %g %%, phi2: %g deg' %(A4[0]/A0[0]*100., phi4/np.pi*180.)
+                else:
+                    predat      = A0 + A4*np.cos(4.*(np.pi/180.*(az_fit+180.)-phi4) )
+                    fitlabel    = 'A4: %g %%, phi4: %g deg' %(A4[0]/A0[0]*100., phi4/np.pi*180.)
+                if helm:
+                    plt.plot(az_fit+180., predat, 'b-', lw=3, label='Helmholtz fit \n'+fitlabel )
+                else:
+                    plt.plot(az_fit+180., predat, 'b-', lw=3, label='eikonal fit \n'+fitlabel )
+                # print phi1/np.pi*180.
+                # # plt.plot(azArr+180., predat, '-')
+            plt.ylabel('Phase velocity(km/sec)', fontsize=50)
+            plt.xlabel('Azimuth (degree)', fontsize=50)
+            ax.tick_params(axis='x', labelsize=50)
+            ax.tick_params(axis='y', labelsize=50)
             plt.legend()
             plt.title('lon = '+str(inlon-360.)+', lat = '+str(inlat), fontsize=30.)
             if showfig:
@@ -3337,8 +3474,8 @@ class EikonalTomoDataSet(h5py.File):
             distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-6, minlon) # distance is in m
             m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
                         lat_1=minlat, lat_2=maxlat, lon_0=lon_centre-2., lat_0=lat_centre+2.4)
-            m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1., dashes=[2,2], labels=[1,1,0,1], fontsize=15)
-            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1., dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+            # m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1., dashes=[2,2], labels=[1,1,0,1], fontsize=15)
+            # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1., dashes=[2,2], labels=[0,0,1,0], fontsize=15)
             # # # 
             # # # distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
             # # # distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
@@ -3346,8 +3483,32 @@ class EikonalTomoDataSet(h5py.File):
             # # #             lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
             # # # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
             # # # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
-        m.drawcoastlines(linewidth=0.5)
+            m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1, dashes=[2,2], labels=[0,0,0,0], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,0,0], fontsize=15)
+        # m.drawcoastlines(linewidth=0.5)
         m.drawcountries(linewidth=1.)
+        #################
+        coasts = m.drawcoastlines(zorder=100,color= '0.9',linewidth=0.001)
+        
+        # Exact the paths from coasts
+        coasts_paths = coasts.get_paths()
+        
+        # In order to see which paths you want to retain or discard you'll need to plot them one
+        # at a time noting those that you want etc.
+        poly_stop = 10
+        for ipoly in xrange(len(coasts_paths)):
+            print ipoly
+            if ipoly > poly_stop:
+                break
+            r = coasts_paths[ipoly]
+            # Convert into lon/lat vertices
+            polygon_vertices = [(vertex[0],vertex[1]) for (vertex,code) in
+                                r.iter_segments(simplify=False)]
+            px = [polygon_vertices[i][0] for i in xrange(len(polygon_vertices))]
+            py = [polygon_vertices[i][1] for i in xrange(len(polygon_vertices))]
+            m.plot(px,py,'k-',linewidth=2.)
+        ######################
+        # m.drawstates(linewidth=1.)
         try:
             geopolygons.PlotPolygon(inbasemap=m)
         except:
@@ -3492,17 +3653,19 @@ class EikonalTomoDataSet(h5py.File):
             
         mask_eik    = pergrp['mask_eik'].value
         if datatype == 'vel_iso':
-            m.contour(x, y, mask_eik, colors='black', lw=3)
+            m.contour(x, y, mask_eik, linestyles='dashed', colors='black', lw=1.)
             # m.contour(x, y, mask_eik, colors='cyan', lw=1)
         else:
-            m.contour(x, y, mask_eik, colors='black', lw=3)
+            m.contour(x, y, mask_eik, linestyles='dashed', colors='black', lw=1.)
             # m.contour(x, y, mask_eik, colors='white', lw=1)
         # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
         # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
-        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.set_label(clabel, fontsize=20, rotation=0)
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%', ticks=[4.0, 4.1, 4.2, 4.3, 4.4])
+        # cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.set_label(clabel, fontsize=40, rotation=0)
+        # cb.outline.set_linewidth(2)
         plt.suptitle(str(period)+' sec', fontsize=20)
-        cb.ax.tick_params(labelsize=15)
+        cb.ax.tick_params(labelsize=40)
         print 'plotting data from '+dataid
         if showfig:
             plt.show()
@@ -3561,7 +3724,7 @@ class EikonalTomoDataSet(h5py.File):
         def to_percent(y, position):
             # Ignore the passed in position. This has the effect of scaling the default
             # tick locations.
-            s = str(100. * y)
+            s = '%.0f' %(100. * y)
             # s = str(y)
             # The percent symbol needs escaping in latex
             if matplotlib.rcParams['text.usetex'] is True:
@@ -3607,15 +3770,23 @@ class EikonalTomoDataSet(h5py.File):
         # plt.xlim(-.2, .2)
         import matplotlib.mlab as mlab
         from matplotlib.ticker import FuncFormatter
-        plt.ylabel('Percentage (%)', fontsize=30)
-        plt.xlabel('Uncertainties (m/s)', fontsize=30)
-        ax.tick_params(axis='x', labelsize=20)
-        ax.tick_params(axis='y', labelsize=20)
+        plt.ylabel('Percentage (%)', fontsize=80)
+        plt.xlabel('Uncertainties (m/s)', fontsize=80)
+        plt.xticks(np.arange(6)*20.)
+        # plt.xticks(np.arange(8)*10.)
+        plt.yticks(np.arange(6)*5./100.)
+        ax.tick_params(axis='x', labelsize=50)
+        ax.tick_params(axis='y', labelsize=50)
+        from matplotlib.ticker import FormatStrFormatter
+        
         formatter = FuncFormatter(to_percent)
         # Set the formatter
         plt.gca().yaxis.set_major_formatter(formatter)
-        plt.xlim([10., 100.])
-        # plt.xlim([10., 55.])
+        # ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        ax.xaxis.set_major_formatter(FormatStrFormatter('%g'))
+        plt.xlim([0., 100.])
+        # plt.xlim([0., 20.])
+        # plt.xlim([0., 60.])
         # plt.legend(loc=0, fontsize=20)
         # plt.xticks(np.arange(10.))
         # plt.show()
@@ -4068,10 +4239,10 @@ class EikonalTomoDataSet(h5py.File):
             cmap    = pycpt.load.gmtColormap(cmap)
                 ################################
         im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
         cb.set_label(clabel, fontsize=30, rotation=0)
         plt.suptitle(str(period)+' sec', fontsize=20)
-        cb.ax.tick_params(labelsize=20)
+        cb.ax.tick_params(labelsize=40)
         cb.solids.set_edgecolor("face")
         ###
         if np.any(diffdata < 0.):
@@ -4274,6 +4445,27 @@ class EikonalTomoDataSet(h5py.File):
         field2d.eikonal_operator(workingdir='temp_travel_time_dir', inpfx=netcode+'.'+stacode+'_'+channel+'_')
         field2d.plot(datatype='z', title='Travel time for station: '+ netcode+'.'+stacode, contour=True)
     
+    def write_un_noise(self, outfname, runid=0):
+        pers        = self.attrs['period_array']
+        unarr       = np.zeros(pers.size)
+        i           = 0
+        dataid      = 'Eikonal_stack_'+str(runid)
+        grp         = self[dataid]
+        for per in pers:
+            try:
+                pergrp          = grp['%g_sec'%( per )]
+                velocity        = pergrp['vel_iso'].value
+                uncertainty     = pergrp['vel_sem'].value
+                mask_eik        = pergrp['mask'].value
+                unarr[i]        = uncertainty[np.logical_not(mask_eik)].mean() * 2000.
+            except:
+                unarr[i]        = 999.
+            
+            i               += 1
+        outArr  = np.append(pers, unarr)
+        outArr  = outArr.reshape((2, pers.size))
+        outArr  = outArr.T
+        np.savetxt(outfname, outArr, fmt='%g')
     
 class hybridTomoDataSet(EikonalTomoDataSet):
     """
@@ -5349,7 +5541,27 @@ class hybridTomoDataSet(EikonalTomoDataSet):
             plt.show()
         return
     
-    
+    def write_un(self, outfname, runid=0):
+        pers        = self.attrs['period_array']
+        unarr       = np.zeros(pers.size)
+        i           = 0
+        dataid      = 'merged_tomo_'+str(runid)
+        grp         = self[dataid]
+        for per in pers:
+            pergrp          = grp['%g_sec'%( per )]
+            velocity        = pergrp['vel_iso'].value
+            uncertainty     = pergrp['vel_sem'].value
+            mask_eik        = pergrp['mask_eik'].value
+            unarr[i]        = uncertainty[np.logical_not(mask_eik)].mean() * 2000.
+            i               += 1
+        outArr  = np.append(pers, unarr)
+        outArr  = outArr.reshape((2, pers.size))
+        outArr  = outArr.T
+        np.savetxt(outfname, outArr, fmt='%g')
+        
+
+
+        
     
 def eikonal4mp(infield, workingdir, channel, cdist):
     working_per     = workingdir+'/'+str(infield.period)+'sec'

@@ -1,9 +1,9 @@
 import os
 import obspy
 import glob
-datadir     = '/work2/leon/temp_working_2001_2005'
-start_date  ='20010101'
-end_date    ='20051231'
+datadir     = '/work2/leon/temp_working_2004_2008'
+start_date  ='20040101'
+end_date    ='20080530'
 stime       = obspy.UTCDateTime(start_date)
 etime       = obspy.UTCDateTime(end_date)
 monthdict   = {1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AUG', 9: 'SEP', 10: 'OCT', 11: 'NOV', 12: 'DEC'}

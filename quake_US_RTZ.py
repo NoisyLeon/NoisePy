@@ -33,7 +33,7 @@ dset    = quakedbase.quakeASDF('/work1/leon/US_work/ASDF_data/USCON_TA.h5')
 # # # t1=timeit.default_timer()
 # # 
 # # # dset.read_surf_waveforms_DMT(datadir='/scratch/summit/life9360/ALASKA_work/surf_19950101_20170831', verbose=False)
-st = dset.get_love_waveforms(startdate='2004-04-01', verbose=False, channel='LHE,LHN,LHZ', minDelta=5.)
+# st = dset.get_love_waveforms(startdate='2004-04-01', verbose=False, channel='LHE,LHN,LHZ', minDelta=5.)
 
 #------------------------------
 # aftan analysis
