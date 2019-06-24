@@ -1322,7 +1322,7 @@ class aftantrace(obspy.core.trace.Trace):
         if cmap == 'ftan':
             try:
                 import pycpt
-                cmap    = pycpt.load.gmtColormap('./FTAN.cpt')
+                cmap    = pycpt.load.gmtColormap('./cpt_files/FTAN.cpt')
             except:
                 cmap    = 'gist_rainbow'
         try:
@@ -1385,10 +1385,12 @@ class aftantrace(obspy.core.trace.Trace):
                 Tmax2   = obper1_2[fparam.nfout1_2-1]
                 vmin2   = v2[fparam.ncol_2-1]
                 vmax2   =v2[0]
-                plt.axis([Tmin2, Tmax2, vmin2, vmax2])
+                plt.axis([10., 50., 2.0, vmax2])
                 plt.xlabel('Period(s)')
                 plt.ylabel('Velocity(km/s)')
                 plt.title('PMF FTAN Diagram '+sacname,fontsize=15)
+                ax.tick_params(axis='x', labelsize=30)
+                ax.tick_params(axis='y', labelsize=30)
             if ( plotflag==3 ):
                 v1      = dist/(fparam.tamp_1+np.arange(fparam.ncol_1)*dt)
                 ampo_1  = fparam.ampo_1[:fparam.ncol_1,:fparam.nrow_1]
@@ -1447,6 +1449,52 @@ class aftantrace(obspy.core.trace.Trace):
                 plt.title('PMF FTAN Diagram '+sacname)
         except AttributeError:
             print 'Error: FTAN Parameters are not available!'
+        return
+    
+    def plot_phase(self, plotflag=3, sacname='', cmap='ftan'):
+        """
+        Plot ftan diagram:
+        This function plot ftan diagram.
+        ====================================================================
+        Input Parameters:
+        plotflag -
+            0: only Basic FTAN
+            1: only Phase Matched Filtered FTAN
+            2: both
+            3: both in one figure
+        sacname - sac file name than can be used as the title of the figure
+        ====================================================================
+        """
+        if cmap == 'ftan':
+            try:
+                import pycpt
+                cmap    = pycpt.load.gmtColormap('./cpt_files/FTAN.cpt')
+            except:
+                cmap    = 'gist_rainbow'
+        fparam      = self.ftanparam
+        dt          = self.stats.delta
+        dist        = self.stats.sac.dist
+        T           = fparam.arr1_2[1,:fparam.nfout1_2]
+        pharr       = np.zeros((fparam.ncol_2, fparam.nrow_2))
+        vel         = dist/(fparam.tamp_2+np.arange(fparam.ncol_2)*dt)
+        N0          = fparam.tamp_2/dt + 1
+        for i in range(fparam.nrow_2):
+            
+            pharr[:, i] = self.gaussian_filter_snr(1./T[i], fhlen=1./T[i]/10.)[N0:N0+fparam.ncol_2]
+            pharr[:, i] = pharr[:, i]/pharr[:, i].max()
+        plt.figure()
+        ax          = plt.subplot()
+        p           = plt.pcolormesh(T, vel, pharr, cmap=cmap, shading='gouraud')
+        cb      = plt.colorbar(p, ax=ax)
+        plt.axis([10., 50., 2.0, vel.max()])
+        plt.xlabel('Period(s)')
+        plt.ylabel('Velocity(km/s)')
+        plt.title('PMF FTAN Diagram '+sacname,fontsize=15)
+        phvel2_2    = fparam.arr2_2[3,:fparam.nfout2_2]
+        ax.plot(T, phvel2_2, 'k-', lw=3) #
+        ax.tick_params(axis='x', labelsize=30)
+        ax.tick_params(axis='y', labelsize=30)
+        plt.show()
         return
     
     def get_snr(self, ffact=1.):

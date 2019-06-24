@@ -23,6 +23,7 @@ The code creates a datadbase based on hdf5 data format
 """
 import numpy as np
 import numpy.ma as ma
+import scipy.stats
 import h5py, pyasdf
 import os, shutil
 from subprocess import call
@@ -37,9 +38,13 @@ import numexpr
 import warnings
 from functools import partial
 import multiprocessing
-from numba import jit, float32, int32, boolean, float64
+from numba import jit, float32, int32, boolean, float64, int64
 import numba
+from numba import njit, prange
 import time
+from scipy import optimize
+from uncertainties import ufloat
+import uncertainties.umath
 
 # compiled function to get weight for each event and each grid point
 @jit(float32[:,:,:](float32[:,:,:], float32[:,:,:]))
@@ -54,6 +59,31 @@ def _get_azi_weight(aziALL, validALL):
                     if delAzi < 20. or delAzi > 340.:
                         weightALL[i, ilon, ilat]+= validALL[i, ilon, ilat]    
     return weightALL
+
+@jit(boolean[:](boolean[:], float64[:], float64[:], float64[:], float64[:]))
+def _get_mask_interp(mask_in, lons_in, lats_in, lons, lats):
+    Nlat            = lats.size
+    Nlon            = lons.size
+    mask_out        = np.ones((Nlat, Nlon), dtype=np.bool)
+    for i in range(Nlat):
+        for j in range(Nlon):
+            clat    = lats[i]
+            clon    = lons[j]
+            ind_lon = np.where(clon<=lons_in)[0][0]      
+            ind_lat = np.where(clat<=lats_in)[0][0]
+            if (clon - lons_in[ind_lon])< 0.001 and (clat - lats_in[ind_lat]) < 0.001:
+                mask_out[i, j]      = mask_in[ind_lat, ind_lon]
+                continue
+            mask_out[i, j]          = mask_out[i, j]*mask_in[ind_lat, ind_lon]
+            if ind_lat > 0:
+                mask_out[i, j]      = mask_out[i, j]*mask_in[ind_lat-1, ind_lon]
+                if ind_lon > 0:
+                    mask_out[i, j]  = mask_out[i, j]*mask_in[ind_lat-1, ind_lon-1]
+            if ind_lon > 0:
+                mask_out[i, j]      = mask_out[i, j]*mask_in[ind_lat, ind_lon-1]
+                if ind_lat > 0:
+                    mask_out[i, j]  = mask_out[i, j]*mask_in[ind_lat-1, ind_lon-1]
+    return mask_out
 
 # compiled function to evaluate station distribution 
 @jit(boolean(float64[:], float64[:], int32))
@@ -125,15 +155,14 @@ def _check_station_distribution(lons, lats, Nvalid_min):
         return False
 
 def to_percent(y, position):
-    # Ignore the passed in position. This has the effect of scaling the default
-    # tick locations.
-    # # # s = str(100 * y)
-    s = str(y)
-    # The percent symbol needs escaping in latex
-    if matplotlib.rcParams['text.usetex'] is True:
-        return s + r'$\%$'
-    else:
-        return s + '%'
+     # Ignore the passed in position. This has the effect of scaling the default
+     # tick locations.
+     s = '%.0f' %(100. * y)
+     # The percent symbol needs escaping in latex
+     if matplotlib.rcParams['text.usetex'] is True:
+         return s + r'$\%$'
+     else:
+         return s + '%'
 
 @jit(boolean[:](boolean[:], float64[:], float64[:], float64[:], float64[:]))
 def _get_mask_interp(mask_in, lons_in, lats_in, lons, lats):
@@ -178,23 +207,18 @@ def plot_fault_lines(mapobj, infname, lw=2, color='red'):
         x, y  = mapobj(lonlst, latlst)
         mapobj.plot(x, y,  lw = lw, color=color)
 
-@jit(numba.types.Tuple((float64[:, :, :], float64[:, :, :], float64[:, :, :], float64[:, :]))\
-     (int32, int32, float32, float32, int32, float64[:, :], float64[:, :, :], float64[:, :], float64[:, :, :], numba.boolean[:, :, :]))
+@njit(numba.types.Tuple((float64[:, :, :], float64[:, :, :], float64[:, :, :], int64[:, :, :], int64[:, :]))\
+     (int64, int64, float32, float32, int64, float64[:, :], float64[:, :, :], float64[:, :], float64[:, :, :], numba.boolean[:, :, :]))
 def _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL,\
         slowness_sumQC, slownessALL, index_outlier):
     Nevent, Nx, Ny  = aziALL.shape
     Nx_trim         = Nx - (gridx - 1)
     Ny_trim         = Ny - (gridy - 1)
-    NmeasureAni     = np.zeros((Nx_trim, Ny_trim), dtype=np.float64) # for quality control
-    for ishift_x in range(gridx):
-        for ishift_y in range(gridy):
-            for ix in range(Nx_trim):
-                for iy in range(Ny_trim):
-                    NmeasureAni[ix, iy]  += Nmeasure[ix + ishift_x, iy + ishift_y]
+    NmeasureAni     = np.zeros((Nx_trim, Ny_trim), dtype=np.int64) # for quality control
     # initialization of anisotropic parameters
     d_bin           = float((maxazi-minazi)/N_bin)
     # number of measurements in each bin
-    histArr         = np.zeros((N_bin, Nx_trim, Ny_trim))
+    histArr         = np.zeros((N_bin, Nx_trim, Ny_trim), dtype=np.int64)
     # slowness in each bin
     dslow_sum_ani   = np.zeros((N_bin, Nx_trim, Ny_trim))
     # slowness uncertainties for each bin
@@ -234,6 +258,7 @@ def _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL,
                             sumNbin[ix, iy]     += 1
                             dslowbin[ix, iy]    += temp_dslow
                             velbin[ix, iy]      += temp_vel
+                            NmeasureAni[ix, iy] += 1 # 2019-06-06
                 # end nested loop of grid shifting
                 if sumNbin[ix, iy] >= 2:
                     vel_mean[ix, iy]            = velbin[ix, iy] / sumNbin[ix, iy]
@@ -273,8 +298,224 @@ def _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL,
                 histArr[ibin, ix, iy]           = sumNbin[ix, iy]
                 dslow_sum_ani[ibin, ix, iy]     = dslow_mean[ix, iy]
     return dslow_sum_ani, dslow_un, vel_un, histArr, NmeasureAni
-        
 
+
+
+@njit(numba.types.Tuple((float64[:, :, :], float64[:, :, :], float64[:, :, :], int64[:, :, :], int64[:, :]))\
+     (int64, int64, float32, float32, int64, float64[:, :], float64[:, :, :], float64[:, :], float64[:, :, :], numba.boolean[:, :, :]), parallel=True)
+def _anisotropic_stacking_parallel(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL,\
+        slowness_sumQC, slownessALL, index_outlier):
+    Nevent, Nx, Ny  = aziALL.shape
+    Nx_trim         = Nx - (gridx - 1)
+    Ny_trim         = Ny - (gridy - 1)
+    NmeasureAni     = np.zeros((Nx_trim, Ny_trim), dtype=np.int64) # for quality control
+    # initialization of anisotropic parameters
+    d_bin           = float((maxazi-minazi)/N_bin)
+    # number of measurements in each bin
+    histArr         = np.zeros((N_bin, Nx_trim, Ny_trim), dtype=np.int64)
+    # slowness in each bin
+    dslow_sum_ani   = np.zeros((N_bin, Nx_trim, Ny_trim))
+    # slowness uncertainties for each bin
+    dslow_un        = np.zeros((N_bin, Nx_trim, Ny_trim))
+    # velocity uncertainties for each bin
+    vel_un          = np.zeros((N_bin, Nx_trim, Ny_trim))
+    #----------------------------------------------------------------------------------
+    # Loop over azimuth bins to get slowness, velocity and number of measurements
+    #----------------------------------------------------------------------------------
+    for ibin in range(N_bin):
+        sumNbin                     = np.zeros((Nx_trim, Ny_trim))
+        # slowness arrays
+        dslowbin                    = np.zeros((Nx_trim, Ny_trim))
+        dslow_un_ibin               = np.zeros((Nx_trim, Ny_trim))
+        dslow_mean                  = np.zeros((Nx_trim, Ny_trim))
+        # velocity arrays
+        velbin                      = np.zeros((Nx_trim, Ny_trim))
+        vel_un_ibin                 = np.zeros((Nx_trim, Ny_trim))
+        vel_mean                    = np.zeros((Nx_trim, Ny_trim))
+        for ix in prange(Nx_trim):
+            for iy in prange(Ny_trim):
+                for ishift_x in range(gridx):
+                    for ishift_y in range(gridy):
+                        for iev in range(Nevent):
+                            azi         = aziALL[iev, ix + ishift_x, iy + ishift_y]
+                            ibin_temp   = np.floor((azi - minazi)/d_bin)
+                            if ibin_temp != ibin:
+                                continue
+                            is_outlier  = index_outlier[iev, ix + ishift_x, iy + ishift_y]
+                            if is_outlier:
+                                continue
+                            temp_dslow  = slownessALL[iev, ix + ishift_x, iy + ishift_y] - slowness_sumQC[ix + ishift_x, iy + ishift_y]
+                            if slownessALL[iev, ix + ishift_x, iy + ishift_y] != 0.:
+                                temp_vel= 1./slownessALL[iev, ix + ishift_x, iy + ishift_y]
+                            else:
+                                temp_vel= 0.
+                            # changing values
+                            sumNbin[ix, iy]     += 1
+                            dslowbin[ix, iy]    += temp_dslow
+                            velbin[ix, iy]      += temp_vel
+                            NmeasureAni[ix, iy] += 1 # 2019-06-06
+                # end nested loop of grid shifting
+                if sumNbin[ix, iy] >= 2:
+                    vel_mean[ix, iy]            = velbin[ix, iy] / sumNbin[ix, iy]
+                    dslow_mean[ix, iy]          = dslowbin[ix, iy] / sumNbin[ix, iy]
+                else:
+                    sumNbin[ix, iy]             = 0
+        # compute uncertainties
+        for ix in prange(Nx_trim):
+            for iy in prange(Ny_trim):
+                for ishift_x in range(gridx):
+                    for ishift_y in range(gridy):
+                        for iev in range(Nevent):
+                            azi                     = aziALL[iev, ix + ishift_x, iy + ishift_y]
+                            ibin_temp               = np.floor((azi - minazi)/d_bin)
+                            if ibin_temp != ibin:
+                                continue
+                            is_outlier              = index_outlier[iev, ix + ishift_x, iy + ishift_y]
+                            if is_outlier:
+                                continue
+                            if slownessALL[iev, ix + ishift_x, iy + ishift_y] != 0.:
+                                temp_vel            = 1./slownessALL[iev, ix + ishift_x, iy + ishift_y]
+                            else:
+                                temp_vel            = 0.
+                            # changing values
+                            temp_vel_mean           = vel_mean[ix, iy]
+                            vel_un_ibin[ix, iy]     += (temp_vel - temp_vel_mean)**2
+                            temp_dslow              = slownessALL[iev, ix + ishift_x, iy + ishift_y] - slowness_sumQC[ix + ishift_x, iy + ishift_y]
+                            temp_dslow_mean         = dslow_mean[ix, iy]
+                            dslow_un_ibin[ix, iy]   += (temp_dslow - temp_dslow_mean)**2
+        for ix in prange(Nx_trim):
+            for iy in prange(Ny_trim):
+                if sumNbin[ix, iy] < 2:
+                    continue
+                vel_un_ibin[ix, iy]             = np.sqrt(vel_un_ibin[ix, iy]/(sumNbin[ix, iy] - 1)/sumNbin[ix, iy])
+                vel_un[ibin, ix, iy]            = vel_un_ibin[ix, iy]
+                dslow_un_ibin[ix, iy]           = np.sqrt(dslow_un_ibin[ix, iy]/(sumNbin[ix, iy] - 1)/sumNbin[ix, iy])
+                dslow_un[ibin, ix, iy]          = dslow_un_ibin[ix, iy]
+                histArr[ibin, ix, iy]           = sumNbin[ix, iy]
+                dslow_sum_ani[ibin, ix, iy]     = dslow_mean[ix, iy]
+    return dslow_sum_ani, dslow_un, vel_un, histArr, NmeasureAni
+
+# @jit(numba.types.Tuple((float32[:, :], float32[:, :]))(numba.boolean[:, :]), parallel=True)
+def _get_gaps(indarr):
+    Nbin, Nlat, Nlon    = indarr.shape
+    gap1                = np.zeros((Nlat, Nlon), dtype=np.float32)
+    gap2                = np.zeros((Nlat, Nlon), dtype=np.float32)
+    for ilat in range(Nlat):
+        for ilon in range(Nlon):
+            index       = indarr[:, ilat, ilon]
+            isfirst     = True
+            isnew       = True
+            temp_Ngap   = 0
+            gaparr      = np.array([], dtype=np.float32)
+            for i in range(Nbin):
+                if index[i]:
+                    if temp_Ngap> 0:
+                        gaparr  = np.append(gaparr, temp_Ngap)
+                    temp_Ngap   = 0
+                    continue
+                if isfirst:
+                    firstind    = i
+                    isfirst     = False
+                temp_Ngap   += 1
+            if temp_Ngap>0:
+                gaparr  = np.append(gaparr, temp_Ngap)
+            if gaparr.size == 0:
+                gap1[ilat, ilon]   \
+                        = 0
+                gap2[ilat, ilon]   \
+                        = 0
+                continue
+            if firstind == 0 and gaparr.size>1:
+                outgap  = gaparr[1:-1]
+                outgap  = np.append(outgap, gaparr[0]+gaparr[-1])
+            else:
+                outgap  = gaparr.copy()
+            if outgap.size>=2:
+                outgap      = np.sort(outgap)
+                gap1[ilat, ilon]   \
+                            = outgap[-1]
+                gap2[ilat, ilon]   \
+                        = outgap[-2]
+            else:
+                gap1[ilat, ilon]   \
+                            = outgap[0]
+                gap2[ilat, ilon]\
+                        = 0
+    return gap1, gap2
+            
+
+Npsi_glb    = 360
+dpsi_glb    = 180./np.float64(Npsi_glb)
+Namp_glb    = 500
+ampmax_glb  = 5.
+damp_glb    = ampmax_glb/np.float64(Namp_glb)
+
+@njit(float64[:, :](float64[:], float64[:], float64[:], float64), parallel=True)
+def _get_azi_misfit(obsdat, obssem, az_grd, A0):
+    psiarr      = np.arange(Npsi_glb)*dpsi_glb
+    amparr      = np.arange(Namp_glb)*damp_glb
+    misfitarr   = np.zeros((Npsi_glb, Namp_glb), dtype=np.float64)
+    Naz         = np.float64(az_grd.size)
+    for ipsi in prange(Npsi_glb):
+        for iamp in prange(Namp_glb):
+            psi         = psiarr[ipsi]*np.pi/180.
+            amp         = amparr[iamp]
+            A2          = A0*amp/100.
+            predat      = A0 + A2*np.cos(2.*(np.pi/180.*(az_grd+180.)-psi) )
+            misfitarr[ipsi, iamp]\
+                        = np.sqrt( ((predat - obsdat)**2 / obssem**2).sum()/ Naz )
+    return misfitarr
+
+def _get_azi_sem(obsdat, obssem, az_grd, A0):
+    misfitarr   = _get_azi_misfit(obsdat, obssem, az_grd, A0)
+    minmisfit   = misfitarr.min()
+    thresh      = minmisfit + 0.5
+    index       = misfitarr <= thresh
+    psiarr      = np.arange(Npsi_glb)*dpsi_glb
+    amparr      = np.arange(Namp_glb)*damp_glb
+    psi2d, amp2d= np.meshgrid(psiarr, amparr, indexing='ij')
+    psi_acc     = psi2d[index]
+    amp_acc     = amp2d[index]
+    unpsi       = scipy.stats.circstd(psi_acc, high=180., low=0.)
+    unamp       = amp_acc.std()
+    return unpsi, unamp
+
+def _get_azi_sem_2(obsdat, obssem, az_grd, A0):
+    misfitarr   = _get_azi_misfit(obsdat, obssem, az_grd, A0)
+    minmisfit   = misfitarr.min()
+    thresh      = minmisfit + 0.5
+    index       = misfitarr <= thresh
+    psiarr      = np.arange(Npsi_glb)*dpsi_glb
+    amparr      = np.arange(Namp_glb)*damp_glb
+    psi2d, amp2d= np.meshgrid(psiarr, amparr, indexing='ij')
+    psi_acc     = psi2d[index]
+    amp_acc     = amp2d[index]
+    unpsi       = scipy.stats.circstd(psi_acc, high=180.01, low=0.)
+    unamp       = amp_acc.std()
+    return unpsi, unamp
+                
+def pre_azi_aniso(m, theta):
+    return m[0] + m[1]*np.sin(2.*theta/180.*np.pi) + m[2]*np.cos(2.*theta/180.*np.pi)
+
+
+def azi_errfunc(m, azarr, tvel, tsem):
+    return (pre_azi_aniso(m, azarr) - tvel) / tsem
+            
+            
+class data4stack(object):
+    """data object storing array for eikonal stacking
+    """
+    def __init__(self, slownessALL, reason_nALL, aziALL, Nmeasure, Nevent, period, Nlon, Nlat, nlon_grad, nlat_grad):
+        self.slownessALL    = slownessALL
+        self.reason_nALL    = reason_nALL
+        self.aziALL         = aziALL
+        self.Nmeasure       = Nmeasure
+        self.Nevent         = Nevent
+        self.period         = period
+        self.Nlon           = Nlon
+        self.Nlat           = Nlat
+        self.nlat_grad      = nlat_grad
+        self.nlon_grad      = nlon_grad
 
 class EikonalTomoDataSet(h5py.File):
     """
@@ -379,7 +620,6 @@ class EikonalTomoDataSet(h5py.File):
             outstr  += '--- velAni_sem (uncertainties in binned velocity)   - '+str(pergrp['velAni_sem'].shape)+'\n'
         print outstr
         return
-    
     
     def set_input_parameters(self, minlon, maxlon, minlat, maxlat, pers=np.array([]), dlon=0.2, dlat=0.2, \
                              nlat_grad=1, nlon_grad=1, nlat_lplc=2, nlon_lplc=2, optimize_spacing=True):
@@ -1662,474 +1902,9 @@ class EikonalTomoDataSet(h5py.File):
                             incat = qc_cat, evid_lst=evid_lst)
             print '=== elasped time = '+str(time.time() - start)+' sec'
         return
-
-    def eikonal_stack_old(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
-                spacing_ani=0.6, coverage=0.1, use_numba=True):
-        """
-        Stack gradient results to perform Eikonal Tomography
-        =================================================================================================================
-        ::: input parameters :::
-        runid           - run id
-        minazi/maxazi   - min/max azimuth for anisotropic parameters determination
-        N_bin           - number of bins for anisotropic parameters determination
-        threshmeasure   - minimum number of measurements required to perform stacking
-        spacing_ani     - grid spacing for anisotropic stacking
-        anisotropic     - perform anisotropic parameters determination or not
-        coverage        - required coverage rate ({Number of valid grid points}/{Number of total grid points})
-        use_numba       - use numba for large array manipulation or not, faster and much less memory requirement
-        -----------------------------------------------------------------------------------------------------------------
-        version history:
-            Dec 6th, 2016   - add function to use numba, faster and much less memory consumption
-            Feb 7th, 2018   - bug fixed by adding signALL,
-                                originally stdArr = np.sum( (weightALL-avgArr)**2, axis=0), 2018-02-07
-        =================================================================================================================
-        """
-        # read attribute information
-        pers            = self.attrs['period_array']
-        minlon          = self.attrs['minlon']
-        maxlon          = self.attrs['maxlon']
-        minlat          = self.attrs['minlat']
-        maxlat          = self.attrs['maxlat']
-        dlon            = self.attrs['dlon']
-        dlat            = self.attrs['dlat']
-        Nlon            = int(self.attrs['Nlon'])
-        Nlat            = int(self.attrs['Nlat'])
-        nlat_grad       = self.attrs['nlat_grad']
-        nlon_grad       = self.attrs['nlon_grad']
-        nlat_lplc       = self.attrs['nlat_lplc']
-        nlon_lplc       = self.attrs['nlon_lplc']
-        group           = self['Eikonal_run_'+str(runid)]
-        try:
-            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
-        except ValueError:
-            warnings.warn('Eikonal_stack_'+str(runid)+' exists! Will be recomputed!', UserWarning, stacklevel=1)
-            del self['Eikonal_stack_'+str(runid)]
-            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
-        # attributes for output group
-        group_out.attrs.create(name = 'anisotropic', data = anisotropic)
-        group_out.attrs.create(name = 'N_bin', data = N_bin)
-        group_out.attrs.create(name = 'minazi', data = minazi)
-        group_out.attrs.create(name = 'maxazi', data = maxazi)
-        group_out.attrs.create(name = 'fieldtype', data = group.attrs['fieldtype'])
-        for per in pers:
-            print '--- stacking eikonal results for: '+str(per)+' sec'
-            per_group   = group['%g_sec'%( per )]
-            Nevent      = len(per_group.keys())
-            # initialize data arrays 
-            Nmeasure    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
-            weightALL   = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            slownessALL = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            aziALL      = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
-            reason_nALL = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            validALL    = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
-            #-----------------------------------------------------
-            # Loop over events to get eikonal maps for each event
-            #-----------------------------------------------------
-            print '*** reading data'
-            for iev in range(Nevent):
-                evid                        = per_group.keys()[iev]
-                event_group                 = per_group[evid]
-                az                          = event_group['az'].value
-                #-------------------------------------------------
-                # get apparent velocities for individual event
-                #-------------------------------------------------
-                velocity                    = event_group['appV'].value
-                reason_n                    = event_group['reason_n'].value
-                oneArr                      = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
-                oneArr[reason_n!=0]         = 0
-                slowness                    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.float32)
-                slowness[velocity!=0]       = 1./velocity[velocity!=0]                
-                slownessALL[iev, :, :]      = slowness
-                reason_nALL[iev, :, :]      = reason_n
-                aziALL[iev, :, :]           = az
-                Nmeasure                    += oneArr
-                # quality control of coverage
-                try:
-                    Ntotal_grd              = event_group.attrs['Ntotal_grd']
-                    Nvalid_grd              = event_group.attrs['Nvalid_grd']
-                    if float(Nvalid_grd)/float(Ntotal_grd)< coverage:
-                        reason_nALL[iev, :, :]  = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                except:
-                    pass
-            print '*** Stacking data'
-            if Nmeasure.max()< threshmeasure:
-                print ('--- No enough measurements for: '+str(per)+' sec')
-                continue
-            # discard grid points where number of raw measurements is low, added Sep 26th, 2018
-            index_discard                   = Nmeasure < 50
-            reason_nALL[:, index_discard]   = 10
-            #-----------------------------------------------
-            # Get weight for each grid point per event
-            #-----------------------------------------------
-            if use_numba:
-                validALL[reason_nALL==0]    = 1
-                weightALL                   = _get_azi_weight(aziALL, validALL)
-                weightALL[reason_nALL!=0]   = 0
-                weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
-                weightsum                   = np.sum(weightALL, axis=0)
-            else:
-                azi_event1                  = np.broadcast_to(aziALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                azi_event2                  = np.swapaxes(azi_event1, 0, 1)
-                validALL[reason_nALL==0]    = 1
-                validALL4                   = np.broadcast_to(validALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                # use numexpr for very large array manipulations
-                del_aziALL                  = numexpr.evaluate('abs(azi_event1-azi_event2)')
-                index_azi                   = numexpr.evaluate('(1*(del_aziALL<20)+1*(del_aziALL>340))*validALL4')
-                weightALL                   = numexpr.evaluate('sum(index_azi, 0)')
-                weightALL[reason_nALL!=0]   = 0
-                weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
-                weightsum                   = np.sum(weightALL, axis=0)
-            #-----------------------------------------------
-            # reduce large weight to some value.
-            #-----------------------------------------------
-            avgArr                          = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            avgArr[Nmeasure!=0]             = weightsum[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
-            # bug fixed, 02/07/2018
-            signALL                         = weightALL.copy()
-            signALL[signALL!=0]             = 1.
-            stdArr                          = np.sum( signALL*(weightALL-avgArr)**2, axis=0)
-            stdArr[Nmeasure!=0]             = stdArr[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
-            stdArr                          = np.sqrt(stdArr)
-            threshhold                      = np.broadcast_to(avgArr+3.*stdArr, weightALL.shape)
-            weightALL[weightALL>threshhold] = threshhold[weightALL>threshhold] # threshhold truncated weightALL
-            # recompute weight arrays after large weight value reduction
-            weightsum                       = np.sum(weightALL, axis=0)
-            weightsumALL                    = np.broadcast_to(weightsum, weightALL.shape)
-            # weight over all events, note that before this, weightALL is weight over events in azimuth bin
-            weightALL[weightsumALL!=0]      = weightALL[weightsumALL!=0]/weightsumALL[weightsumALL!=0] 
-            ###
-            weightALL[weightALL==1.]        = 0. # data will be discarded if no other data within 20 degree
-            #-----------------------------------------------
-            # Compute mean/std of slowness
-            #-----------------------------------------------
-            slownessALL2                    = slownessALL*weightALL
-            slowness_sum                    = np.sum(slownessALL2, axis=0)
-            slowness_sumALL                 = np.broadcast_to(slowness_sum, weightALL.shape)
-            # weighted standard deviation
-            # formula: https://www.itl.nist.gov/div898/software/dataplot/refman2/ch2/weightsd.pdf
-            signALL                         = weightALL.copy()
-            signALL[signALL!=0]             = 1.
-            MArr                            = np.sum(signALL, axis=0)
-            temp                            = weightALL*(slownessALL-slowness_sumALL)**2
-            temp                            = np.sum(temp, axis=0)
-            slowness_std                    = np.zeros(temp.shape)
-            tind                            = (weightsum!=0)*(MArr!=1)*(MArr!=0)
-            slowness_std[tind]              = np.sqrt(temp[tind]/ ( weightsum[tind]*(MArr[tind]-1)/MArr[tind] ) )
-            slowness_stdALL                 = np.broadcast_to(slowness_std, weightALL.shape)
-            #-----------------------------------------------
-            # discard outliers of slowness
-            #-----------------------------------------------
-            weightALLQC                     = weightALL.copy()
-            index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>2.*slowness_stdALL
-            # # # index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>3.*slowness_stdALL
-            index_outlier                   += reason_nALL != 0
-            weightALLQC[index_outlier]      = 0
-            weightsumQC                     = np.sum(weightALLQC, axis=0)
-            NmALL                           = np.sign(weightALLQC)
-            NmeasureQC                      = np.sum(NmALL, axis=0)
-            weightsumQCALL                  = np.broadcast_to(weightsumQC, weightALL.shape)
-            weightALLQC[weightsumQCALL!=0]  = weightALLQC[weightsumQCALL!=0]/weightsumQCALL[weightsumQCALL!=0]
-            temp                            = weightALLQC*slownessALL
-            slowness_sumQC                  = np.sum(temp, axis=0)
-            # new
-            signALLQC                       = weightALLQC.copy()
-            signALLQC[signALLQC!=0]         = 1.
-            MArrQC                          = np.sum(signALLQC, axis=0)
-            temp                            = weightALLQC*(slownessALL-slowness_sumQC)**2
-            temp                            = np.sum(temp, axis=0)
-            slowness_stdQC                  = np.zeros(temp.shape)
-            tind                            = (weightsumQC!=0)*(MArrQC!=1)
-            slowness_stdQC[tind]            = np.sqrt(temp[tind]/ ( weightsumQC[tind]*(MArrQC[tind]-1)/MArrQC[tind] ))
-            #---------------------------------------------------------------
-            # mask, velocity, and sem arrays of shape Nlat, Nlon
-            #---------------------------------------------------------------
-            mask                            = np.ones((Nlat, Nlon), dtype=np.bool)
-            tempmask                        = (weightsumQC == 0)
-            mask[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
-                                            = tempmask
-            vel_iso                         = np.zeros((Nlat, Nlon), dtype=np.float32)
-            tempvel                         = slowness_sumQC.copy()
-            tempvel[tempvel!=0]             = 1./ tempvel[tempvel!=0]
-            vel_iso[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
-                                            = tempvel
-            #----------------------------------------------------------------------------------------
-            # standard error of the mean, updated on 09/20/2018
-            # formula: https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Statistical_properties
-            #----------------------------------------------------------------------------------------
-            slownessALL_temp                = slownessALL.copy()
-            slownessALL_temp[slownessALL_temp==0.]\
-                                            = 0.3
-            if np.any(weightALLQC[slownessALL==0.]> 0.):
-                raise ValueError('Check weight array!')
-            temp                            = (weightALLQC*(1./slownessALL_temp-tempvel))**2
-            temp                            = np.sum(temp, axis=0)
-            tempsem                         = np.zeros(temp.shape)
-            tind                            = (weightsumQC!=0)*(MArrQC!=1)
-            tempsem[tind]                   = np.sqrt( temp[tind] * ( MArrQC[tind]/(weightsumQC[tind])**2/(MArrQC[tind]-1) ) ) 
-            vel_sem                         = np.zeros((Nlat, Nlon), dtype=np.float32)
-            vel_sem[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
-                                            = tempsem
-            #---------------------------------------
-            # save isotropic velocity to database
-            #---------------------------------------
-            per_group_out                   = group_out.create_group( name='%g_sec'%( per ) )
-            sdset                           = per_group_out.create_dataset(name='slowness', data=slowness_sumQC)
-            s_stddset                       = per_group_out.create_dataset(name='slowness_std', data=slowness_stdQC)
-            Nmdset                          = per_group_out.create_dataset(name='Nmeasure', data=Nmeasure)
-            NmQCdset                        = per_group_out.create_dataset(name='NmeasureQC', data=NmeasureQC)
-            maskdset                        = per_group_out.create_dataset(name='mask', data=mask)
-            visodset                        = per_group_out.create_dataset(name='vel_iso', data=vel_iso)
-            vsemdset                        = per_group_out.create_dataset(name='vel_sem', data=vel_sem)
-            #----------------------------------------------------------------------------
-            # determine anisotropic parameters, need benchmark and further verification
-            #----------------------------------------------------------------------------
-            
-            if anisotropic:
-                grid_factor                 = int(np.ceil(spacing_ani/dlat))
-                gridx                       = grid_factor
-                gridy                       = int(grid_factor*np.floor(dlon/dlat))
-                Nx_size                     = Nlat-2*nlat_grad
-                Ny_size                     = Nlon-2*nlon_grad
-                NmeasureAni                 = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                # # # total_near_neighbor         = Nmeasure[4:-4, 4:-4] + Nmeasure[:-8, :-8] + Nmeasure[8:, 8:] + Nmeasure[:-8, 4:-4] +\
-                # # #                 Nmeasure[8:, 4:-4] + Nmeasure[4:-4, :-8] + Nmeasure[4:-4, 8:] + Nmeasure[8:, :-8] + Nmeasure[:-8, 8:]
-                # # # NmeasureAni[4:-4, 4:-4]     = total_near_neighbor # for quality control
-                total_near_neighbor         = Nmeasure[0:-2*gridx, 0:-2*gridy] + Nmeasure[0:-2*gridx, gridy:-gridy] + \
-                                    Nmeasure[0:-2*gridx, 2*gridy:Ny_size] + Nmeasure[gridx:-gridx, 0:-2*gridy] +\
-                                    Nmeasure[gridx:-gridx, gridy:-gridy] + Nmeasure[gridx:-gridx, 2*gridy:Ny_size] +\
-                                    Nmeasure[2*gridx:Nx_size, 0:-2*gridy] + Nmeasure[2*gridx:Nx_size, gridy:-gridy] +\
-                                    Nmeasure[2*gridx:Nx_size, 2*gridy:Ny_size]
-                NmeasureAni[gridx:-gridx, gridy:-gridy]     \
-                                            = total_near_neighbor # for quality control
-                # initialization of anisotropic parameters
-                d_bin                       = (maxazi-minazi)/N_bin
-                print 'anisotropic grid factor = '+ str(gridx)+'/'+str(gridy)
-                # number of measurements in each bin
-                histArr                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                histArr_cutted              = histArr[:, gridx:-gridx, gridy:-gridy]
-                # slowness in each bin
-                slow_sum_ani                = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                slow_sum_ani_cutted         = slow_sum_ani[:, gridx:-gridx, gridy:-gridy]
-                # slowness uncertainties for each bin
-                slow_un                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                slow_un_cutted              = slow_un[:, gridx:-gridx, gridy:-gridy]
-                # velocity uncertainties for each bin
-                vel_un                      = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                vel_un_cutted               = vel_un[:, gridx:-gridx, gridy:-gridy]
-                #
-                index_dict                  = { 0: [0, -2*gridx, 0,         -2*gridy], \
-                                                1: [0, -2*gridx, gridy,     -gridy],\
-                                                2: [0, -2*gridx, 2*gridy,   Ny_size],\
-                                                3: [gridx, -gridx, 0,       -2*gridy],\
-                                                4: [gridx, -gridx, gridy, -gridy],\
-                                                5: [gridx, -gridx, 2*gridy, Ny_size],\
-                                                6: [2*gridx, Nx_size, 0,    -2*gridy],\
-                                                7: [2*gridx, Nx_size, gridy,-gridy],\
-                                                8: [2*gridx, Nx_size, 2*gridy, Ny_size]}
-                nmin_bin                    = 2 # change
-                #----------------------------------------------------------------------------------
-                # Loop over azimuth bins to get slowness, velocity and number of measurements
-                #----------------------------------------------------------------------------------
-                for ibin in xrange(N_bin):
-                    sumNbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    slowbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    slow_un_ibin                = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    velbin                      = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    vel_un_ibin                 = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    for i in range(9):
-                        indarr                  = index_dict[i]
-                        azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        ibinarr                 = np.floor((azi_arr - minazi)/d_bin)
-                        weight_bin              = 1*(ibinarr==ibin)
-                        index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        weight_bin[index_outlier_cutted] \
-                                                = 0
-                        slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        # differences in slowness numexpr.evaluate('sum(index_azi, 0)')
-                        temp_dslow              = numexpr.evaluate('weight_bin*(slownessALL_cutted-slowsumQC_cutted)')
-                        temp_dslow              = numexpr.evaluate('sum(temp_dslow, 0)')
-                        # velocities
-                        temp_vel                = slownessALL_cutted.copy()
-                        temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-                        temp_vel                = numexpr.evaluate('weight_bin*temp_vel')
-                        temp_vel                = numexpr.evaluate('sum(temp_vel, 0)')
-                        # number of measurements in this bin
-                        N_ibin                  = numexpr.evaluate('sum(weight_bin, 0)')
-                        # quality control
-                        ind_valid               = N_ibin >= nmin_bin
-                        sumNbin[ind_valid]      += N_ibin[ind_valid]
-                        slowbin[ind_valid]      += temp_dslow[ind_valid]
-                        velbin[ind_valid]       += temp_vel[ind_valid]
-                    vel_mean                    = velbin.copy()
-                    vel_mean[sumNbin!=0]        = velbin[sumNbin!=0]/sumNbin[sumNbin!=0]
-                    dslow_mean                  = slowbin.copy()
-                    dslow_mean[sumNbin!=0]      = dslow_mean[sumNbin!=0]/sumNbin[sumNbin!=0]
-                    # compute uncertainties
-                    for i in range(9):
-                        indarr                  = index_dict[i]
-                        azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        ibinarr                 = np.floor((azi_arr-minazi)/d_bin)
-                        weight_bin              = 1*(ibinarr==ibin)
-                        index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        weight_bin[index_outlier_cutted] \
-                                                = 0
-                        slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        temp_vel                = slownessALL_cutted.copy()
-                        temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-                        vel_un_ibin             = vel_un_ibin + numexpr.evaluate('sum( (weight_bin*(temp_vel-vel_mean))**2, 0)')
-                        slow_un_ibin            = slow_un_ibin + numexpr.evaluate('sum( (weight_bin*(slownessALL_cutted-slowsumQC_cutted \
-                                                                - dslow_mean))**2, 0)')
-                    #------------------------------------
-                    vel_un_ibin[sumNbin!=0]     = np.sqrt(vel_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-                    vel_un_cutted[ibin, :, :]   = vel_un_ibin
-                    slow_un_ibin[sumNbin!=0]    = np.sqrt(slow_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-                    slow_un_cutted[ibin, :, :]  = slow_un_ibin
-                    histArr_cutted[ibin, :, :]  = sumNbin
-                    slow_sum_ani_cutted[ibin, :, :]  \
-                                                = dslow_mean
-                #-------------------------------------------
-                N_thresh                                = 10 # change
-                slow_sum_ani_cutted[histArr_cutted<N_thresh] \
-                                                        = 0
-                slow_sum_ani[:, gridx:-gridx, gridy:-gridy]\
-                                                        = slow_sum_ani_cutted
-                # uncertainties
-                slow_un_cutted[histArr_cutted<N_thresh] = 0
-                slow_un[:, gridx:-gridx, gridy:-gridy]  = slow_un_cutted
-                # convert sem of slowness to sem of velocity
-                vel_un_cutted[histArr_cutted<N_thresh]  = 0
-                vel_un[:, gridx:-gridx, gridy:-gridy]   = vel_un_cutted
-                # # # return vel_un
-                # near neighbor quality control
-                Ntotal_thresh                           = 45 # change
-                slow_sum_ani[:, NmeasureAni<Ntotal_thresh]    \
-                                                        = 0 
-                slow_un[:, NmeasureAni<Ntotal_thresh]   = 0
-                vel_un[:, NmeasureAni<Ntotal_thresh]    = 0
-                histArr[:, gridx:-gridx, gridy:-gridy]  = histArr_cutted
-
-                # 
-                # # number of measurements in each bin
-                # histArr                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                # histArr_cutted              = histArr[:, 3:-3, 3:-3]
-                # # slowness in each bin
-                # slow_sum_ani                = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                # slow_sum_ani_cutted         = slow_sum_ani[:, 3:-3, 3:-3]
-                # # slowness uncertainties for each bin
-                # slow_un                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                # slow_un_cutted              = slow_un[:, 3:-3, 3:-3]
-                # # velocity uncertainties for each bin
-                # vel_un                      = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                # vel_un_cutted               = vel_un[:, 3:-3, 3:-3]
-                # #
-                # Nx_size                     = Nlat-2*nlat_grad
-                # Ny_size                     = Nlon-2*nlon_grad
-                # index_dict                  = { 0: [0, -6, 0, -6], \
-                #                                 1: [0, -6, 3, -3],\
-                #                                 2: [0, -6, 6, Ny_size],\
-                #                                 3: [3, -3, 0, -6],\
-                #                                 4: [3, -3, 3, -3],\
-                #                                 5: [3, -3, 6, Ny_size],\
-                #                                 6: [6, Nx_size, 0, -6],\
-                #                                 7: [6, Nx_size, 3, -3],\
-                #                                 8: [6, Nx_size, 6, Ny_size]}
-                # nmin_bin                    = 2
-                # #----------------------------------------------------------------------------------
-                # # Loop over azimuth bins to get slowness, velocity and number of measurements
-                # #----------------------------------------------------------------------------------
-                # for ibin in xrange(N_bin):
-                #     sumNbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[3:-3, 3:-3]
-                #     slowbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[3:-3, 3:-3]
-                #     slow_un_ibin                = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[3:-3, 3:-3]
-                #     velbin                      = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[3:-3, 3:-3]
-                #     vel_un_ibin                 = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[3:-3, 3:-3]
-                #     for i in range(9):
-                #         indarr                  = index_dict[i]
-                #         azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         ibinarr                 = np.floor((azi_arr - minazi)/d_bin)
-                #         weight_bin              = 1*(ibinarr==ibin)
-                #         index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         weight_bin[index_outlier_cutted] \
-                #                                 = 0
-                #         slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         # differences in slowness
-                #         temp_dslow              = weight_bin*(slownessALL_cutted-slowsumQC_cutted)
-                #         temp_dslow              = np.sum(temp_dslow, axis=0)
-                #         # velocities
-                #         temp_vel                = slownessALL_cutted.copy()
-                #         temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-                #         temp_vel                = weight_bin*temp_vel
-                #         temp_vel                = np.sum(temp_vel, axis=0)
-                #         # number of measurements in this bin
-                #         N_ibin                  = np.sum(weight_bin, axis=0)
-                #         # quality control
-                #         ind_valid               = N_ibin >= nmin_bin
-                #         sumNbin[ind_valid]      += N_ibin[ind_valid]
-                #         slowbin[ind_valid]      += temp_dslow[ind_valid]
-                #         velbin[ind_valid]       += temp_vel[ind_valid]
-                #     vel_mean                    = velbin.copy()
-                #     vel_mean[sumNbin!=0]        = velbin[sumNbin!=0]/sumNbin[sumNbin!=0]
-                #     dslow_mean                  = slowbin.copy()
-                #     dslow_mean[sumNbin!=0]      = dslow_mean[sumNbin!=0]/sumNbin[sumNbin!=0]
-                #     # compute uncertainties
-                #     for i in range(9):
-                #         indarr                  = index_dict[i]
-                #         azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         ibinarr                 = np.floor((azi_arr-minazi)/d_bin)
-                #         weight_bin              = 1*(ibinarr==ibin)
-                #         index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         weight_bin[index_outlier_cutted] \
-                #                                 = 0
-                #         slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                #         temp_vel                = slownessALL_cutted.copy()
-                #         temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-                #         vel_un_ibin             += np.sum( (weight_bin*(temp_vel-vel_mean))**2, axis=0)
-                #         slow_un_ibin            += np.sum( (weight_bin*(slownessALL_cutted-slowsumQC_cutted\
-                #                                                 - dslow_mean))**2, axis=0)
-                #     # return vel_un_ibin
-                #     #------------------------------------
-                #     vel_un_ibin[sumNbin!=0]     = np.sqrt(vel_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-                #     vel_un_cutted[ibin, :, :]   = vel_un_ibin
-                #     slow_un_ibin[sumNbin!=0]    = np.sqrt(slow_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-                #     slow_un_cutted[ibin, :, :]  = slow_un_ibin
-                #     histArr_cutted[ibin, :, :]  = sumNbin
-                #     slow_sum_ani_cutted[ibin, :, :]  \
-                #                                 = dslow_mean
-                # #-------------------------------------------
-                # N_thresh                                = 10
-                # slow_sum_ani_cutted[histArr_cutted<N_thresh] \
-                #                                         = 0
-                # slow_sum_ani[:, 3:-3, 3:-3]             = slow_sum_ani_cutted
-                # # uncertainties
-                # slow_un_cutted[histArr_cutted<N_thresh] = 0
-                # slow_un[:, 3:-3, 3:-3]                  = slow_un_cutted
-                # # convert sem of slowness to sem of velocity
-                # vel_un_cutted[histArr_cutted<N_thresh]  = 0
-                # vel_un[:, 3:-3, 3:-3]                   = vel_un_cutted
-                # # # # return vel_un
-                # # near neighbor quality control
-                # Ntotal_thresh                           = 45
-                # slow_sum_ani[:, NmeasureAni<Ntotal_thresh]    \
-                #                                         = 0 
-                # slow_un[:, NmeasureAni<Ntotal_thresh]   = 0
-                # vel_un[:, NmeasureAni<Ntotal_thresh]    = 0
-                # # # # print NmeasureAni.shape, vel_un.shape
-                # histArr[:, 3:-3, 3:-3]                  = histArr_cutted
-
-                # save data to database
-                s_anidset       = per_group_out.create_dataset(name='slownessAni', data=slow_sum_ani)
-                s_anisemdset    = per_group_out.create_dataset(name='slownessAni_sem', data=slow_un)
-                v_anisemdset    = per_group_out.create_dataset(name='velAni_sem', data=vel_un)
-                histdset        = per_group_out.create_dataset(name='histArr', data=histArr)
-                NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
-        return
     
     def eikonal_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
-                spacing_ani=0.3, coverage=0.1, use_numba=True, azi_amp_tresh=0.1):
+                spacing_ani=0.3, coverage=0.1, use_numba=True, azi_amp_tresh=0.05):
         """
         Stack gradient results to perform Eikonal Tomography
         =================================================================================================================
@@ -2174,7 +1949,7 @@ class EikonalTomoDataSet(h5py.File):
         if anisotropic:
             grid_factor                 = int(np.ceil(spacing_ani/dlat))
             gridx                       = grid_factor
-            gridy                       = int(grid_factor*np.floor(dlon/dlat))
+            gridy                       = grid_factor
             if gridx % 2 == 0:
                 gridx                   += 1
             if gridy % 2 == 0:
@@ -2228,6 +2003,7 @@ class EikonalTomoDataSet(h5py.File):
                         reason_nALL[iev, :, :]  = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
                 except:
                     pass
+                
             #----------------------------
             # isotropic stacking
             #----------------------------
@@ -2373,8 +2149,9 @@ class EikonalTomoDataSet(h5py.File):
                 index_outlier               += diff_slowness > azi_amp_tresh
                 # stacking to get anisotropic parameters
                 dslow_sum_ani, dslow_un, vel_un, histArr, NmeasureAni    \
-                                            = _anisotropic_stacking(gridx, gridy, maxazi, minazi, N_bin, Nmeasure, aziALL,\
-                                                slowness_sumQC, slownessALL, index_outlier.astype(bool))
+                                            = _anisotropic_stacking_parallel(np.int32(gridx), np.int32(gridy), np.float32(maxazi), np.float32(minazi),\
+                                                np.int32(N_bin), np.float64(Nmeasure), np.float64(aziALL),\
+                                                np.float64(slowness_sumQC), np.float64(slownessALL), index_outlier.astype(bool))
                 #----------------------------
                 # save data to database
                 #----------------------------
@@ -2403,8 +2180,150 @@ class EikonalTomoDataSet(h5py.File):
                 out_arr[(gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
                                 = NmeasureAni
                 NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=out_arr)
-                
         return
+    
+    def eikonal_stack_mp(self, workingdir='./eik_stack_dir', runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
+                spacing_ani=0.3, coverage=0.1, use_numba=True, azi_amp_tresh=0.1, nprocess=None, enhanced=False):
+        # read attribute information
+        pers            = self.attrs['period_array']
+        minlon          = self.attrs['minlon']
+        maxlon          = self.attrs['maxlon']
+        minlat          = self.attrs['minlat']
+        maxlat          = self.attrs['maxlat']
+        dlon            = self.attrs['dlon']
+        dlat            = self.attrs['dlat']
+        Nlon            = int(self.attrs['Nlon'])
+        Nlat            = int(self.attrs['Nlat'])
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        nlat_lplc       = self.attrs['nlat_lplc']
+        nlon_lplc       = self.attrs['nlon_lplc']
+        group           = self['Eikonal_run_'+str(runid)]
+        try:
+            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
+        except ValueError:
+            warnings.warn('Eikonal_stack_'+str(runid)+' exists! Will be recomputed!', UserWarning, stacklevel=1)
+            del self['Eikonal_stack_'+str(runid)]
+            group_out   = self.create_group( name = 'Eikonal_stack_'+str(runid) )
+        # header for anisotropy
+        if anisotropic:
+            grid_factor                 = int(np.ceil(spacing_ani/dlat))
+            gridx                       = grid_factor
+            gridy                       = grid_factor
+            if gridx % 2 == 0:
+                gridx                   += 1
+            if gridy % 2 == 0:
+                gridy                   += 1
+            print '--- anisotropic grid factor = '+ str(gridx)+'/'+str(gridy)
+            group_out.attrs.create(name = 'gridx', data = gridx)
+            group_out.attrs.create(name = 'gridy', data = gridy)
+        else:
+            gridx                       = 0
+            gridy                       = 0
+        # attributes for output group
+        group_out.attrs.create(name = 'anisotropic', data = anisotropic)
+        group_out.attrs.create(name = 'N_bin', data = N_bin)
+        group_out.attrs.create(name = 'minazi', data = minazi)
+        group_out.attrs.create(name = 'maxazi', data = maxazi)
+        group_out.attrs.create(name = 'fieldtype', data = group.attrs['fieldtype'])
+        #-----------------------
+        # prepare data
+        #-----------------------
+        stack_lst       = []
+        for per in pers:
+            print '--- prepare eikonal results for stacking: '+str(per)+' sec'
+            per_group   = group['%g_sec'%( per )]
+            Nevent      = len(per_group.keys())
+            # initialize data arrays 
+            Nmeasure    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
+            weightALL   = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            slownessALL = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            aziALL      = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
+            reason_nALL = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            validALL    = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
+            #-----------------------------------------------------
+            # Loop over events to get eikonal maps for each event
+            #-----------------------------------------------------
+            for iev in range(Nevent):
+                evid                        = per_group.keys()[iev]
+                event_group                 = per_group[evid]
+                az                          = event_group['az'].value
+                #-------------------------------------------------
+                # get apparent velocities for individual event
+                #-------------------------------------------------
+                velocity                    = event_group['appV'].value
+                reason_n                    = event_group['reason_n'].value
+                oneArr                      = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
+                oneArr[reason_n!=0]         = 0
+                slowness                    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.float32)
+                slowness[velocity!=0]       = 1./velocity[velocity!=0]
+                # data arrays 
+                slownessALL[iev, :, :]      = slowness
+                reason_nALL[iev, :, :]      = reason_n
+                aziALL[iev, :, :]           = az
+                Nmeasure                    += oneArr
+                # quality control of coverage
+                try:
+                    Ntotal_grd              = event_group.attrs['Ntotal_grd']
+                    Nvalid_grd              = event_group.attrs['Nvalid_grd']
+                    if float(Nvalid_grd)/float(Ntotal_grd)< coverage:
+                        reason_nALL[iev, :, :]  = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+                except:
+                    pass
+            stack_lst.append(data4stack(slownessALL=slownessALL, reason_nALL=reason_nALL, aziALL=aziALL, Nmeasure=Nmeasure, \
+                                        Nevent=Nevent, period=per, Nlon=Nlon, Nlat=Nlat, nlon_grad=nlon_grad, nlat_grad=nlat_grad))
+        ###
+        # mp stacking
+        ###
+        if not os.path.isdir(workingdir):
+            os.makedirs(workingdir)
+        print '=== eikonal stacking'
+        STACK       = partial(stack4mp, workingdir=workingdir, minazi=minazi, maxazi=maxazi, N_bin=N_bin, threshmeasure=threshmeasure,\
+                    anisotropic=anisotropic, spacing_ani=spacing_ani, coverage=coverage, use_numba=use_numba,\
+                        azi_amp_tresh=azi_amp_tresh, gridx=gridx, gridy=gridy, Nlat=Nlat, Nlon=Nlon, nlat_grad=nlat_grad,\
+                            nlon_grad=nlon_grad, enhanced=enhanced)
+        pool        = multiprocessing.Pool(processes=nprocess)
+        pool.map(STACK, stack_lst) #make our results with a map call
+        pool.close() #we are not adding any more processes
+        pool.join() #tell it to wait until all threads are done before going on
+        ###
+        # read stacked data
+        ###
+        for per in pers:
+            print '--- reading eikonal stacked data : '+str(per)+' sec'
+            pfx             = '%g_sec'%( per )
+            infname         = workingdir+'/iso_'+pfx+'.npz'
+            inarr           = np.load(infname)
+            slowness_sumQC  = inarr['arr_0']
+            slowness_stdQC  = inarr['arr_1']
+            Nmeasure        = inarr['arr_2']
+            NmeasureQC      = inarr['arr_3']
+            mask            = inarr['arr_4']
+            vel_iso         = inarr['arr_5']
+            vel_sem         = inarr['arr_6']
+            # save to database
+            per_group_out                   = group_out.create_group( name='%g_sec'%( per ) )
+            sdset                           = per_group_out.create_dataset(name='slowness', data=slowness_sumQC)
+            s_stddset                       = per_group_out.create_dataset(name='slowness_std', data=slowness_stdQC)
+            Nmdset                          = per_group_out.create_dataset(name='Nmeasure', data=Nmeasure)
+            NmQCdset                        = per_group_out.create_dataset(name='NmeasureQC', data=NmeasureQC)
+            maskdset                        = per_group_out.create_dataset(name='mask', data=mask)
+            visodset                        = per_group_out.create_dataset(name='vel_iso', data=vel_iso)
+            vsemdset                        = per_group_out.create_dataset(name='vel_sem', data=vel_sem)
+            if anisotropic:
+                infname         = workingdir+'/azi_'+pfx+'.npz'
+                inarr           = np.load(infname)
+                dslow_sum_ani   = inarr['arr_0']
+                dslow_un        = inarr['arr_1']
+                vel_un          = inarr['arr_2']
+                histArr         = inarr['arr_3']
+                NmeasureAni     = inarr['arr_4']
+                # save database
+                s_anidset       = per_group_out.create_dataset(name='slownessAni', data=dslow_sum_ani)
+                s_anisemdset    = per_group_out.create_dataset(name='slownessAni_sem', data=dslow_un)
+                v_anisemdset    = per_group_out.create_dataset(name='velAni_sem', data=vel_un)
+                histdset        = per_group_out.create_dataset(name='histArr', data=histArr)
+                NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)    
 
     def helm_stack(self, runid=0, minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
                 spacing_ani=0.6, use_numba=True, coverage=0.1, dv_thresh=None):
@@ -2796,7 +2715,7 @@ class EikonalTomoDataSet(h5py.File):
                 NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
         return
     
-    def compute_azi_aniso(self, runid=0, fitpsi1=False, fitpsi2=True, helm=False, Ntotal_thresh=None, N_thresh=10, Nbin_thresh=5):
+    def compute_azi_aniso(self, runid=0, helm=False, Ntotal_thresh=None, N_thresh=5, Nbin_thresh=5, semfactor=5.):
         if helm:
             dataid      = 'Helmholtz_stack_'+str(runid)
         else:
@@ -2810,15 +2729,17 @@ class EikonalTomoDataSet(h5py.File):
         maxazi          = ingroup.attrs['maxazi']
         minazi          = ingroup.attrs['minazi']
         Nbin_default    = ingroup.attrs['N_bin']
-        azArr           = np.mgrid[minazi:maxazi:Nbin_default*1j]
+        d_bin           = float((maxazi-minazi)/Nbin_default)
+        azArr           = np.arange(Nbin_default)*d_bin + minazi
         if Ntotal_thresh is None:
             Ntotal_thresh   = N_thresh*gridx*gridy*Nbin_default/2.
         self._get_lon_lat_arr()
         for period in pers:
+            print '=== Fitting azimuthal angle and amp '+str(period)+' sec'
             pergrp      = ingroup['%g_sec'%( period )]
             mask        = pergrp['mask'].value
             slowAni     = pergrp['slownessAni'].value + pergrp['slowness'].value
-            velAnisem   = pergrp['velAni_sem'].value
+            velAnisem   = pergrp['velAni_sem'].value * semfactor
             slowness    = pergrp['slowness'].value
             histArr     = pergrp['histArr'].value
             psiarr      = np.zeros((self.Nlat, self.Nlon))
@@ -2827,17 +2748,24 @@ class EikonalTomoDataSet(h5py.File):
             Nbinarr     = np.zeros((self.Nlat, self.Nlon))
             Nmarr       = np.zeros((self.Nlat, self.Nlon))
             mask_aniso  = np.ones((self.Nlat, self.Nlon), dtype=bool)
+            #------------------------
+            # uncertainty arrays
+            #------------------------
+            un_psiarr   = np.zeros((self.Nlat, self.Nlon))
+            un_amparr   = np.zeros((self.Nlat, self.Nlon))
             for ilat in range(self.Nlat):
                 if (ilat-nlat_grad) < 0 or (ilat+nlat_grad) > (self.Nlat - 1) :
                     continue
                 for ilon in range(self.Nlon):
                     if (ilon-nlon_grad) < 0 or (ilon+nlon_grad) > (self.Nlon - 1) :
                         continue
+                    if mask[ilat - nlat_grad, ilon - nlon_grad]:
+                        continue
                     outslowness = slowAni[:, ilat - nlat_grad, ilon - nlon_grad]
                     outvel_sem  = velAnisem[:, ilat - nlat_grad, ilon - nlon_grad]
                     avg_slowness= slowness[ilat - nlat_grad, ilon - nlon_grad]
                     out_hist    = histArr[:, ilat - nlat_grad, ilon - nlon_grad]
-                    if out_hist.sum() < Ntotal_thresh*gridx*gridy:
+                    if out_hist.sum() < Ntotal_thresh:
                         continue
                     # get the valid binned data
                     # quality control
@@ -2848,6 +2776,156 @@ class EikonalTomoDataSet(h5py.File):
                     Nbin        = index.size
                     if Nbin < Nbin_thresh:
                         continue
+                    Nmarr[ilat, ilon]   = int(out_hist.sum()/(gridx*gridy))
+                    Nbinarr[ilat, ilon] = Nbin
+                    # construct forward operator matrix
+                    tG                  = np.ones((Nbin, 1), dtype=np.float64)
+                    G                   = tG.copy()
+                    # convert azimuth to the 'real' azimuth coordinate
+                    az_grd              += 180.
+                    az_grd              = 360. - az_grd
+                    az_grd              -= 90.
+                    az_grd[az_grd<0.]   += 360.
+                    # 2-psi terms
+                    tbaz                = np.pi*(az_grd)/180.
+                    tGsin2              = np.sin(tbaz*2)
+                    tGcos2              = np.cos(tbaz*2)
+                    G                   = np.append(G, tGsin2)
+                    G                   = np.append(G, tGcos2)
+                    G                   = G.reshape((3, Nbin))
+                    G                   = G.T
+                    # data
+                    indat               = (1./outslowness).reshape(1, Nbin)
+                    d                   = indat.T
+                    # data covariance matrix
+                    Cd                  = np.zeros((Nbin, Nbin), dtype=np.float64)
+                    np.fill_diagonal(Cd, outvel_sem**2)
+                    # Tarantola's solution, p67 eq. 3.40, 3.41
+                    Ginv1               = np.linalg.inv( np.dot( np.dot(G.T, np.linalg.inv(Cd)), G) )
+                    Ginv2               = np.dot( np.dot(G.T, np.linalg.inv(Cd)), d)
+                    model               = np.dot(Ginv1, Ginv2)
+                    Cm                  = Ginv1 # model covariance matrix
+                    pcov                = np.sqrt(np.absolute(Cm))
+                    m0                  = ufloat(model[0][0], pcov[0][0])
+                    m1                  = ufloat(model[1][0], pcov[1][1])
+                    m2                  = ufloat(model[2][0], pcov[2][2])
+                    #
+                    A0                  = model[0][0]
+                    A2                  = np.sqrt(model[1][0]**2 + model[2][0]**2)
+                    psi2                = np.arctan2(model[1][0], model[2][0])/2.
+                    if psi2 < 0.:
+                        psi2            += np.pi # -90 ~ 90 -> 0 ~ 180.
+                    # compute misfit
+                    predat                  = A0 + A2*np.cos(2.*(np.pi/180.*(az_grd+180.)-psi2) )
+                    misfit                  = np.sqrt( ((predat - 1./outslowness)**2 / outvel_sem**2).sum()/ az_grd.size )
+                    amparr[ilat, ilon]      = A2/A0*100.  # convert to percentage
+                    psiarr[ilat, ilon]      = psi2/np.pi*180.
+                    mask_aniso[ilat, ilon]  = False
+                    misfitarr[ilat, ilon]   = misfit
+                    # uncertainties
+                    unA2                    = (uncertainties.umath.sqrt(m1**2+m2**2)/m0*100.).std_dev
+                    unpsi2                  = (uncertainties.umath.atan2(m1, m2)/np.pi*180./2.).std_dev
+                    unamp                   = unA2
+                    unpsi2                  = min(unpsi2, 90.)
+                    un_psiarr[ilat, ilon]   = unpsi2
+                    un_amparr[ilat, ilon]   = unamp
+            try:
+                pergrp.create_dataset(name='amparr', data=amparr)
+                pergrp.create_dataset(name='psiarr', data=psiarr)
+                pergrp.create_dataset(name='mask_aniso', data=mask_aniso)
+                pergrp.create_dataset(name='misfit', data=misfitarr)
+                pergrp.create_dataset(name='Nmtotal', data=Nmarr)
+                pergrp.create_dataset(name='Nbin', data=Nbinarr)
+                #
+                pergrp.create_dataset(name='unpsi', data=un_psiarr)
+                pergrp.create_dataset(name='unamp', data=un_amparr)
+            except:
+                del pergrp['amparr']
+                del pergrp['psiarr']
+                del pergrp['mask_aniso']
+                del pergrp['misfit']
+                del pergrp['Nmtotal']
+                del pergrp['Nbin']
+                # 
+                del pergrp['unpsi']
+                del pergrp['unamp']
+                pergrp.create_dataset(name='amparr', data=amparr)
+                pergrp.create_dataset(name='psiarr', data=psiarr)
+                pergrp.create_dataset(name='mask_aniso', data=mask_aniso)
+                pergrp.create_dataset(name='misfit', data=misfitarr)
+                pergrp.create_dataset(name='Nmtotal', data=Nmarr)
+                pergrp.create_dataset(name='Nbin', data=Nbinarr)
+                # 
+                pergrp.create_dataset(name='unpsi', data=un_psiarr)
+                pergrp.create_dataset(name='unamp', data=un_amparr)
+        return
+
+    def compute_azi_aniso_enhanced_old(self, runid=0, fitpsi1=False, fitpsi2=True, helm=False,\
+                Ntotal_thresh=None, N_thresh=5, Nbin_thresh=5, semfactor=5.):
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup         = self[dataid]
+        gridx           = ingroup.attrs['gridx']
+        gridy           = ingroup.attrs['gridy']
+        pers            = self.attrs['period_array']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        maxazi          = ingroup.attrs['maxazi']
+        minazi          = ingroup.attrs['minazi']
+        Nbin_default    = ingroup.attrs['N_bin']
+        d_bin           = float((maxazi-minazi)/Nbin_default)
+        azArr           = np.arange(Nbin_default)*d_bin + minazi
+        if Ntotal_thresh is None:
+            Ntotal_thresh   = N_thresh*gridx*gridy*Nbin_default/2.
+        self._get_lon_lat_arr()
+        for period in pers:
+            print '=== Fitting azimuthal angle and amp '+str(period)+' sec'
+            pergrp      = ingroup['%g_sec'%( period )]
+            mask        = pergrp['mask'].value
+            slowAni     = pergrp['slownessAni'].value + pergrp['slowness'].value
+            velAnisem   = pergrp['velAni_sem'].value * semfactor
+            slowness    = pergrp['slowness'].value
+            histArr     = pergrp['histArr'].value
+            psiarr      = np.zeros((self.Nlat, self.Nlon))
+            amparr      = np.zeros((self.Nlat, self.Nlon))
+            misfitarr   = np.zeros((self.Nlat, self.Nlon))
+            Nbinarr     = np.zeros((self.Nlat, self.Nlon))
+            Nmarr       = np.zeros((self.Nlat, self.Nlon))
+            mask_aniso  = np.ones((self.Nlat, self.Nlon), dtype=bool)
+            #---
+            # uncertainties
+            #---
+            un_psiarr   = np.zeros((self.Nlat, self.Nlon))
+            un_amparr   = np.zeros((self.Nlat, self.Nlon))
+            for ilat in range(self.Nlat):
+                if (ilat-nlat_grad) < 0 or (ilat+nlat_grad) > (self.Nlat - 1) :
+                    continue
+                for ilon in range(self.Nlon):
+                    if (ilon-nlon_grad) < 0 or (ilon+nlon_grad) > (self.Nlon - 1) :
+                        continue
+                    if mask[ilat - nlat_grad, ilon - nlon_grad]:
+                        continue
+                    outslowness = slowAni[:, ilat - nlat_grad, ilon - nlon_grad]
+                    outvel_sem  = velAnisem[:, ilat - nlat_grad, ilon - nlon_grad]
+                    avg_slowness= slowness[ilat - nlat_grad, ilon - nlon_grad]
+                    out_hist    = histArr[:, ilat - nlat_grad, ilon - nlon_grad]
+                    if out_hist.sum() < Ntotal_thresh:
+                        continue
+                    # get the valid binned data
+                    # quality control
+                    index       = np.where((outvel_sem != 0)*(out_hist > N_thresh ))[0]
+                    outslowness = outslowness[index]
+                    az_grd      = azArr[index]
+                    outvel_sem  = outvel_sem[index]
+                    Nbin        = index.size
+                    if Nbin < Nbin_thresh:
+                        continue
+                    ###
+                    # # # if not (self.lons[ilon] == -150.+360. and self.lats[ilat] == 65.):
+                    # # #     continue
+                    ###
                     Nmarr[ilat, ilon]   = int(out_hist.sum()/(gridx*gridy))
                     Nbinarr[ilat, ilon] = Nbin
                     try:
@@ -2900,10 +2978,32 @@ class EikonalTomoDataSet(h5py.File):
                         continue
                     predat                  = A0 + A2*np.cos(2.*(np.pi/180.*(az_grd+180.)-phi2) )
                     misfit                  = np.sqrt( ((predat - 1./outslowness)**2 / outvel_sem**2).sum()/ az_grd.size )
-                    amparr[ilat, ilon]      = A2
+                    amparr[ilat, ilon]      = A2/A0*100.  # convert to percentage
+                    if phi2 < 0.:
+                        phi2                += np.pi
                     psiarr[ilat, ilon]      = phi2/np.pi*180.
                     mask_aniso[ilat, ilon]  = False
                     misfitarr[ilat, ilon]   = misfit
+                    ###
+                    # get uncertainties
+                    ###
+                    # print phi2, 
+                    # # # return 1./outslowness, outvel_sem, az_grd, np.float64(A0[0])
+                    unpsi, unamp            = _get_azi_sem(1./outslowness, outvel_sem, az_grd, np.float64(A0[0]))
+                    if np.isinf(unpsi) or np.isinf(unamp):
+                        # print 'ERROR: lon = ' + str(self.lons[ilon]) + ', lat ='+str(self.lats[ilat])
+                        unpsi, unamp        = _get_azi_sem_2(1./outslowness, outvel_sem, az_grd, np.float64(A0[0]))
+                        if np.isinf(unpsi) or np.isinf(unamp):
+                            print 'ERROR: lon = ' + str(self.lons[ilon]) + ', lat ='+str(self.lats[ilat])
+                            mask_aniso[ilat, ilon]  = True
+                            un_psiarr[ilat, ilon]   = 0.
+                            un_amparr[ilat, ilon]   = 0.
+                        un_psiarr[ilat, ilon]   = unpsi
+                        un_amparr[ilat, ilon]   = unamp
+                        # # # return 1./outslowness, outvel_sem, az_grd, np.float64(A0[0])
+                    else:
+                        un_psiarr[ilat, ilon]   = unpsi
+                        un_amparr[ilat, ilon]   = unamp
             try:
                 pergrp.create_dataset(name='amparr', data=amparr)
                 pergrp.create_dataset(name='psiarr', data=psiarr)
@@ -2911,6 +3011,9 @@ class EikonalTomoDataSet(h5py.File):
                 pergrp.create_dataset(name='misfit', data=misfitarr)
                 pergrp.create_dataset(name='Nmtotal', data=Nmarr)
                 pergrp.create_dataset(name='Nbin', data=Nbinarr)
+                #
+                pergrp.create_dataset(name='unpsi', data=un_psiarr)
+                pergrp.create_dataset(name='unamp', data=un_amparr)
             except:
                 del pergrp['amparr']
                 del pergrp['psiarr']
@@ -2918,14 +3021,211 @@ class EikonalTomoDataSet(h5py.File):
                 del pergrp['misfit']
                 del pergrp['Nmtotal']
                 del pergrp['Nbin']
+                # 
+                del pergrp['unpsi']
+                del pergrp['unamp']
                 pergrp.create_dataset(name='amparr', data=amparr)
                 pergrp.create_dataset(name='psiarr', data=psiarr)
                 pergrp.create_dataset(name='mask_aniso', data=mask_aniso)
                 pergrp.create_dataset(name='misfit', data=misfitarr)
                 pergrp.create_dataset(name='Nmtotal', data=Nmarr)
                 pergrp.create_dataset(name='Nbin', data=Nbinarr)
+                # 
+                pergrp.create_dataset(name='unpsi', data=un_psiarr)
+                pergrp.create_dataset(name='unamp', data=un_amparr)
         return
-        
+    
+    def compute_azi_aniso_enhanced(self, runid=0, fitpsi1=False, fitpsi2=True, helm=False,\
+                Ntotal_thresh=None, N_thresh=5, Nbin_thresh=5, semfactor=5.):
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup         = self[dataid]
+        gridx           = ingroup.attrs['gridx']
+        gridy           = ingroup.attrs['gridy']
+        pers            = self.attrs['period_array']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        maxazi          = ingroup.attrs['maxazi']
+        minazi          = ingroup.attrs['minazi']
+        Nbin_default    = ingroup.attrs['N_bin']
+        d_bin           = float((maxazi-minazi)/Nbin_default)
+        azArr           = np.arange(Nbin_default)*d_bin + minazi
+        if Ntotal_thresh is None:
+            Ntotal_thresh   = N_thresh*gridx*gridy*Nbin_default/2.
+        self._get_lon_lat_arr()
+        for period in pers:
+            print '=== Fitting azimuthal angle and amp '+str(period)+' sec'
+            pergrp      = ingroup['%g_sec'%( period )]
+            mask        = pergrp['mask'].value
+            slowAni     = pergrp['slownessAni'].value + pergrp['slowness'].value
+            velAnisem   = pergrp['velAni_sem'].value * semfactor
+            slowness    = pergrp['slowness'].value
+            histArr     = pergrp['histArr'].value
+            psiarr      = np.zeros((self.Nlat, self.Nlon))
+            amparr      = np.zeros((self.Nlat, self.Nlon))
+            misfitarr   = np.zeros((self.Nlat, self.Nlon))
+            Nbinarr     = np.zeros((self.Nlat, self.Nlon))
+            Nmarr       = np.zeros((self.Nlat, self.Nlon))
+            mask_aniso  = np.ones((self.Nlat, self.Nlon), dtype=bool)
+            #---
+            # uncertainties
+            #---
+            un_psiarr   = np.zeros((self.Nlat, self.Nlon))
+            un_amparr   = np.zeros((self.Nlat, self.Nlon))
+            for ilat in range(self.Nlat):
+                if (ilat-nlat_grad) < 0 or (ilat+nlat_grad) > (self.Nlat - 1) :
+                    continue
+                for ilon in range(self.Nlon):
+                    if (ilon-nlon_grad) < 0 or (ilon+nlon_grad) > (self.Nlon - 1) :
+                        continue
+                    if mask[ilat - nlat_grad, ilon - nlon_grad]:
+                        continue
+                    outslowness = slowAni[:, ilat - nlat_grad, ilon - nlon_grad]
+                    outvel_sem  = velAnisem[:, ilat - nlat_grad, ilon - nlon_grad]
+                    avg_slowness= slowness[ilat - nlat_grad, ilon - nlon_grad]
+                    out_hist    = histArr[:, ilat - nlat_grad, ilon - nlon_grad]
+                    if out_hist.sum() < Ntotal_thresh:
+                        continue
+                    # get the valid binned data
+                    # quality control
+                    index       = np.where((outvel_sem != 0)*(out_hist > N_thresh ))[0]
+                    outslowness = outslowness[index]
+                    az_grd      = azArr[index]
+                    outvel_sem  = outvel_sem[index]
+                    Nbin        = index.size
+                    if Nbin < Nbin_thresh:
+                        continue
+                    Nmarr[ilat, ilon]   = int(out_hist.sum()/(gridx*gridy))
+                    Nbinarr[ilat, ilon] = Nbin
+                    try:
+                        if fitpsi1 or fitpsi2:
+                            indat           = (1./outslowness).reshape(1, Nbin)
+                            U               = np.zeros((Nbin, Nbin), dtype=np.float64)
+                            np.fill_diagonal(U, 1./outvel_sem)
+                            # construct forward operator matrix
+                            tG              = np.ones((Nbin, 1), dtype=np.float64)
+                            G               = tG.copy()
+                            # convert azimuth to the 'real' azimuth coordinate
+                            az_grd          += 180.
+                            az_grd          = 360. - az_grd
+                            az_grd          -= 90.
+                            az_grd[az_grd<0.]\
+                                            += 360.  
+                            tbaz            = np.pi*(az_grd)/180.
+                            if fitpsi1:
+                                tGsin       = np.sin(tbaz)
+                                tGcos       = np.cos(tbaz)
+                                G           = np.append(G, tGsin)
+                                G           = np.append(G, tGcos)
+                            if fitpsi2:
+                                tGsin2      = np.sin(tbaz*2)
+                                tGcos2      = np.cos(tbaz*2)
+                                G           = np.append(G, tGsin2)
+                                G           = np.append(G, tGcos2)
+                            if fitpsi1 and fitpsi2:
+                                G           = G.reshape((5, Nbin))
+                            else:
+                                G           = G.reshape((3, Nbin))
+                            G               = G.T
+                            Gta             = G.copy()
+                            G               = np.dot(U, G)
+                            # data
+                            d               = indat.T
+                            dta             = d.copy()
+                            d               = np.dot(U, d)
+                            # least square inversion
+                            model           = np.linalg.lstsq(G, d)[0]
+                            A0              = model[0]
+                            if fitpsi1:
+                                A1          = np.sqrt(model[1]**2 + model[2]**2)
+                                phi1        = np.arctan2(model[1], model[2])/2.
+                                if fitpsi2:
+                                    A2      = np.sqrt(model[3]**2 + model[4]**2)
+                                    phi2    = np.arctan2(model[3], model[4])/2.
+                            else:
+                                A2          = np.sqrt(model[1]**2 + model[2]**2)
+                                phi2        = np.arctan2(model[1], model[2])/2.
+                    except:
+                        continue
+                    predat                  = A0 + A2*np.cos(2.*(np.pi/180.*(az_grd+180.)-phi2) )
+                    misfit                  = np.sqrt( ((predat - 1./outslowness)**2 / outvel_sem**2).sum()/ az_grd.size )
+                    amparr[ilat, ilon]      = A2/A0*100.  # convert to percentage
+                    if phi2 < 0.:
+                        phi2                += np.pi
+                    psiarr[ilat, ilon]      = phi2/np.pi*180.
+                    mask_aniso[ilat, ilon]  = False
+                    misfitarr[ilat, ilon]   = misfit
+                    ###
+                    # get uncertainties
+                    ###
+                    # estimate uncertainties
+                    x0   = np.array([model[0][0], model[1][0], model[2][0]], dtype=float)
+                    # Tarantola uncertainties, p67 eq. 3.40, 3.41
+                    Cd              = np.zeros((Nbin, Nbin), dtype=np.float64)
+                    np.fill_diagonal(Cd, outvel_sem**2)
+                    Ginv1           = np.linalg.inv( np.dot( np.dot(Gta.T, np.linalg.inv(Cd)), Gta) )
+                    Ginv2           = np.dot( np.dot(Gta.T, np.linalg.inv(Cd)), dta)
+                    mta             = np.dot(Ginv1, Ginv2)
+                    Cm              = Ginv1
+                    pcov            = np.sqrt(np.absolute(Cm))
+                    m0              = ufloat(model[0][0], pcov[0][0])
+                    m1              = ufloat(model[1][0], pcov[1][1])
+                    m2              = ufloat(model[2][0], pcov[2][2])
+                    if not np.allclose(mta[:, 0], x0):
+                        raise ValueError('incompatible '+str(mta)+' '+str(x0))
+                    # scipy uncertainties
+                    # # # pfit, pcov, infodict, errmsg, success = \
+                    # # #     optimize.leastsq(azi_errfunc, x0=x0,\
+                    # # #                      args=(azArr, 1./outslowness[:, 0], outvel_sem[:, 0]), full_output=1, epsfcn=0.0001)
+                    # # # if (len(azArr) > len(x0)) and pcov is not None:
+                    # # #     s_sq = (azi_errfunc(x0, azArr, 1./outslowness[:, 0], outvel_sem[:, 0])**2).sum()/(len(azArr)-len(x0))
+                    # # #     pcov = pcov * s_sq
+                    # # # pcov            = np.sqrt(np.absolute(pcov))
+                    # # # m0              = ufloat(model[0][0], pcov[0][0])
+                    # # # m1              = ufloat(model[1][0], pcov[1][1])
+                    # # # m2              = ufloat(model[2][0], pcov[2][2])
+
+                    unA2            = (uncertainties.umath.sqrt(m1**2+m2**2)/m0*100.).std_dev
+                    unpsi2          = uncertainties.umath.atan2(m1, m2).std_dev
+                    unamp           = unA2
+                    unpsi           = unpsi2/np.pi*180.
+                    if unpsi>90.:
+                        unpsi       = 90.
+                    un_psiarr[ilat, ilon]   = unpsi
+                    un_amparr[ilat, ilon]   = unamp
+            try:
+                pergrp.create_dataset(name='amparr', data=amparr)
+                pergrp.create_dataset(name='psiarr', data=psiarr)
+                pergrp.create_dataset(name='mask_aniso', data=mask_aniso)
+                pergrp.create_dataset(name='misfit', data=misfitarr)
+                pergrp.create_dataset(name='Nmtotal', data=Nmarr)
+                pergrp.create_dataset(name='Nbin', data=Nbinarr)
+                #
+                pergrp.create_dataset(name='unpsi', data=un_psiarr)
+                pergrp.create_dataset(name='unamp', data=un_amparr)
+            except:
+                del pergrp['amparr']
+                del pergrp['psiarr']
+                del pergrp['mask_aniso']
+                del pergrp['misfit']
+                del pergrp['Nmtotal']
+                del pergrp['Nbin']
+                # 
+                del pergrp['unpsi']
+                del pergrp['unamp']
+                pergrp.create_dataset(name='amparr', data=amparr)
+                pergrp.create_dataset(name='psiarr', data=psiarr)
+                pergrp.create_dataset(name='mask_aniso', data=mask_aniso)
+                pergrp.create_dataset(name='misfit', data=misfitarr)
+                pergrp.create_dataset(name='Nmtotal', data=Nmarr)
+                pergrp.create_dataset(name='Nbin', data=Nbinarr)
+                # 
+                pergrp.create_dataset(name='unpsi', data=un_psiarr)
+                pergrp.create_dataset(name='unamp', data=un_amparr)
+        return
+    
     def num_measure_info(self, runid=0, percentage=None, num_thresh=None, helm=False):
         pers            = self.attrs['period_array']
         if helm:
@@ -2978,6 +3278,176 @@ class EikonalTomoDataSet(h5py.File):
         return outaz, outslow
         
     def plot_azimuthal_single_point(self, inlat, inlon, runid, period, helm=False, \
+                            fitpsi1=False, fitpsi2=True, getdata=False, showfig=True, outfname = None, semfactor=5.):
+        if inlon < 0:
+            inlon       += 360.
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup         = self[dataid]
+        pers            = self.attrs['period_array']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        self._get_lon_lat_arr()
+        index   = np.where((self.latArr==inlat)*(self.lonArr==inlon))
+        if index[0].size == 0 or index[1].size == 0:
+            print 'No data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp          = ingroup['%g_sec'%( period )]
+        mask            = pergrp['mask'].value
+        if mask[index[0], index[1]]:
+            print 'No valid data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
+        slowAni         = pergrp['slownessAni'].value + pergrp['slowness'].value
+        velAnisem       = pergrp['velAni_sem'].value
+        outslowness     = slowAni[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        outvel_sem      = velAnisem[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        avg_slowness    = pergrp['slowness'].value[index[0] - nlat_grad, index[1] - nlon_grad]
+        maxazi          = ingroup.attrs['maxazi']
+        minazi          = ingroup.attrs['minazi']
+        Nbin            = ingroup.attrs['N_bin']
+        d_bin           = float((maxazi-minazi)/Nbin)
+        azArr           = np.arange(Nbin)*d_bin + minazi
+        hist_temp       = pergrp['histArr'].value[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        # outvel_sem      *= np.sqrt(hist_temp)
+        
+        ind             = np.where(outvel_sem != 0)[0]
+        outslowness     = outslowness[ind]
+        azArr           = azArr[ind]
+        outvel_sem      = outvel_sem[ind]*semfactor
+        Nbin            = ind.size
+        if getdata:
+            return azArr, 1./outslowness, outvel_sem, 1./avg_slowness
+        if fitpsi1 or fitpsi2:
+            indat           = (1./outslowness).reshape(1, Nbin)
+            U               = np.zeros((Nbin, Nbin), dtype=np.float64)
+            np.fill_diagonal(U, 1./outvel_sem)
+            # construct forward operator matrix
+            tG              = np.ones((Nbin, 1), dtype=np.float64)
+            G               = tG.copy()
+            azArr           += 180.
+            azArr           = 360. - azArr
+            azArr           -= 90.
+            azArr[azArr<0.] += 360.  
+            tbaz            = np.pi*(azArr)/180.
+            if fitpsi1:
+                tGsin       = np.sin(tbaz)
+                tGcos       = np.cos(tbaz)
+                G           = np.append(G, tGsin)
+                G           = np.append(G, tGcos)
+            if fitpsi2:
+                tGsin2      = np.sin(tbaz*2)
+                tGcos2      = np.cos(tbaz*2)
+                G           = np.append(G, tGsin2)
+                G           = np.append(G, tGcos2)
+            if fitpsi1 and fitpsi2:
+                G           = G.reshape((5, Nbin))
+            else:
+                G           = G.reshape((3, Nbin))
+            G               = G.T
+            Gta             = G.copy()
+            G               = np.dot(U, G)
+            # data
+            d               = indat.T
+            dta             = d.copy()
+            d               = np.dot(U, d)
+            # least square inversion
+            model           = np.linalg.lstsq(G, d)[0]
+            A0              = model[0]
+            if fitpsi1:
+                A1          = np.sqrt(model[1]**2 + model[2]**2)
+                phi1        = np.arctan2(model[1], model[2])/2.
+                if fitpsi2:
+                    A2      = np.sqrt(model[3]**2 + model[4]**2)
+                    phi2    = np.arctan2(model[3], model[4])/2.
+            else:
+                A2          = np.sqrt(model[1]**2 + model[2]**2)
+                phi2        = np.arctan2(model[1], model[2])/2.
+            # estimate uncertainties
+            x0   = np.array([model[0][0], model[1][0], model[2][0]], dtype=float)
+            # Tarantola uncertainties
+            Cd              = np.zeros((Nbin, Nbin), dtype=np.float64)
+            np.fill_diagonal(Cd, outvel_sem**2)
+            Ginv1           = np.linalg.inv( np.dot( np.dot(Gta.T, np.linalg.inv(Cd)), Gta) )
+            Ginv2           = np.dot( np.dot(Gta.T, np.linalg.inv(Cd)), dta)
+            mta             = np.dot(Ginv1, Ginv2)
+            Cm              = Ginv1
+            pcov            = np.sqrt(np.absolute(Cm))
+            m0              = ufloat(model[0][0], pcov[0][0])
+            m1              = ufloat(model[1][0], pcov[1][1])
+            m2              = ufloat(model[2][0], pcov[2][2])
+            # scipy uncertainties
+            pfit, pcov, infodict, errmsg, success = \
+                optimize.leastsq(azi_errfunc, x0=x0,\
+                                 args=(azArr, 1./outslowness[:, 0], outvel_sem[:, 0]), full_output=1, epsfcn=0.0001)
+            if (len(azArr) > len(x0)) and pcov is not None:
+                s_sq = (azi_errfunc(x0, azArr, 1./outslowness[:, 0], outvel_sem[:, 0])**2).sum()/(len(azArr)-len(x0))
+                pcov = pcov * s_sq
+            pcov            = np.sqrt(np.absolute(pcov))
+            m0              = ufloat(model[0][0], pcov[0][0])
+            m1              = ufloat(model[1][0], pcov[1][1])
+            m2              = ufloat(model[2][0], pcov[2][2])
+            
+            
+            unA2            = (uncertainties.umath.sqrt(m1**2+m2**2)/m0*100.).std_dev
+            unpsi2          = (uncertainties.umath.atan2(m1, m2)/np.pi*180./2.).std_dev
+            
+            # print unA2/A0*100., unpsi2
+
+            if not np.allclose(mta[:, 0], x0):
+                raise ValueError('incompatible '+str(mta)+' '+str(x0))
+            # # # print np.sqrt(np.absolute(Cm))
+            # # # print mta.shape
+            # # # print x0
+            return 
+        
+        plt.figure(figsize=[18, 9.6])
+        ax      = plt.subplot()
+        if helm:
+            plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='Helmholtz observed')
+        else:
+            az_plt  = []
+            vel_plt = []
+            sem_plt = []
+            for i in range(azArr.size):
+                if azArr[i] in az_plt:
+                    continue
+                az_plt.append(azArr[i])
+                vel_plt.append(1./outslowness[i])
+                sem_plt.append(outvel_sem[i])
+            plt.errorbar(az_plt, vel_plt, yerr=sem_plt, fmt='o', color='k', label='eikonal observed', ms=10)
+        if fitpsi1 or fitpsi2:
+            az_fit          = np.mgrid[minazi:maxazi:100*1j]
+            if fitpsi1:
+                predat      = A0 + A1*np.cos((np.pi/180.*(az_fit+180.)-phi1) )
+                fitlabel    = 'A1: %g %%, phi1: %g deg \n' %(A1[0]/A0[0]*100., phi1/np.pi*180.)
+                if fitpsi2:
+                     predat     += A2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2) )
+                     fitlabel   += 'A2: %g %%, phi2: %g deg' %(A2[0]/A0[0]*100., phi2/np.pi*180.)
+            else:
+                predat      = A0 + A2*np.cos(2.*(np.pi/180.*(az_fit+180.)-phi2) )
+                fitlabel    = 'A2: %g %%, phi2: %g deg' %(A2[0]/A0[0]*100., phi2/np.pi*180.)
+            if helm:
+                plt.plot(az_fit+180., predat, 'b-', lw=3, label='Helmholtz fit \n'+fitlabel )
+            else:
+                plt.plot(az_fit+180., predat, 'b-', lw=3, label='eikonal fit \n'+fitlabel )
+            # print phi1/np.pi*180.
+            # # plt.plot(azArr+180., predat, '-')
+        plt.ylabel('Phase velocity(km/sec)', fontsize=50)
+        plt.xlabel('Azimuth (degree)', fontsize=50)
+        ax.tick_params(axis='x', labelsize=50)
+        ax.tick_params(axis='y', labelsize=50)
+        plt.legend()
+        # plt.title('lon = '+str(inlon-360.)+', lat = '+str(inlat), fontsize=30.)
+        if showfig:
+            plt.show()
+        if outfname is not None:
+            plt.savefig(outfname)
+    
+    def plot_azimuthal_single_point_cor(self, inlat, inlon, runid, period, helm=False, \
                             fitpsi1=False, fitpsi2=True, getdata=False, showfig=True, outfname = None):
         if inlon < 0:
             inlon       += 360.
@@ -3009,7 +3479,10 @@ class EikonalTomoDataSet(h5py.File):
         maxazi          = ingroup.attrs['maxazi']
         minazi          = ingroup.attrs['minazi']
         Nbin            = ingroup.attrs['N_bin']
-        azArr           = np.mgrid[minazi:maxazi:Nbin*1j]
+        d_bin           = float((maxazi-minazi)/Nbin)
+        azArr           = np.arange(Nbin)*d_bin + minazi
+        hist_temp       = pergrp['histArr'].value[:, index[0] - nlat_grad, index[1] - nlon_grad]
+        # outvel_sem      *= np.sqrt(hist_temp)
         
         ind             = np.where(outvel_sem != 0)[0]
         outslowness     = outslowness[ind]
@@ -3062,23 +3535,21 @@ class EikonalTomoDataSet(h5py.File):
                 else:
                     A2          = np.sqrt(model[1]**2 + model[2]**2)
                     phi2        = np.arctan2(model[1], model[2])/2.
-                # # # predat          = np.dot(G, model) * outvel_sem
-                # # # az_fit          = np.mgrid[minazi:maxazi:100*1j]
-                # # # predat          = A1*np.cos(np.pi*(az_fit+180.) - phi1)
             plt.figure(figsize=[18, 9.6])
             ax      = plt.subplot()
             if helm:
                 plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', label='Helmholtz observed')
             else:
-                # index   = (azArr>263.)*(azArr<273.)
-                # v       = (1./outslowness)
-                # index   = np.logical_not( index * (v[:, 0]< 3.52) )
-                # plt.errorbar(azArr[index], 1./outslowness[index], yerr=outvel_sem[index], fmt='o', label='eikonal observed')
-                ind       = np.logical_not( (abs(azArr - 270.) <5.) * (1./outslowness[:, 0]>3.555))
-                # print azArr[ind]
-                # print azArr.shape, outslowness.shape
-                plt.errorbar(azArr[ind], 1./outslowness[ind], yerr=outvel_sem[ind]*4., fmt='o', color='k', label='eikonal observed', ms=10)
-                # plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', color='k', label='eikonal observed')
+                az_plt  = []
+                vel_plt = []
+                sem_plt = []
+                for i in range(azArr.size):
+                    if azArr[i] in az_plt:
+                        continue
+                    az_plt.append(azArr[i])
+                    vel_plt.append(1./outslowness[i])
+                    sem_plt.append(outvel_sem[i])
+                plt.errorbar(az_plt, vel_plt, yerr=sem_plt*5., fmt='o', color='k', label='eikonal observed', ms=10)
             if fitpsi1 or fitpsi2:
                 az_fit          = np.mgrid[minazi:maxazi:100*1j]
                 if fitpsi1:
@@ -3209,7 +3680,7 @@ class EikonalTomoDataSet(h5py.File):
                 ind       = np.logical_not( (abs(azArr - 270.) <5.) * (1./outslowness[:, 0]>3.847) + (1./outslowness[:, 0] < 3.835))
                 # print azArr[ind]
                 # print azArr.shape, outslowness.shape
-                plt.errorbar(azArr[ind], 1./outslowness[ind], yerr=outvel_sem[ind]*4., fmt='o', color='k', ms=10, label='eikonal observed')
+                plt.errorbar(azArr[ind], 1./outslowness[ind], yerr=outvel_sem[ind]*5., fmt='o', color='k', ms=10, label='eikonal observed')
                 
                 # plt.errorbar(azArr, 1./outslowness, yerr=outvel_sem, fmt='o', color='k', label='eikonal observed')
                 
@@ -3378,26 +3849,79 @@ class EikonalTomoDataSet(h5py.File):
         except:
             return
 
-        # if fitpsi1 or fitpsi2:
-        #     return indat, model
-        
     def plot_azimuthal_eik_helm(self, inlat, inlon, runid, period, fitdata=True, getdata=False):
         self.plot_azimuthal_single_point(inlat=inlat, inlon=inlon, runid=runid,\
                     period=period, helm=False, fitdata=fitdata, getdata=getdata, showfig=False)
         self.plot_azimuthal_single_point(inlat=inlat, inlon=inlon, runid=runid,\
                     period=period, helm=True, fitdata=fitdata, getdata=getdata, showfig=True)
         return
-        
-    def _numpy2ma(self, inarray, reason_n=None):
-        """Convert input numpy array to masked array
-        """
-        if reason_n==None:
-            outarray=ma.masked_array(inarray, mask=np.zeros(self.reason_n.shape) )
-            outarray.mask[self.reason_n!=0]=1
+       
+    def plot_azi_fit(self, inlat, inlon, runid=0, helm=False, showfig=True, outfname = None):
+        if inlon < 0:
+            inlon       += 360.
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
         else:
-            outarray=ma.masked_array(inarray, mask=np.zeros(reason_n.shape) )
-            outarray.mask[reason_n!=0]=1
-        return outarray     
+            dataid      = 'Eikonal_stack_'+str(runid)
+        ingroup         = self[dataid]
+        pers            = self.attrs['period_array']
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        self._get_lon_lat_arr()
+        index   = np.where((self.latArr==inlat)*(self.lonArr==inlon))
+        if index[0].size == 0 or index[1].size == 0:
+            print 'No data at lon = '+str(inlon)+' lat = '+str(inlat)
+            return
+        amparr          = np.zeros(pers.size)
+        psiarr          = np.zeros(pers.size)
+        unamparr        = np.zeros(pers.size)
+        unpsiarr        = np.zeros(pers.size)
+        iper            = 0
+        for per in pers:
+            pergrp          = ingroup['%g_sec'%( per )]
+            mask            = pergrp['mask'].value
+            if mask[index[0], index[1]]:
+                print 'No valid data at lon = '+str(inlon)+' lat = '+str(inlat)
+                return
+            amp         = pergrp['amparr'].value[index[0], index[1]]
+            unamp       = pergrp['unamp'].value[index[0], index[1]]
+            psi         = pergrp['psiarr'].value[index[0], index[1]]
+            if psi < 0.:
+                psi     += 180.
+            unpsi       = pergrp['unpsi'].value[index[0], index[1]]
+            vel_iso     = pergrp['vel_iso'].value[index[0], index[1]]
+            
+            # # # amp         = amp/vel_iso*100.
+            
+            unamp       = min(unamp, amp)
+            #
+            amparr[iper]    = amp
+            unamparr[iper]  = unamp
+            psiarr[iper]    = psi
+            unpsiarr[iper]  = unpsi
+            #
+            iper        += 1
+        # ---
+        plt.figure()
+        ax      = plt.subplot()
+        plt.errorbar(pers, amparr, yerr=unamparr, fmt='o')
+        plt.ylabel('Anisotropy amplitude (%)', fontsize=50)
+        plt.xlabel('Period (sec)', fontsize=50)
+        ax.tick_params(axis='x', labelsize=50)
+        ax.tick_params(axis='y', labelsize=50)
+        # --- 
+        plt.figure()
+        ax      = plt.subplot()
+        plt.errorbar(pers, psiarr, yerr=unpsiarr, fmt='o')
+        plt.ylabel('Fast azimuth (deg)', fontsize=50)
+        plt.xlabel('Period (sec)', fontsize=50)
+        ax.tick_params(axis='x', labelsize=50)
+        ax.tick_params(axis='y', labelsize=50)
+        if showfig:
+            plt.show()
+        if outfname is not None:
+            plt.savefig(outfname)
+        return
     
     def _get_lon_lat_arr(self, ncut=0):
         """Get longitude/latitude array
@@ -3415,16 +3939,22 @@ class EikonalTomoDataSet(h5py.File):
         self.lonArr, self.latArr = np.meshgrid(self.lons, self.lats)
         return
     
-    def np2ma(self):
-        """Convert numpy data array to masked data array
+    def _get_lon_lat_arr_interp(self, ncut=0):
+        """Get longitude/latitude array
         """
-        try:
-            reason_n=self.reason_n
-        except:
-            raise AttrictError('No reason_n array!')
-        self.vel_iso=self._numpy2ma(self.vel_iso)
+        minlon      = self.attrs['minlon']
+        maxlon      = self.attrs['maxlon']
+        minlat      = self.attrs['minlat']
+        maxlat      = self.attrs['maxlat']
+        dlon        = self.attrs['dlon_interp']
+        dlat        = self.attrs['dlat_interp']
+        self.lons   = np.arange((maxlon-minlon)/dlon+1-2*ncut)*dlon+minlon+ncut*dlon
+        self.lats   = np.arange((maxlat-minlat)/dlat+1-2*ncut)*dlat+minlat+ncut*dlat
+        self.Nlon   = self.lons.size
+        self.Nlat   = self.lats.size
+        self.lonArr, self.latArr = np.meshgrid(self.lons, self.lats)
         return
-     
+    
     def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
         """Get basemap for plotting results
         """
@@ -3509,12 +4039,12 @@ class EikonalTomoDataSet(h5py.File):
             m.plot(px,py,'k-',linewidth=2.)
         ######################
         # m.drawstates(linewidth=1.)
+        # m.fillcontinents(lake_color='#99ffff',zorder=0.2)
         try:
             geopolygons.PlotPolygon(inbasemap=m)
         except:
             pass
         return m
-    
     
     def plot(self, runid, datatype, period, semfactor=2., Nthresh=None, helm=False, merged=False, clabel='', cmap='cv', projection='lambert',\
                 hillshade=False, geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True, v_rel=None):
@@ -3567,7 +4097,7 @@ class EikonalTomoDataSet(h5py.File):
             datatype    = 'slowness_std'
         try:
             data        = pergrp[datatype].value
-            if datatype=='slowness_std' or datatype=='Nmeasure' or datatype=='NmeasureQC':
+            if datatype=='slowness_std' or datatype=='Nmeasure' or datatype=='NmeasureQC' or datatype=='NmeasureAni':
                 if self.lonArr.shape != data.shape:
                     data2   = data.copy()
                     data    = np.zeros(self.lonArr.shape)
@@ -3580,9 +4110,18 @@ class EikonalTomoDataSet(h5py.File):
             outstr      = outstr[:-1]
             raise KeyError('Unexpected datatype: '+datatype+\
                            ', available datatypes are: '+outstr)
+        if datatype=='NmeasureAni':
+            factor  = ingroup.attrs['gridx'] * ingroup.attrs['gridy']
+        else:
+            factor  = 1
         # mask1       = pergrp['mask'].value
         # mask2       = pergrp['mask_eik'].value
-        mask        = pergrp['mask'].value
+        if datatype=='NmeasureAni' or datatype=='unpsi' or datatype=='unamp' or datatype=='amparr':
+            mask    = pergrp['mask_aniso'].value + pergrp['mask'].value
+        else:
+            mask    = pergrp['mask'].value
+        # if datatype == 'amparr':
+        #     data    *= 100.
         # mask2       += mask
         if not (Nthresh is None):
             Narr        = np.zeros(self.lonArr.shape)
@@ -3594,20 +4133,32 @@ class EikonalTomoDataSet(h5py.File):
         if datatype == 'vel_sem':
             data    *= 1000.*semfactor
         ###
-        # # # diffdata    = abs(indata - data)
-        # # # 
-        # # # data [diffdata>0.1]  = indata[diffdata> 0.1]
+        # # # minlon              = self.attrs['minlon']
+        # # # maxlon              = self.attrs['maxlon']
+        # # # minlat              = self.attrs['minlat']
+        # # # maxlat              = self.attrs['maxlat']
+        # # # dlon                = self.attrs['dlon']
+        # # # dlat                = self.attrs['dlat']
+        # # # nlat_grad           = self.attrs['nlat_grad']
+        # # # nlon_grad           = self.attrs['nlon_grad']
+        # # # nlat_lplc           = self.attrs['nlat_lplc']
+        # # # nlon_lplc           = self.attrs['nlon_lplc']
+        # # # field           = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+        # # #                             minlat=minlat, maxlat=maxlat, dlat=dlat, period=10., evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
+        # # # index           = np.logical_not(mask)
+        # # # field.read_array(lonArr = self.lonArr[index], latArr = self.latArr[index], ZarrIn = data[index])
+        # # # outfname        = 'smooth_paraval.lst'
+        # # # field.gauss_smoothing(workingdir='./temp_smooth', outfname=outfname, width=15.)
+        # # # data            = field.Zarr
         ###
-        mdata       = ma.masked_array(data, mask=mask )
+        mdata       = ma.masked_array(data/factor, mask=mask )
+        
+        print data[np.logical_not(mask)].mean()
         #-----------
         # plot data
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        # shapefname  = '/home/leon/geological_maps/qfaults'
-        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        # shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-        # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='grey')
         
         plot_fault_lines(m, 'AK_Faults.txt', color='grey')
         if cmap == 'ses3d':
@@ -3615,7 +4166,7 @@ class EikonalTomoDataSet(h5py.File):
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         elif cmap == 'cv':
             import pycpt
-            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
         else:
             try:
                 if os.path.isfile(cmap):
@@ -3640,28 +4191,28 @@ class EikonalTomoDataSet(h5py.File):
             topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
             m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
         ###################################################################
-        # if hillshade:
-        #     m.fillcontinents(lake_color='#99ffff',zorder=0.2, alpha=0.2)
-        # else:
-        #     m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        
         if v_rel is not None:
             mdata       = (mdata - v_rel)/v_rel * 100.
         if hillshade:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
         else:
             im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-            
-        mask_eik    = pergrp['mask_eik'].value
-        if datatype == 'vel_iso':
-            m.contour(x, y, mask_eik, linestyles='dashed', colors='black', lw=1.)
-            # m.contour(x, y, mask_eik, colors='cyan', lw=1)
-        else:
-            m.contour(x, y, mask_eik, linestyles='dashed', colors='black', lw=1.)
+        ###
+        # contour for eikonal
+        # mask_eik    = pergrp['mask_eik'].value
+        # if datatype == 'vel_iso':
+        #     m.contour(x, y, mask_eik, linestyles='dashed', colors='black', lw=1.)
+        #     # m.contour(x, y, mask_eik, colors='cyan', lw=1)
+        # else:
+        #     m.contour(x, y, mask_eik, linestyles='dashed', colors='black', lw=1.)
+        ###
+        
             # m.contour(x, y, mask_eik, colors='white', lw=1)
         # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
         # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
-        cb          = m.colorbar(im, "bottom", size="5%", pad='2%', ticks=[4.0, 4.1, 4.2, 4.3, 4.4])
-        # cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        # cb          = m.colorbar(im, "bottom", size="5%", pad='2%', ticks=[4.0, 4.1, 4.2, 4.3, 4.4])
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
         cb.set_label(clabel, fontsize=40, rotation=0)
         # cb.outline.set_linewidth(2)
         plt.suptitle(str(period)+' sec', fontsize=20)
@@ -3794,7 +4345,6 @@ class EikonalTomoDataSet(h5py.File):
             plt.show()
         return
         
-    
     def plot_diff(self, runid, datatype, period, helm=False, clabel='', cmap='cv', projection='lambert', hillshade=False,\
                   geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True):
         """plot maps from the tomographic inversion
@@ -3867,7 +4417,7 @@ class EikonalTomoDataSet(h5py.File):
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         elif cmap == 'cv':
             import pycpt
-            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
         elif os.path.isfile(cmap):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
@@ -3965,7 +4515,7 @@ class EikonalTomoDataSet(h5py.File):
         # shapefname  = '/home/leon/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
         # m.readshapefile(shapefname, 'geolarc', linewidth=1, color='red')
         
-        plot_fault_lines(m, 'AK_Faults.txt', lw=1, color='red')
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
         
         # for d in [20.,40., 60., 80., 100., 120.]:
         # for d in [100.]:
@@ -3988,8 +4538,8 @@ class EikonalTomoDataSet(h5py.File):
         yatlons             = yakutat_slb_dat[:, 0]
         yatlats             = yakutat_slb_dat[:, 1]
         xyat, yyat          = m(yatlons, yatlats)
-        m.plot(xyat, yyat, lw = 3, color='black')
-        m.plot(xyat, yyat, lw = 1, color='white')
+        m.plot(xyat, yyat, lw = 5, color='black')
+        m.plot(xyat, yyat, lw = 3, color='white')
         # #############################
         # import shapefile
         # shapefname  = '/home/leon/volcano_locs/SDE_GLB_VOLC.shp'
@@ -4024,7 +4574,7 @@ class EikonalTomoDataSet(h5py.File):
                                 0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
             elif cmap == 'cv':
                 import pycpt
-                cmap    = pycpt.load.gmtColormap('./cv.cpt')
+                cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
             else:
                 try:
                     if os.path.isfile(cmap):
@@ -4035,9 +4585,11 @@ class EikonalTomoDataSet(h5py.File):
             if masked:
                 data     = ma.masked_array(data, mask=mask )
             im          = m.pcolormesh(x, y, data, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-            cb          = m.colorbar(im, "bottom", size="3%", pad='2%')#, ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
-            cb.set_label(clabel, fontsize=20, rotation=0)
-            cb.ax.tick_params(labelsize=15)
+            cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+            cb.set_label(clabel, fontsize=40, rotation=0)
+            # cb.outline.set_linewidth(2)
+            plt.suptitle(str(period)+' sec', fontsize=20)
+            cb.ax.tick_params(labelsize=40)
             cb.set_alpha(1)
             cb.draw_all()
             cb.solids.set_edgecolor("face")
@@ -4062,41 +4614,754 @@ class EikonalTomoDataSet(h5py.File):
         Q2      = m.quiver(x_psi, y_psi, -U, -V, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='k')
         if scaled:
             mask_ref        = np.ones(self.lonArr.shape)
-            ind             = (self.lonArr == -146.+360.)*(self.latArr == 56.5)
+            # ind             = (self.lonArr == -146.+360.)*(self.latArr == 56.5)
             # print ind
-            mask_ref[ind]   = False
+            # mask_ref[ind]   = False
             Uref            = ma.masked_array(Uref, mask=mask_ref )
             Vref            = ma.masked_array(Vref, mask=mask_ref )
             m.quiver(xref, yref, Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
             m.quiver(xref, yref, -Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
-            # 
-        
-        # from netCDF4 import Dataset
-        # from matplotlib.colors import LightSource
-        # import pycpt
-        # etopodata   = Dataset('/home/leon/station_map/grd_dir/ETOPO2v2g_f4.nc')
-        # etopo       = etopodata.variables['z'][:]
-        # lons        = etopodata.variables['x'][:]
-        # lats        = etopodata.variables['y'][:]
-        # ls          = LightSource(azdeg=315, altdeg=45)
-        # # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
-        # etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
-        # # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
-        # ny, nx      = etopo.shape
-        # topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
-        # m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
-        # mycm1       = pycpt.load.gmtColormap('/home/leon/station_map/etopo1.cpt')
-        # mycm2       = pycpt.load.gmtColormap('/home/leon/station_map/bathy1.cpt')
-        # mycm2.set_over('w',0)
-        # m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
-        # m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
-        # ############################
         plt.suptitle(str(period)+' sec', fontsize=20)
-
+        # return amp
             
         if showfig:
             plt.show()
         return
+    
+    def plot_fast_axis_coverage(self, runid, period, helm=False, factor=10, normv=5., width=0.005, ampref=0.05, datatype='',
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps of fast axis from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        hillshade       - produce hill shade or not
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi     = pergrp['psiarr'].value
+        amp     = pergrp['amparr'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value 
+        # return 
+        # get velocity
+        try:
+            data= pergrp[datatype].value
+            plot_data   = True
+        except:
+            plot_data   = False
+        #-----------
+        # plot data
+        #-----------
+        m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
+        
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
+        yakutat_slb_dat     = np.loadtxt('YAK_extent.txt')
+        yatlons             = yakutat_slb_dat[:, 0]
+        yatlats             = yakutat_slb_dat[:, 1]
+        xyat, yyat          = m(yatlons, yatlats)
+        m.plot(xyat, yyat, lw = 5, color='black')
+        m.plot(xyat, yyat, lw = 3, color='white')
+        
+        if scaled:
+            # ampref  = amp.max()
+            # print ampref
+            U       = np.sin(psi/180.*np.pi)*amp/ampref/normv
+            V       = np.cos(psi/180.*np.pi)*amp/ampref/normv
+            Uref    = np.ones(self.lonArr.shape)*1./normv
+            Vref    = np.zeros(self.lonArr.shape)
+        else:
+            U       = np.sin(psi/180.*np.pi)/normv
+            V       = np.cos(psi/180.*np.pi)/normv
+        # rotate vectors to map projection coordinates
+        U, V, x, y  = m.rotate_vector(U, V, self.lonArr-360., self.latArr, returnxy=True)
+        if scaled:
+            Uref, Vref, xref, yref  = m.rotate_vector(Uref, Vref, self.lonArr-360., self.latArr, returnxy=True)
+        #--------------------------------------
+        # plot isotropic velocity
+        #--------------------------------------
+        if plot_data:
+            if cmap == 'ses3d':
+                cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                                0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+            elif cmap == 'cv':
+                import pycpt
+                cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
+            else:
+                try:
+                    if os.path.isfile(cmap):
+                        import pycpt
+                        cmap    = pycpt.load.gmtColormap(cmap)
+                except:
+                    pass
+            if masked:
+                data     = ma.masked_array(data, mask=mask )
+            im          = m.pcolormesh(x, y, data, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+            cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+            cb.set_label(clabel, fontsize=40, rotation=0)
+            # cb.outline.set_linewidth(2)
+            plt.suptitle(str(period)+' sec', fontsize=20)
+            cb.ax.tick_params(labelsize=40)
+            cb.set_alpha(1)
+            cb.draw_all()
+            cb.solids.set_edgecolor("face")
+        
+        #--------------------------------------
+        # plot fast axis
+        #--------------------------------------
+        x_psi       = x.copy()
+        y_psi       = y.copy()
+        mask_psi    = mask.copy()
+        ##
+        ##
+        dset        = EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/comp_xcorr_2deg_0.05.h5')
+        covdata     = dset.plot_azi_coverage(period=period, gaptype=1, Nazi_thresh=600, showfig=False)
+        mask_cover  = covdata >= 90.
+        mask_psi    += mask_cover
+        ##
+        if factor!=None:
+            x_psi   = x_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+            y_psi   = y_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+            U       = U[0:self.Nlat:factor, 0:self.Nlon:factor]
+            V       = V[0:self.Nlat:factor, 0:self.Nlon:factor]
+            mask_psi= mask_psi[0:self.Nlat:factor, 0:self.Nlon:factor]
+        # Q       = m.quiver(x, y, U, V, scale=30, width=0.001, headaxislength=0)
+        if masked:
+            U   = ma.masked_array(U, mask=mask_psi )
+            V   = ma.masked_array(V, mask=mask_psi )
+        Q1      = m.quiver(x_psi, y_psi, U, V, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='k')
+        Q2      = m.quiver(x_psi, y_psi, -U, -V, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='k')
+        if scaled:
+            mask_ref        = np.ones(self.lonArr.shape)
+            # ind             = (self.lonArr == -146.+360.)*(self.latArr == 56.5)
+            # print ind
+            # mask_ref[ind]   = False
+            Uref            = ma.masked_array(Uref, mask=mask_ref )
+            Vref            = ma.masked_array(Vref, mask=mask_ref )
+            m.quiver(xref, yref, Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
+            m.quiver(xref, yref, -Uref, Vref, scale=20, width=width, headaxislength=0, headlength=0, headwidth=0.5, color='g')
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        if showfig:
+            plt.show()
+        return
+    
+    def plot_azi_coverage(self, period, runid=0, helm=False, Nazi_thresh=50, N_thresh=1, gaptype=0,
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        nlat_grad       = self.attrs['nlat_grad']
+        nlon_grad       = self.attrs['nlon_grad']
+        N_bin           = ingroup.attrs['N_bin']
+        minazi          = ingroup.attrs['minazi']
+        maxazi          = ingroup.attrs['maxazi']
+        gridx           = ingroup.attrs['gridx']
+        gridy           = ingroup.attrs['gridy']
+        
+        d_bin           = float((maxazi-minazi)/N_bin)
+        azArr           = np.arange(N_bin)*d_bin + minazi
+        if Nazi_thresh is None:
+            Nazi_thresh   = N_thresh*gridx*gridy
+            # Nazi_thresh   = 50
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        histArr = pergrp['histArr'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value 
+
+
+        index_thresh        = histArr>=Nazi_thresh
+        total_gap           = np.zeros(self.lonArr.shape)
+        total_gap[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
+                            = 360. - index_thresh.sum(axis=0) * d_bin
+        gap_1               = np.zeros(total_gap.shape)
+        gap_2               = np.zeros(total_gap.shape)
+        g1, g2              = _get_gaps(index_thresh)
+        gap_1[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
+                            = g1* d_bin
+        gap_2[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
+                            = g2* d_bin
+        if gaptype == 0:
+           data = total_gap
+        elif gaptype == 1:
+            data = gap_1
+        else:
+            data = gap_2
+        if not showfig:
+            return data
+        #-----------
+        # plot data
+        #-----------
+        m           = self._get_basemap(projection=projection, geopolygons=geopolygons)        
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
+        yakutat_slb_dat     = np.loadtxt('YAK_extent.txt')
+        yatlons             = yakutat_slb_dat[:, 0]
+        yatlats             = yakutat_slb_dat[:, 1]
+        xyat, yyat          = m(yatlons, yatlats)
+        m.plot(xyat, yyat, lw = 5, color='black')
+        m.plot(xyat, yyat, lw = 3, color='white')
+        #--------------------------------------
+        # plot isotropic velocity
+        #--------------------------------------
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
+        else:
+            try:
+                if os.path.isfile(cmap):
+                    import pycpt
+                    cmap    = pycpt.load.gmtColormap(cmap)
+            except:
+                pass
+        if masked:
+            data     = ma.masked_array(data, mask=mask )
+        x, y        = m(self.lonArr, self.latArr)
+        im          = m.pcolormesh(x, y, data, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.set_label(clabel, fontsize=40, rotation=0)
+        # cb.outline.set_linewidth(2)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=40)
+        cb.set_alpha(1)
+        cb.draw_all()
+        cb.solids.set_edgecolor("face")
+        plt.suptitle(str(gaptype)+' type', fontsize=20)
+            
+        if showfig:
+            plt.show()
+        return
+    
+    def hist_fast_axis(self, inh5fname, runid, period, helm=False, factor=10, normv=5., width=0.005, ampref=0.05, datatype='',
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps of fast axis from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        hillshade       - produce hill shade or not
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi     = pergrp['psiarr'].value
+        amp     = pergrp['amparr'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value
+        
+        dset    = h5py.File(inh5fname)
+        ingroup2= dset[dataid]
+        # period array
+        pers        = dset.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp2 = ingroup2['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi2    = pergrp2['psiarr'].value
+        amp2    = pergrp2['amparr'].value
+        mask2   = pergrp2['mask_aniso'].value + pergrp['mask'].value
+        
+        
+        data    = abs(psi-psi2)
+        # data    = data[np.logical_not(mask+mask2)]
+        
+        covdata = self.plot_azi_coverage(period=period, gaptype=1, Nazi_thresh=400, showfig=False) 
+        mask3   = covdata >=90.
+        data    = data[np.logical_not(mask + mask2+mask3)]
+        
+        
+        ax      = plt.subplot()
+        
+        data[data>90]   = 180. - data[data>90]
+        dbin    = 10.
+        bins    = np.arange(min(data), max(data) + dbin, dbin)
+        
+        weights = np.ones_like(data)/float(data.size)
+        plt.hist(data, bins=bins, weights = weights)
+        import matplotlib.mlab as mlab
+        from matplotlib.ticker import FuncFormatter
+        good_per= float(data[data<30.].size)/float(data.size)
+        plt.ylabel('Percentage (%)', fontsize=60)
+        plt.xlabel('Angle difference (deg)', fontsize=60, rotation=0)
+        plt.title('mean = %g , std = %g, good = %g' %(data.mean(), data.std(), good_per*100.) + '%', fontsize=30)
+        ax.tick_params(axis='x', labelsize=40)
+        ax.tick_params(axis='y', labelsize=40)
+        formatter = FuncFormatter(to_percent)
+        # Set the formatter
+        plt.gca().yaxis.set_major_formatter(formatter)
+        plt.xlim([0, 90.])
+        plt.show()
+
+        if showfig:
+            plt.show()
+        return
+    
+    def diff_fast_axis(self, inh5fname, runid, period, helm=False, factor=10, normv=5., width=0.005, ampref=0.05, datatype='',
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps of fast axis from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        hillshade       - produce hill shade or not
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi     = pergrp['psiarr'].value
+        amp     = pergrp['amparr'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value
+        
+        dset    = h5py.File(inh5fname)
+        ingroup2= dset[dataid]
+        # period array
+        pers        = dset.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp2 = ingroup2['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi2    = pergrp2['psiarr'].value
+        amp2    = pergrp2['amparr'].value
+        mask2   = pergrp2['mask_aniso'].value + pergrp['mask'].value
+        
+        
+        diffdata    = abs(psi-psi2)
+        diffdata[diffdata>90.]  = 180. - diffdata[diffdata>90.]
+        mdata       = ma.masked_array(diffdata, mask=mask + mask2 )
+        ###
+        np.savez('diffazi.npz', diffdata, mask + mask2)
+        ##
+        # tempdset= EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/comp_xcorr_2deg_0.05.h5')
+        # # # covdata = self.plot_azi_coverage(period=period, gaptype=1, Nazi_thresh=600, showfig=False) 
+        # # # mask3   = covdata >=90.
+        # # # data    = diffdata[np.logical_not(mask + mask2+mask3)]
+        ##
+        m           = self._get_basemap(projection=projection)
+        x, y        = m(self.lonArr, self.latArr)
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
+        elif os.path.isfile(cmap):
+            import pycpt
+            cmap    = pycpt.load.gmtColormap(cmap)
+                ################################
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.set_label(clabel, fontsize=30, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=40)
+        cb.solids.set_edgecolor("face")
+        ###
+        if np.any(diffdata < 0.):
+            negative        = diffdata < 0.
+            negative       = ma.masked_array(negative, mask=mask + inmask )
+            m.contour(x, y, negative, colors='w', lw=3)
+        ###
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
+        plt.show()
+        return
+    
+    def combine_fast_axis(self, inh5fname, runid, period, helm=False, factor=10, normv=5., width=0.005, ampref=0.05, datatype='',
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps of fast axis from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        hillshade       - produce hill shade or not
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        unpsi   = pergrp['unpsi'].value
+        amp     = pergrp['amparr'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value
+        
+        dset    = h5py.File(inh5fname)
+        ingroup2= dset[dataid]
+        # period array
+        pers        = dset.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp2 = ingroup2['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        unpsi2  = pergrp2['unpsi'].value
+        amp2    = pergrp2['amparr'].value
+        mask2   = pergrp2['mask_aniso'].value + pergrp['mask'].value
+        
+        semfactor = 3.5
+        data    = np.sqrt(unpsi**2 + unpsi2**2)*semfactor
+        data[data>90.]  = 90.
+        
+        ###
+        np.savez('unazi.npz', data, mask + mask2)
+        ###
+        # data    = unpsi
+        mdata   = ma.masked_array(data, mask=mask + mask2 )
+        ##
+        # tempdset= EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/comp_xcorr_2deg_0.05.h5')
+        # # # covdata = self.plot_azi_coverage(period=period, gaptype=1, Nazi_thresh=600, showfig=False) 
+        # # # mask3   = covdata >=90.
+        # # # data    = diffdata[np.logical_not(mask + mask2+mask3)]
+        ##
+        m           = self._get_basemap(projection=projection)
+        x, y        = m(self.lonArr, self.latArr)
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
+        elif os.path.isfile(cmap):
+            import pycpt
+            cmap    = pycpt.load.gmtColormap(cmap)
+                ################################
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.set_label(clabel, fontsize=30, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=40)
+        cb.solids.set_edgecolor("face")
+        ###
+        # # # if np.any(diffdata < 0.):
+        # # #     negative        = diffdata < 0.
+        # # #     negative       = ma.masked_array(negative, mask=mask + inmask )
+        # # #     m.contour(x, y, negative, colors='w', lw=3)
+        ###
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
+        plt.show()
+        return
+    
+    def diff_amp(self, inh5fname, runid, period, helm=False, factor=10, normv=5., width=0.005, ampref=0.05, datatype='',
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps of fast axis from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        hillshade       - produce hill shade or not
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi     = pergrp['psiarr'].value
+        amp     = pergrp['amparr'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value
+        
+        dset    = h5py.File(inh5fname)
+        ingroup2= dset[dataid]
+        # period array
+        pers        = dset.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp2 = ingroup2['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        psi2    = pergrp2['psiarr'].value
+        amp2    = pergrp2['amparr'].value
+        mask2   = pergrp2['mask_aniso'].value + pergrp['mask'].value
+        
+        
+        # diffdata    = abs(amp/amp2)
+        
+        diffdata    = abs(amp-amp2) # /(amp+amp2)
+        mdata       = ma.masked_array(diffdata, mask=mask + mask2 )
+        
+        ###
+        np.savez('diffamp.npz', diffdata, mask + mask2)
+        ##
+        # tempdset= EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/comp_xcorr_2deg_0.05.h5')
+        # # # covdata = self.plot_azi_coverage(period=period, gaptype=1, Nazi_thresh=600, showfig=False) 
+        # # # mask3   = covdata >=90.
+        # # # data    = diffdata[np.logical_not(mask + mask2+mask3)]
+        ##
+        m           = self._get_basemap(projection=projection)
+        x, y        = m(self.lonArr, self.latArr)
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
+        elif os.path.isfile(cmap):
+            import pycpt
+            cmap    = pycpt.load.gmtColormap(cmap)
+                ################################
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.set_label(clabel, fontsize=30, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=40)
+        cb.solids.set_edgecolor("face")
+        ###
+        # if np.any(diffdata < 0.):
+        #     negative        = diffdata < 0.
+        #     negative       = ma.masked_array(negative, mask=mask + inmask )
+        #     m.contour(x, y, negative, colors='w', lw=3)
+        ###
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
+        plt.show()
+        return
+    
+    def combine_amp(self, inh5fname, runid, period, helm=False, factor=10, normv=5., width=0.005, ampref=0.05, datatype='',
+            scaled=False, masked=True, clabel='', cmap='cv', projection='lambert', hillshade=False,\
+            geopolygons=None, vmin=None, vmax=None, showfig=True):
+        """plot maps of fast axis from the tomographic inversion
+        =================================================================================================================
+        ::: input parameters :::
+        runid           - id of run
+        period          - period of data
+        anipara         - anisotropic paramter
+                            0   - isotropic
+                            1   - 2 psi anisotropic
+                            2   - 2&4 psi anisotropic
+        factor          - factor of intervals for plotting
+        normv           - value for normalization
+        width           - width of the bar
+        ampref          - reference amplitude (default - 0.05 km/s)
+        plot_vel        - plot velocity or not
+        masked          - masked or not
+        clabel          - label of colorbar
+        cmap            - colormap
+        projection      - projection type
+        hillshade       - produce hill shade or not
+        geopolygons     - geological polygons for plotting
+        vmin, vmax      - min/max value of plotting
+        thresh          - threhold value for Gaussian deviation to determine the mask for plotting
+        showfig         - show figure or not
+        =================================================================================================================
+        """
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        self._get_lon_lat_arr()
+        ingroup         = self[dataid]
+        # period array
+        pers        = self.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp  = ingroup['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        amp   = pergrp['amparr'].value
+        unamp     = pergrp['unamp'].value
+        mask    = pergrp['mask_aniso'].value + pergrp['mask'].value
+        
+        dset    = h5py.File(inh5fname)
+        ingroup2= dset[dataid]
+        # period array
+        pers        = dset.attrs['period_array']
+        if not period in pers:
+            raise KeyError('period = '+str(period)+' not included in the database')
+        pergrp2 = ingroup2['%g_sec'%( period )]
+        # get the amplitude and fast axis azimuth
+        amp2  = pergrp2['amparr'].value
+        unamp2    = pergrp2['unamp'].value
+        mask2   = pergrp2['mask_aniso'].value + pergrp['mask'].value
+        
+        unamp[(amp==0.)*(amp2==0.)]  = 0.
+        unamp2[(amp==0.)*(amp2==0.)]  = 0.
+        amp[(amp==0.)*(amp2==0.)]  = 1.
+        
+        from uncertainties import unumpy
+        tamp    =  unumpy.uarray(amp, unamp)
+        tamp2   = unumpy.uarray(amp2, unamp2)
+        semfactor = 2.
+        # data    = np.sqrt(unamp**2 + unamp2**2)*semfactor
+        
+        temp    = (tamp-tamp2)
+        data    = unumpy.std_devs(temp) * semfactor
+        
+        ###
+        np.savez('unamp.npz', data, mask + mask2)
+        ###
+        # data    = unpsi
+        mdata   = ma.masked_array(data, mask=mask + mask2 )
+        ##
+        # tempdset= EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/comp_xcorr_2deg_0.05.h5')
+        # # # covdata = self.plot_azi_coverage(period=period, gaptype=1, Nazi_thresh=600, showfig=False) 
+        # # # mask3   = covdata >=90.
+        # # # data    = diffdata[np.logical_not(mask + mask2+mask3)]
+        ##
+        m           = self._get_basemap(projection=projection)
+        x, y        = m(self.lonArr, self.latArr)
+        if cmap == 'ses3d':
+            cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
+                            0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
+        elif cmap == 'cv':
+            import pycpt
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
+        elif os.path.isfile(cmap):
+            import pycpt
+            cmap    = pycpt.load.gmtColormap(cmap)
+                ################################
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.set_label(clabel, fontsize=30, rotation=0)
+        plt.suptitle(str(period)+' sec', fontsize=20)
+        cb.ax.tick_params(labelsize=40)
+        cb.solids.set_edgecolor("face")
+        ###
+        # # # if np.any(diffdata < 0.):
+        # # #     negative        = diffdata < 0.
+        # # #     negative       = ma.masked_array(negative, mask=mask + inmask )
+        # # #     m.contour(x, y, negative, colors='w', lw=3)
+        ###
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
+        plt.show()
+        return
+      
     def compare_raytomo(self, inraytomofname, rayruntype, rayrunid, runid, period, showfig=True, projection='lambert', cmap='cv', clabel='C (km/s)'):
         """
         compare the eikonal tomography results with the ray tomography
@@ -4141,7 +5406,7 @@ class EikonalTomoDataSet(h5py.File):
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         elif cmap == 'cv':
             import pycpt
-            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
         elif os.path.isfile(cmap):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
@@ -4233,7 +5498,7 @@ class EikonalTomoDataSet(h5py.File):
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         elif cmap == 'cv':
             import pycpt
-            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
         elif os.path.isfile(cmap):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
@@ -4252,28 +5517,6 @@ class EikonalTomoDataSet(h5py.File):
         ###
         plot_fault_lines(m, 'AK_Faults.txt', color='grey')
         plt.show()
-        # 
-        # ax      = plt.subplot()
-        # data    = diffdata[np.logical_not(mask + inmask + Nm_mask)]
-        # plt.hist(data, bins=100, normed=True)
-        # outstd  = data.std()
-        # outmean = data.mean()
-        # # compute mad
-        # from statsmodels import robust
-        # mad     = robust.mad(data)
-        # # plt.xlim(-.2, .2)
-        # import matplotlib.mlab as mlab
-        # from matplotlib.ticker import FuncFormatter
-        # plt.ylabel('Percentage (%)', fontsize=30)
-        # plt.xlabel('Differences (km/sec)', fontsize=30)
-        # plt.title(str(period)+' sec, mean = %g m/s, std = %g m/s, mad = %g m/s' %(outmean*1000., outstd*1000., mad*1000.), fontsize=30)
-        # ax.tick_params(axis='x', labelsize=20)
-        # ax.tick_params(axis='y', labelsize=20)
-        # formatter = FuncFormatter(to_percent)
-        # # Set the formatter
-        # plt.gca().yaxis.set_major_formatter(formatter)
-        # if showfig:
-        #     plt.show()
         
     def compare_eik_helm(self, period, eikrunid=0, helmrunid=0, Nmeasure=None, showfig=True,\
                          projection='lambert', cmap='cv', clabel='C (km/s)'):
@@ -4317,7 +5560,7 @@ class EikonalTomoDataSet(h5py.File):
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         elif cmap == 'cv':
             import pycpt
-            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
         elif os.path.isfile(cmap):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
@@ -4393,7 +5636,7 @@ class EikonalTomoDataSet(h5py.File):
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         elif cmap == 'cv':
             import pycpt
-            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
         elif os.path.isfile(cmap):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
@@ -4443,7 +5686,8 @@ class EikonalTomoDataSet(h5py.File):
             print 'Did not pass the curvature test!'
             return
         field2d.eikonal_operator(workingdir='temp_travel_time_dir', inpfx=netcode+'.'+stacode+'_'+channel+'_')
-        field2d.plot(datatype='z', title='Travel time for station: '+ netcode+'.'+stacode, contour=True)
+        field2d.plot(datatype='z', title='Travel time for station: '+ netcode+'.'+stacode, contour=True, event=True, vmin=50., vmax=350.)
+        field2d.plot(datatype='appV', title='Phase Speed for station: '+ netcode+'.'+stacode, contour=True, event=True, vmin=2.4, vmax=3.4)
     
     def write_un_noise(self, outfname, runid=0):
         pers        = self.attrs['period_array']
@@ -4466,883 +5710,8 @@ class EikonalTomoDataSet(h5py.File):
         outArr  = outArr.reshape((2, pers.size))
         outArr  = outArr.T
         np.savetxt(outfname, outArr, fmt='%g')
-    
-class hybridTomoDataSet(EikonalTomoDataSet):
-    """
-    Object for merging eikonal tomography results, ray tomography results
-    """
-    #==================================================
-    # functions print the information of database
-    #==================================================
-    def print_attrs(self, print_to_screen=True):
-        """
-        Print the attrsbute information of the dataset.
-        """
-        outstr      =  '======================================== Surface wave hybrid tomography database ======================================\n'
-        try:
-            outstr      += '--- period (s):                             - '+str(self.attrs['period_array'])+'\n'
-            try:
-                # outstr  += '--- per_xcorr (s):                          - '+str(self.attrs['per_xcorr'])+'\n'
-                outstr  += '    per_xcorr_min/per_xcorr_max (s):        - '+str(self.attrs['per_xcorr_min'])+'/'+str(self.attrs['per_xcorr_max'])+'\n'
-            except:
-                outstr  += '*** NO ambient noise eikonal data\n'
-            try:
-                # outstr  += '--- per_quake (s):                          - '+str(self.attrs['per_quake'])+'\n'
-                outstr  += '    per_quake_min/per_quake_max (s):        - '+str(self.attrs['per_quake_min'])+'/'+str(self.attrs['per_quake_max'])+'\n'
-            except:
-                outstr  += '*** NO earthquake eikonal/Helmholtz data\n'
-            outstr      += '--- period_array_ray (s):                   - '+str(self.attrs['period_array_ray'])+'\n'
-            outstr      += '    longitude range                         - '+str(self.attrs['minlon'])+' ~ '+str(self.attrs['maxlon'])+'\n'
-            outstr      += '    longitude spacing/npts                  - '+str(self.attrs['dlon'])+'/'+str(self.attrs['Nlon'])+'\n'
-            outstr      += '    nlon_grad/nlon_lplc                     - '+str(self.attrs['nlon_grad'])+'/'+str(self.attrs['nlon_lplc'])+'\n'
-            outstr      += '    latitude range                          - '+str(self.attrs['minlat'])+' ~ '+str(self.attrs['maxlat'])+'\n'
-            outstr      += '    latitude spacing/npts                   - '+str(self.attrs['dlat'])+'/'+str(self.attrs['Nlat'])+'\n'
-            outstr      += '    nlat_grad/nlat_lplc                     - '+str(self.attrs['nlat_grad'])+'/'+str(self.attrs['nlat_lplc'])+'\n'
-            try:
-                outstr  += '!!! interpolated dlon/dlat:                 - '+str(self.attrs['dlon_interp'])+'/'+str(self.attrs['dlat_interp'])+'\n'
-            except:
-                outstr  += '*** NO interpolated data\n'
-            per_arr     = self.attrs['period_array']
-        except:
-            print 'Empty Database!'
-            return None
-        if print_to_screen:
-            print outstr
-        else:
-            return outstr
-        return
-    
-    def print_info(self, runid=0):
-        """print the information of given eikonal/Helmholz run
-        """
-        outstr      = self.print_attrs(print_to_screen=False)
-        if outstr is None:
-            return
-        try:
-            xcorr_grp   = self['xcorr_run']
-            perid       = '%d_sec' % self.attrs['per_xcorr_min']
-            pergrp      = xcorr_grp[perid]
-            Nevent      = len(pergrp.keys())
-            outstr      += '============================================= ambient noise correlation ===============================================\n'
-            outstr      += '--- number of virtual events                        - '+str(Nevent)+'\n'
-            evid        = pergrp.keys()[0]
-            evgrp       = pergrp[evid]
-            outstr      += '--- attributes for each event                       - Nvalid_grd, Ntotal_grd \n'
-            outstr      += '--- appV (apparent velocity)                        - '+str(evgrp['appV'].shape)+'\n'
-            outstr      += '--- az (azimuth)                                    - '+str(evgrp['az'].shape)+'\n'
-            outstr      += '--- reason_n (index array)                          - '+str(evgrp['reason_n'].shape)+'\n'
-            outstr      += '        0: accepted point \n' + \
-                           '        1: data point the has large difference between v1HD and v1HD02 \n' + \
-                           '        2: data point that does not have near neighbor points at all E/W/N/S directions\n' + \
-                           '        3: slowness is too large/small \n' + \
-                           '        4: near a zero field data point \n' + \
-                           '        5: epicentral distance is too small \n' + \
-                           '        6: large curvature              \n'
-        except:
-            pass
-        try:
-            quake_grp   = self['quake_run']
-            perid       = '%d_sec' % self.attrs['per_quake_min']
-            pergrp      = quake_grp[perid]
-            Nevent      = len(pergrp.keys())
-            outstr      += '================================================== earthquake data ====================================================\n'
-            outstr      += '--- number of events                                - period-dependent \n'
-            evid        = pergrp.keys()[0]
-            evgrp       = pergrp[evid]
-            outstr      += '--- attributes for each event                       - Nvalid_grd, Ntotal_grd \n'
-            outstr      += '--- appV (apparent velocity)                        - '+str(evgrp['appV'].shape)+'\n'
-            outstr      += '--- az (azimuth)                                    - '+str(evgrp['az'].shape)+'\n'
-            outstr      += '--- reason_n (index array)                          - '+str(evgrp['reason_n'].shape)+'\n'
-            # outstr      += '        0: accepted point \n' + \
-            #                '        1: data point the has large difference between v1HD and v1HD02 \n' + \
-            #                '        2: data point that does not have near neighbor points at all E/W/N/S directions\n' + \
-            #                '        3: slowness is too large/small \n' + \
-            #                '        4: near a zero field data point \n' + \
-            #                '        5: epicentral distance is too small \n' + \
-            #                '        6: large curvature              \n'
-        except:
-            pass
-        try:
-            subgroup= self['Eikonal_stack_%d' %runid]
-            outstr  += '============================================== eikonal stacked results id = %d'% runid +' =========================================\n'
-        except KeyError:
-            outstr  += '============================================= NO corresponding stacked results id = %d'% runid +'=================================\n'
-            return
-        if subgroup.attrs['anisotropic']:
-            tempstr = 'anisotropic'
-            outstr  += '--- isotropic/anisotropic                           - '+tempstr+'\n'
-            outstr  += '--- N_bin (number of bins, for ani run)             - '+str(subgroup.attrs['N_bin'])+'\n'
-            outstr  += '--- minazi/maxazi (min/max azi, for ani run)        - '+str(subgroup.attrs['minazi'])+'/'+str(subgroup.attrs['maxazi'])+'\n'
-        else:
-            tempstr = 'isotropic'
-            outstr  += '--- isotropic/anisotropic                           - '+tempstr+'\n'
-        pergrp      = subgroup[perid]
-        outstr      += '--- Nmeasure (number of raw measurements)           - '+str(pergrp['Nmeasure'].shape)+'\n'
-        outstr      += '--- NmeasureQC (number of qc measurements)          - '+str(pergrp['NmeasureQC'].shape)+'\n'
-        outstr      += '--- slowness                                        - '+str(pergrp['slowness'].shape)+'\n'
-        outstr      += '--- slowness_std                                    - '+str(pergrp['slowness_std'].shape)+'\n'
-        outstr      += '--- mask                                            - '+str(pergrp['mask'].shape)+'\n'
-        outstr      += '--- vel_iso (isotropic velocity)                    - '+str(pergrp['vel_iso'].shape)+'\n'
-        outstr      += '--- vel_sem (uncertainties for velocity)            - '+str(pergrp['vel_sem'].shape)+'\n'
         
-        try:
-            subgroup= self['merged_tomo_%d' %runid]
-            outstr  += '============================================== merged tomography results id = %d'% runid +' =======================================\n'
-        except KeyError:
-            outstr  += '============================================== NO corresponding merged results id = %d'% runid +'=================================\n'
-            return
-        outstr      += '--- T_ray_max (s)                                   - '+str(subgroup.attrs['T_ray_max'])+'\n'
-        outstr      += '--- mask_ray (not attrs, determined over all pers)  - '+str(subgroup['mask_ray'].shape)+'\n'
-        outstr      += '!!! mask_ray_interp (not attrs, from mask_ray, MC)  - '+str(subgroup['mask_ray_interp'].shape)+'\n'
-        perid       = '%d_sec' % self.attrs['period_array'][-1]
-        pergrp      = subgroup[perid]
-        outstr      += '$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ in the period subdirectory $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ \n'
-        outstr      += '--- Nmeasure (number of (qc) measurements)          - '+str(pergrp['Nmeasure'].shape)+'\n'
-        outstr      += '--- mask (mask_ray or mask_eik)                     - '+str(pergrp['mask'].shape)+'\n'
-        outstr      += '--- mask_eik (mask of eikonal results)              - '+str(pergrp['mask_eik'].shape)+'\n'
-        outstr      += '!!! mask_interp (from mask_eik, T > T_ray_max, MC)  - '+str(pergrp['mask_interp'].shape)+'\n'
-        outstr      += '--- vel_iso (isotropic velocity)                    - '+str(pergrp['vel_iso'].shape)+'\n'
-        outstr      += '!!! vel_iso_interp (used for MC inversion)          - '+str(pergrp['vel_iso_interp'].shape)+'\n'
-        outstr      += '--- vel_sem (uncertainties for velocity)            - '+str(pergrp['vel_sem'].shape)+'\n'
-        outstr      += '!!! vel_sem_interp (used for MC inversion)          - '+str(pergrp['vel_sem_interp'].shape)+'\n'
-        print outstr
-        return
-    
-    def _get_lon_lat_arr_interp(self, ncut=0):
-        """Get longitude/latitude array
-        """
-        minlon      = self.attrs['minlon']
-        maxlon      = self.attrs['maxlon']
-        minlat      = self.attrs['minlat']
-        maxlat      = self.attrs['maxlat']
-        dlon        = self.attrs['dlon_interp']
-        dlat        = self.attrs['dlat_interp']
-        self.lons   = np.arange((maxlon-minlon)/dlon+1-2*ncut)*dlon+minlon+ncut*dlon
-        self.lats   = np.arange((maxlat-minlat)/dlat+1-2*ncut)*dlat+minlat+ncut*dlat
-        self.Nlon   = self.lons.size
-        self.Nlat   = self.lats.size
-        self.lonArr, self.latArr = np.meshgrid(self.lons, self.lats)
-        return
-    
-    def read_xcorr(self, inh5fname, runid=0):
-        """
-        read noise correlation eikonal tomography results 
-        =============================================================
-        ::: input parameters :::
-        inh5fname   - input xcorr eikonal tomography data file
-        runid       - run id
-        =============================================================
-        """
-        group               = self.create_group( name = 'xcorr_run' )
-        # input data file
-        in_dset             = EikonalTomoDataSet(inh5fname)
-        in_group            = in_dset['Eikonal_run_'+str(runid)]
-        #------------------------------------
-        # period arrays and other attributes
-        #------------------------------------
-        try:
-            pers            = self.attrs['period_array']
-            minlon          = self.attrs['minlon']
-            maxlon          = self.attrs['maxlon']
-            minlat          = self.attrs['minlat']
-            maxlat          = self.attrs['maxlat']
-            dlon            = self.attrs['dlon']
-            dlat            = self.attrs['dlat']
-            nlat_grad       = self.attrs['nlat_grad']
-            nlon_grad       = self.attrs['nlon_grad']
-            nlat_lplc       = self.attrs['nlat_lplc']
-            nlon_lplc       = self.attrs['nlon_lplc']
-        except:
-            pers            = in_dset.attrs['period_array']
-            minlon          = in_dset.attrs['minlon']
-            maxlon          = in_dset.attrs['maxlon']
-            minlat          = in_dset.attrs['minlat']
-            maxlat          = in_dset.attrs['maxlat']
-            dlon            = in_dset.attrs['dlon']
-            dlat            = in_dset.attrs['dlat']
-            nlat_grad       = in_dset.attrs['nlat_grad']
-            nlon_grad       = in_dset.attrs['nlon_grad']
-            nlat_lplc       = in_dset.attrs['nlat_lplc']
-            nlon_lplc       = in_dset.attrs['nlon_lplc']
-            self.set_input_parameters(minlon=minlon, maxlon=maxlon, minlat=minlat, maxlat=maxlat, pers=pers,\
-                dlon=dlon, dlat=dlat, nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc,\
-                    optimize_spacing=False)
-        # check attributes
-        if minlon != in_dset.attrs['minlon'] or maxlon != in_dset.attrs['maxlon'] or \
-                minlat != in_dset.attrs['minlat'] or maxlat != in_dset.attrs['maxlat'] or \
-                dlon != in_dset.attrs['dlon'] or dlat != in_dset.attrs['dlat'] or\
-                minlon != in_dset.attrs['minlon'] or minlon != in_dset.attrs['minlon'] or \
-                dlon != in_dset.attrs['dlon'] or dlat != in_dset.attrs['dlat'] or \
-                nlat_grad != in_dset.attrs['nlat_grad'] or nlon_grad != in_dset.attrs['nlon_grad'] or\
-                nlat_lplc != in_dset.attrs['nlat_lplc'] or nlon_lplc != in_dset.attrs['nlon_lplc']:
-            raise ValueError('Inconsistent attributes!')
-        in_per              = in_dset.attrs['period_array']
-        per_xcorr           = np.array([])
-        # Loop over periods from input database to load xcorr eikonal data
-        for per in in_per:
-            try:
-                in_per_group= in_group['%g_sec'%( per )]
-            except:
-                print 'No data for T = '+str(per)
-                continue
-            per_xcorr       = np.append(per_xcorr, per)
-            per_group       = group.create_group( name='%g_sec'%( per ) )
-            Nevent          = len(in_per_group.keys())
-            print 'Reading xcorr eikonal results for: '+str(per)+' sec, '+str(Nevent)+ ' events'
-            for iev in range(Nevent):
-                # get data
-                evid                        = in_per_group.keys()[iev]
-                in_event_group              = in_per_group[evid]
-                az                          = in_event_group['az'].value
-                velocity                    = in_event_group['appV'].value
-                reason_n                    = in_event_group['reason_n'].value
-                Ntotal_grd                  = in_event_group.attrs['Ntotal_grd']
-                Nvalid_grd                  = in_event_group.attrs['Nvalid_grd']
-                # save data
-                event_group                 = per_group.create_group(name=evid)
-                event_group.attrs.create(name = 'Ntotal_grd', data=Ntotal_grd)
-                event_group.attrs.create(name = 'Nvalid_grd', data=Nvalid_grd)
-                azdset                      = event_group.create_dataset(name='az', data=az)
-                appVdset                    = event_group.create_dataset(name='appV', data=velocity)
-                reason_ndset                = event_group.create_dataset(name='reason_n', data=reason_n)
-        # check period arrays
-        for iper in range(pers.size):
-            per             = pers[iper]
-            if per < per_xcorr.min():
-                continue
-            if per > per_xcorr.max():
-                break
-            if not per in per_xcorr:
-                raise KeyError('Inconsistent period arrays!')
-        # save periods for xcorr
-        self.attrs.create(name = 'per_xcorr', data=per_xcorr, dtype='f')
-        self.attrs.create(name = 'per_xcorr_min', data=per_xcorr[0], dtype='f')
-        self.attrs.create(name = 'per_xcorr_max', data=per_xcorr[-1], dtype='f')
-        return
-    
-    def read_quake(self, inh5fname, runid=0):
-        """
-        read earthquake eikonal tomography results 
-        =============================================================
-        ::: input parameters :::
-        inh5fname   - input quake eikonal tomography data file
-        runid       - run id
-        =============================================================
-        """
-        group               = self.create_group( name = 'quake_run' )
-        # input data file
-        in_dset             = EikonalTomoDataSet(inh5fname)
-        in_group            = in_dset['Eikonal_run_'+str(runid)]
-        try:
-            pers            = self.attrs['period_array']
-            minlon          = self.attrs['minlon']
-            maxlon          = self.attrs['maxlon']
-            minlat          = self.attrs['minlat']
-            maxlat          = self.attrs['maxlat']
-            dlon            = self.attrs['dlon']
-            dlat            = self.attrs['dlat']
-            nlat_grad       = self.attrs['nlat_grad']
-            nlon_grad       = self.attrs['nlon_grad']
-            nlat_lplc       = self.attrs['nlat_lplc']
-            nlon_lplc       = self.attrs['nlon_lplc']
-        except:
-            pers            = in_dset.attrs['period_array']
-            minlon          = in_dset.attrs['minlon']
-            maxlon          = in_dset.attrs['maxlon']
-            minlat          = in_dset.attrs['minlat']
-            maxlat          = in_dset.attrs['maxlat']
-            dlon            = in_dset.attrs['dlon']
-            dlat            = in_dset.attrs['dlat']
-            nlat_grad       = in_dset.attrs['nlat_grad']
-            nlon_grad       = in_dset.attrs['nlon_grad']
-            nlat_lplc       = in_dset.attrs['nlat_lplc']
-            nlon_lplc       = in_dset.attrs['nlon_lplc']
-            self.set_input_parameters(minlon=minlon, maxlon=maxlon, minlat=minlat, maxlat=maxlat, pers=pers,\
-                dlon=dlon, dlat=dlat, nlat_grad=nlat_grad, nlon_grad=nlon_grad, nlat_lplc=nlat_lplc, nlon_lplc=nlon_lplc,\
-                    optimize_spacing=False)
-        # check attributes
-        if minlon != in_dset.attrs['minlon'] or maxlon != in_dset.attrs['maxlon'] or \
-                minlat != in_dset.attrs['minlat'] or maxlat != in_dset.attrs['maxlat'] or \
-                dlon != in_dset.attrs['dlon'] or dlat != in_dset.attrs['dlat'] or\
-                minlon != in_dset.attrs['minlon'] or minlon != in_dset.attrs['minlon'] or \
-                dlon != in_dset.attrs['dlon'] or dlat != in_dset.attrs['dlat'] or \
-                nlat_grad != in_dset.attrs['nlat_grad'] or nlon_grad != in_dset.attrs['nlon_grad'] or\
-                nlat_lplc != in_dset.attrs['nlat_lplc'] or nlon_lplc != in_dset.attrs['nlon_lplc']:
-            raise ValueError('Inconsistent attributes!')
-        in_per              = in_dset.attrs['period_array']
-        # Loop over periods from input database to load earthquake eikonal data
-        per_quake           = np.array([])
-        for per in in_per:
-            try:
-                in_per_group    = in_group['%g_sec'%( per )]
-            except:
-                print 'No data for T = '+str(per)
-                continue
-            per_quake       = np.append(per_quake, per)
-            per_group       = group.create_group( name='%g_sec'%( per ) )
-            Nevent          = len(in_per_group.keys())
-            print 'Reading quake eikonal results for: '+str(per)+' sec, '+str(Nevent)+ ' events'
-            for iev in range(Nevent):
-                # get data
-                evid                        = in_per_group.keys()[iev]
-                in_event_group              = in_per_group[evid]
-                az                          = in_event_group['az'].value
-                velocity                    = in_event_group['appV'].value
-                reason_n                    = in_event_group['reason_n'].value
-                Ntotal_grd                  = in_event_group.attrs['Ntotal_grd']
-                Nvalid_grd                  = in_event_group.attrs['Nvalid_grd']
-                # save data
-                event_group                 = per_group.create_group(name=evid)
-                event_group.attrs.create(name = 'Ntotal_grd', data=Ntotal_grd)
-                event_group.attrs.create(name = 'Nvalid_grd', data=Nvalid_grd)
-                azdset                      = event_group.create_dataset(name='az', data=az)
-                appVdset                    = event_group.create_dataset(name='appV', data=velocity)
-                reason_ndset                = event_group.create_dataset(name='reason_n', data=reason_n)
-        # check periods    
-        new_pers            = pers.copy()
-        try:
-            per_xcorr       = self.attrs['per_xcorr']
-        except:
-            per_xcorr       = np.array([])
-        for iper in range(pers.size):
-            per             = pers[iper]
-            if per < per_quake.min():
-                continue
-            if per > per_quake.max():
-                break
-            if (not per in per_quake) and (not per in per_xcorr):
-                raise KeyError('Inconsistent period arrays!')
-        self.attrs.create(name = 'per_quake', data=per_quake, dtype='f')
-        self.attrs.create(name = 'per_quake_min', data=per_quake[0], dtype='f')
-        self.attrs.create(name = 'per_quake_max', data=per_quake[-1], dtype='f')
-        # append periods
-        for iper in range(per_quake.size):
-            per             = per_quake[iper]
-            if per > new_pers[-1]:
-                new_pers    = np.append(new_pers, per)
-        self.attrs.create(name = 'period_array', data=new_pers, dtype='f')
-        return
-    
-    def hybrid_eikonal_stack(self, Tmin=30., Tmax=60., minazi=-180, maxazi=180, N_bin=20, threshmeasure=80, anisotropic=False, \
-                spacing_ani=0.6, use_numba=True, coverage=0.1):
-        """
-        Hybridly stack gradient results to perform Eikonal Tomography
-        =================================================================================================================
-        ::: input parameters :::
-        Tmin/Tmax       - minimum/maximum period for merging xcorr and earthquake eikonal results
-        minazi/maxazi   - min/max azimuth for anisotropic parameters determination
-        N_bin           - number of bins for anisotropic parameters determination
-        anisotropic     - perform anisotropic parameters determination or not
-        use_numba       - use numba for large array manipulation or not, faster and much less memory requirement
-        -----------------------------------------------------------------------------------------------------------------
-        version history:
-            Oct 17th, 2018  - first version
-        =================================================================================================================
-        """
-        # read attribute information
-        pers            = self.attrs['period_array']
-        minlon          = self.attrs['minlon']
-        maxlon          = self.attrs['maxlon']
-        minlat          = self.attrs['minlat']
-        maxlat          = self.attrs['maxlat']
-        dlon            = self.attrs['dlon']
-        dlat            = self.attrs['dlat']
-        Nlon            = int(self.attrs['Nlon'])
-        Nlat            = int(self.attrs['Nlat'])
-        nlat_grad       = self.attrs['nlat_grad']
-        nlon_grad       = self.attrs['nlon_grad']
-        nlat_lplc       = self.attrs['nlat_lplc']
-        nlon_lplc       = self.attrs['nlon_lplc']
-        group_xcorr     = self['xcorr_run']
-        group_quake     = self['quake_run']
-        group_out       = self.create_group( name = 'Eikonal_stack_0')
-        # attributes for output group
-        group_out.attrs.create(name = 'anisotropic', data = anisotropic)
-        group_out.attrs.create(name = 'N_bin', data = N_bin)
-        group_out.attrs.create(name = 'minazi', data = minazi)
-        group_out.attrs.create(name = 'maxazi', data = maxazi)
-        for per in pers:
-            stack_xcorr         = True
-            stack_quake         = True
-            if per < Tmin:
-                stack_quake     = False
-            if per > Tmax:
-                stack_xcorr     = False
-            try:
-                per_group_xcorr = group_xcorr['%g_sec'%( per )]
-                Nevent_xcorr    = len(per_group_xcorr.keys())
-            except KeyError:
-                stack_xcorr     = False
-            try:
-                per_group_quake = group_quake['%g_sec'%( per )]
-                Nevent_quake    = len(per_group_quake.keys())
-            except KeyError:
-                stack_quake     = False
-            if (not stack_xcorr) and (not stack_quake):
-                print '=== Skip stacking eikonal results for: '+str(per)+' sec'
-            print '=== Stacking eikonal results for: '+str(per)+' sec'
-            # initialize data arrays
-            Nevent              = 0
-            ev_str              = ''
-            if stack_xcorr:
-                Nevent          += Nevent_xcorr
-                ev_str          += ' Number of noise events = '+str(Nevent_xcorr)
-            if stack_quake:
-                Nevent          += Nevent_quake
-                ev_str          += ' Number of quake events = '+str(Nevent_quake)
-            ev_str              += ' Number of total events = '+str(Nevent)
-            print ev_str
-            Nmeasure            = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
-            weightALL           = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            slownessALL         = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            aziALL              = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
-            reason_nALL         = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            validALL            = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
-            #-----------------------------------------------------
-            # Loop over events to get eikonal maps for each event
-            #-----------------------------------------------------
-            print '--- Reading data'
-            for iev in range(Nevent):
-                # get data
-                if stack_xcorr and (not stack_quake):
-                    evid                    = per_group_xcorr.keys()[iev]
-                    event_group             = per_group_xcorr[evid]
-                    az                      = event_group['az'].value
-                    velocity                = event_group['appV'].value
-                    reason_n                = event_group['reason_n'].value
-                elif (not stack_xcorr) and stack_quake:
-                    evid                    = per_group_quake.keys()[iev]
-                    event_group             = per_group_quake[evid]
-                    az                      = event_group['az'].value
-                    velocity                = event_group['appV'].value
-                    reason_n                = event_group['reason_n'].value
-                else:
-                    if iev < Nevent_xcorr:
-                        evid                = per_group_xcorr.keys()[iev]
-                        event_group         = per_group_xcorr[evid]
-                        az                  = event_group['az'].value
-                        velocity            = event_group['appV'].value
-                        reason_n            = event_group['reason_n'].value
-                    else:
-                        evid                = per_group_quake.keys()[iev - Nevent_xcorr]
-                        event_group         = per_group_quake[evid]
-                        az                  = event_group['az'].value
-                        velocity            = event_group['appV'].value
-                        reason_n            = event_group['reason_n'].value
-                oneArr                      = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.int32)
-                oneArr[reason_n!=0]         = 0
-                slowness                    = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype=np.float32)
-                slowness[velocity!=0]       = 1./velocity[velocity!=0]                
-                slownessALL[iev, :, :]      = slowness
-                reason_nALL[iev, :, :]      = reason_n
-                aziALL[iev, :, :]           = az
-                Nmeasure                    += oneArr
-                # quality control of coverage
-                try:
-                    Ntotal_grd              = event_group.attrs['Ntotal_grd']
-                    Nvalid_grd              = event_group.attrs['Nvalid_grd']
-                    if float(Nvalid_grd)/float(Ntotal_grd)< coverage:
-                        reason_nALL[iev, :, :]  = np.ones((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                except:
-                    pass
-            print '--- Stacking data'
-            if Nmeasure.max()< threshmeasure:
-                print ('No enough measurements for: '+str(per)+' sec')
-                continue
-            # discard grid points where number of raw measurements is low, added Sep 26th, 2018
-            index_discard                   = Nmeasure < 50
-            reason_nALL[:, index_discard]   = 10
-            #-----------------------------------------------
-            # Get weight for each grid point per event
-            #-----------------------------------------------
-            if use_numba:
-                validALL[reason_nALL==0]    = 1
-                weightALL                   = _get_azi_weight(aziALL, validALL)
-                weightALL[reason_nALL!=0]   = 0
-                weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
-                weightsum                   = np.sum(weightALL, axis=0)
-            else:
-                azi_event1                  = np.broadcast_to(aziALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                azi_event2                  = np.swapaxes(azi_event1, 0, 1)
-                validALL[reason_nALL==0]    = 1
-                validALL4                   = np.broadcast_to(validALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                # use numexpr for very large array manipulations
-                del_aziALL                  = numexpr.evaluate('abs(azi_event1-azi_event2)')
-                index_azi                   = numexpr.evaluate('(1*(del_aziALL<20)+1*(del_aziALL>340))*validALL4')
-                weightALL                   = numexpr.evaluate('sum(index_azi, 0)')
-                weightALL[reason_nALL!=0]   = 0
-                weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
-                weightsum                   = np.sum(weightALL, axis=0)
-            #-----------------------------------------------
-            # reduce large weight to some value.
-            #-----------------------------------------------
-            avgArr                          = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-            avgArr[Nmeasure!=0]             = weightsum[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
-            # bug fixed, 02/07/2018
-            signALL                         = weightALL.copy()
-            signALL[signALL!=0]             = 1.
-            stdArr                          = np.sum( signALL*(weightALL-avgArr)**2, axis=0)
-            stdArr[Nmeasure!=0]             = stdArr[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
-            stdArr                          = np.sqrt(stdArr)
-            threshhold                      = np.broadcast_to(avgArr+3.*stdArr, weightALL.shape)
-            weightALL[weightALL>threshhold] = threshhold[weightALL>threshhold] # threshhold truncated weightALL
-            # recompute weight arrays after large weight value reduction
-            weightsum                       = np.sum(weightALL, axis=0)
-            weightsumALL                    = np.broadcast_to(weightsum, weightALL.shape)
-            # weight over all events, note that before this, weightALL is weight over events in azimuth bin
-            weightALL[weightsumALL!=0]      = weightALL[weightsumALL!=0]/weightsumALL[weightsumALL!=0] 
-            ###
-            weightALL[weightALL==1.]        = 0. # data will be discarded if no other data within 20 degree
-            #-----------------------------------------------
-            # Compute mean/std of slowness
-            #-----------------------------------------------
-            slownessALL2                    = slownessALL*weightALL
-            slowness_sum                    = np.sum(slownessALL2, axis=0)
-            slowness_sumALL                 = np.broadcast_to(slowness_sum, weightALL.shape)
-            # weighted standard deviation
-            # formula: https://www.itl.nist.gov/div898/software/dataplot/refman2/ch2/weightsd.pdf
-            signALL                         = weightALL.copy()
-            signALL[signALL!=0]             = 1.
-            MArr                            = np.sum(signALL, axis=0)
-            temp                            = weightALL*(slownessALL-slowness_sumALL)**2
-            temp                            = np.sum(temp, axis=0)
-            slowness_std                    = np.zeros(temp.shape)
-            tind                            = (weightsum!=0)*(MArr!=1)*(MArr!=0)
-            slowness_std[tind]              = np.sqrt(temp[tind]/ ( weightsum[tind]*(MArr[tind]-1)/MArr[tind] ) )
-            slowness_stdALL                 = np.broadcast_to(slowness_std, weightALL.shape)
-            #-----------------------------------------------
-            # discard outliers of slowness
-            #-----------------------------------------------
-            weightALLQC                     = weightALL.copy()
-            index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>2.*slowness_stdALL
-            index_outlier                   += reason_nALL != 0
-            weightALLQC[index_outlier]      = 0
-            weightsumQC                     = np.sum(weightALLQC, axis=0)
-            NmALL                           = np.sign(weightALLQC)
-            NmeasureQC                      = np.sum(NmALL, axis=0)
-            weightsumQCALL                  = np.broadcast_to(weightsumQC, weightALL.shape)
-            weightALLQC[weightsumQCALL!=0]  = weightALLQC[weightsumQCALL!=0]/weightsumQCALL[weightsumQCALL!=0]
-            temp                            = weightALLQC*slownessALL
-            slowness_sumQC                  = np.sum(temp, axis=0)
-            # new
-            signALLQC                       = weightALLQC.copy()
-            signALLQC[signALLQC!=0]         = 1.
-            MArrQC                          = np.sum(signALLQC, axis=0)
-            temp                            = weightALLQC*(slownessALL-slowness_sumQC)**2
-            temp                            = np.sum(temp, axis=0)
-            slowness_stdQC                  = np.zeros(temp.shape)
-            tind                            = (weightsumQC!=0)*(MArrQC!=1)
-            slowness_stdQC[tind]            = np.sqrt(temp[tind]/ ( weightsumQC[tind]*(MArrQC[tind]-1)/MArrQC[tind] ))
-            #---------------------------------------------------------------
-            # mask, velocity, and sem arrays of shape Nlat, Nlon
-            #---------------------------------------------------------------
-            mask                            = np.ones((Nlat, Nlon), dtype=np.bool)
-            tempmask                        = (weightsumQC == 0)
-            mask[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
-                                            = tempmask
-            vel_iso                         = np.zeros((Nlat, Nlon), dtype=np.float32)
-            tempvel                         = slowness_sumQC.copy()
-            tempvel[tempvel!=0]             = 1./ tempvel[tempvel!=0]
-            vel_iso[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
-                                            = tempvel
-            #----------------------------------------------------------------------------------------
-            # standard error of the mean, updated on 09/20/2018
-            # formula: https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Statistical_properties
-            #----------------------------------------------------------------------------------------
-            slownessALL_temp                = slownessALL.copy()
-            slownessALL_temp[slownessALL_temp==0.]\
-                                            = 0.3
-            if np.any(weightALLQC[slownessALL==0.]> 0.):
-                raise ValueError('Check weight array!')
-            temp                            = (weightALLQC*(1./slownessALL_temp-tempvel))**2
-            temp                            = np.sum(temp, axis=0)
-            tempsem                         = np.zeros(temp.shape)
-            tind                            = (weightsumQC!=0)*(MArrQC!=1)
-            tempsem[tind]                   = np.sqrt( temp[tind] * ( MArrQC[tind]/(weightsumQC[tind])**2/(MArrQC[tind]-1) ) ) 
-            vel_sem                         = np.zeros((Nlat, Nlon), dtype=np.float32)
-            vel_sem[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
-                                            = tempsem
-            #---------------------------------------
-            # save isotropic velocity to database
-            #---------------------------------------
-            per_group_out                   = group_out.create_group( name='%g_sec'%( per ) )
-            sdset                           = per_group_out.create_dataset(name='slowness', data=slowness_sumQC)
-            s_stddset                       = per_group_out.create_dataset(name='slowness_std', data=slowness_stdQC)
-            Nmdset                          = per_group_out.create_dataset(name='Nmeasure', data=Nmeasure)
-            NmQCdset                        = per_group_out.create_dataset(name='NmeasureQC', data=NmeasureQC)
-            maskdset                        = per_group_out.create_dataset(name='mask', data=mask)
-            visodset                        = per_group_out.create_dataset(name='vel_iso', data=vel_iso)
-            vsemdset                        = per_group_out.create_dataset(name='vel_sem', data=vel_sem)
-            #----------------------------------------------------------------------------
-            # determine anisotropic parameters, need benchmark and further verification
-            #----------------------------------------------------------------------------
-            if anisotropic:
-                grid_factor                 = int(np.ceil(spacing_ani/dlat))
-                gridx                       = grid_factor
-                gridy                       = int(grid_factor*np.floor(dlon/dlat))
-                Nx_size                     = Nlat-2*nlat_grad
-                Ny_size                     = Nlon-2*nlon_grad
-                NmeasureAni                 = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                total_near_neighbor         = Nmeasure[0:-2*gridx, 0:-2*gridy] + Nmeasure[0:-2*gridx, gridy:-gridy] + \
-                                    Nmeasure[0:-2*gridx, 2*gridy:Ny_size] + Nmeasure[gridx:-gridx, 0:-2*gridy] +\
-                                    Nmeasure[gridx:-gridx, gridy:-gridy] + Nmeasure[gridx:-gridx, 2*gridy:Ny_size] +\
-                                    Nmeasure[2*gridx:Nx_size, 0:-2*gridy] + Nmeasure[2*gridx:Nx_size, gridy:-gridy] +\
-                                    Nmeasure[2*gridx:Nx_size, 2*gridy:Ny_size]
-                NmeasureAni[gridx:-gridx, gridy:-gridy]     \
-                                            = total_near_neighbor # for quality control
-                # initialization of anisotropic parameters
-                d_bin                       = (maxazi-minazi)/N_bin
-                print 'anisotropic grid factor = '+ str(gridx)+'/'+str(gridy)
-                # number of measurements in each bin
-                histArr                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                histArr_cutted              = histArr[:, gridx:-gridx, gridy:-gridy]
-                # slowness in each bin
-                slow_sum_ani                = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                slow_sum_ani_cutted         = slow_sum_ani[:, gridx:-gridx, gridy:-gridy]
-                # slowness uncertainties for each bin
-                slow_un                     = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                slow_un_cutted              = slow_un[:, gridx:-gridx, gridy:-gridy]
-                # velocity uncertainties for each bin
-                vel_un                      = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
-                vel_un_cutted               = vel_un[:, gridx:-gridx, gridy:-gridy]
-                #
-                index_dict                  = { 0: [0, -2*gridx, 0,         -2*gridy], \
-                                                1: [0, -2*gridx, gridy,     -gridy],\
-                                                2: [0, -2*gridx, 2*gridy,   Ny_size],\
-                                                3: [gridx, -gridx, 0,       -2*gridy],\
-                                                4: [gridx, -gridx, gridy, -gridy],\
-                                                5: [gridx, -gridx, 2*gridy, Ny_size],\
-                                                6: [2*gridx, Nx_size, 0,    -2*gridy],\
-                                                7: [2*gridx, Nx_size, gridy,-gridy],\
-                                                8: [2*gridx, Nx_size, 2*gridy, Ny_size]}
-                nmin_bin                    = 2 # change
-                #----------------------------------------------------------------------------------
-                # Loop over azimuth bins to get slowness, velocity and number of measurements
-                #----------------------------------------------------------------------------------
-                for ibin in xrange(N_bin):
-                    sumNbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    slowbin                     = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    slow_un_ibin                = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    velbin                      = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    vel_un_ibin                 = (np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad)))[gridx:-gridx, gridy:-gridy]
-                    for i in range(9):
-                        indarr                  = index_dict[i]
-                        azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        ibinarr                 = np.floor((azi_arr - minazi)/d_bin)
-                        weight_bin              = 1*(ibinarr==ibin)
-                        index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        weight_bin[index_outlier_cutted] \
-                                                = 0
-                        slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        # differences in slowness numexpr.evaluate('sum(index_azi, 0)')
-                        temp_dslow              = numexpr.evaluate('weight_bin*(slownessALL_cutted-slowsumQC_cutted)')
-                        temp_dslow              = numexpr.evaluate('sum(temp_dslow, 0)')
-                        # velocities
-                        temp_vel                = slownessALL_cutted.copy()
-                        temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-                        temp_vel                = numexpr.evaluate('weight_bin*temp_vel')
-                        temp_vel                = numexpr.evaluate('sum(temp_vel, 0)')
-                        # number of measurements in this bin
-                        N_ibin                  = numexpr.evaluate('sum(weight_bin, 0)')
-                        # quality control
-                        ind_valid               = N_ibin >= nmin_bin
-                        sumNbin[ind_valid]      += N_ibin[ind_valid]
-                        slowbin[ind_valid]      += temp_dslow[ind_valid]
-                        velbin[ind_valid]       += temp_vel[ind_valid]
-                    vel_mean                    = velbin.copy()
-                    vel_mean[sumNbin!=0]        = velbin[sumNbin!=0]/sumNbin[sumNbin!=0]
-                    dslow_mean                  = slowbin.copy()
-                    dslow_mean[sumNbin!=0]      = dslow_mean[sumNbin!=0]/sumNbin[sumNbin!=0]
-                    # compute uncertainties
-                    for i in range(9):
-                        indarr                  = index_dict[i]
-                        azi_arr                 = aziALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        ibinarr                 = np.floor((azi_arr-minazi)/d_bin)
-                        weight_bin              = 1*(ibinarr==ibin)
-                        index_outlier_cutted    = index_outlier[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        weight_bin[index_outlier_cutted] \
-                                                = 0
-                        slowsumQC_cutted        = slowness_sumQC[indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        slownessALL_cutted      = slownessALL[:, indarr[0]:indarr[1], indarr[2]:indarr[3]]
-                        temp_vel                = slownessALL_cutted.copy()
-                        temp_vel[temp_vel!=0]   = 1./temp_vel[temp_vel!=0]
-                        vel_un_ibin             = vel_un_ibin + numexpr.evaluate('sum( (weight_bin*(temp_vel-vel_mean))**2, 0)')
-                        slow_un_ibin            = slow_un_ibin + numexpr.evaluate('sum( (weight_bin*(slownessALL_cutted-slowsumQC_cutted \
-                                                                - dslow_mean))**2, 0)')
-                    #------------------------------------
-                    vel_un_ibin[sumNbin!=0]     = np.sqrt(vel_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-                    vel_un_cutted[ibin, :, :]   = vel_un_ibin
-                    slow_un_ibin[sumNbin!=0]    = np.sqrt(slow_un_ibin[sumNbin!=0]/(sumNbin[sumNbin!=0]-1)/sumNbin[sumNbin!=0])
-                    slow_un_cutted[ibin, :, :]  = slow_un_ibin
-                    histArr_cutted[ibin, :, :]  = sumNbin
-                    slow_sum_ani_cutted[ibin, :, :]  \
-                                                = dslow_mean
-                #-------------------------------------------
-                N_thresh                                = 10 # change
-                slow_sum_ani_cutted[histArr_cutted<N_thresh] \
-                                                        = 0
-                slow_sum_ani[:, gridx:-gridx, gridy:-gridy]\
-                                                        = slow_sum_ani_cutted
-                # uncertainties
-                slow_un_cutted[histArr_cutted<N_thresh] = 0
-                slow_un[:, gridx:-gridx, gridy:-gridy]  = slow_un_cutted
-                # convert sem of slowness to sem of velocity
-                vel_un_cutted[histArr_cutted<N_thresh]  = 0
-                vel_un[:, gridx:-gridx, gridy:-gridy]   = vel_un_cutted
-                # # # return vel_un
-                # near neighbor quality control
-                Ntotal_thresh                           = 45 # change
-                slow_sum_ani[:, NmeasureAni<Ntotal_thresh]    \
-                                                        = 0 
-                slow_un[:, NmeasureAni<Ntotal_thresh]   = 0
-                vel_un[:, NmeasureAni<Ntotal_thresh]    = 0
-                histArr[:, gridx:-gridx, gridy:-gridy]  = histArr_cutted
-                # save data to database
-                s_anidset       = per_group_out.create_dataset(name='slownessAni', data=slow_sum_ani)
-                s_anisemdset    = per_group_out.create_dataset(name='slownessAni_sem', data=slow_un)
-                v_anisemdset    = per_group_out.create_dataset(name='velAni_sem', data=vel_un)
-                histdset        = per_group_out.create_dataset(name='histArr', data=histArr)
-                NmAnidset       = per_group_out.create_dataset(name='NmeasureAni', data=NmeasureAni)
-        return
-    
-    def merge_raytomo(self, inrayfname, runid=0, Nmeasure_thresh=50, percentage=None, num_thresh=None,\
-                    inrunid=0, gausspercent=1., gstd_thresh=100., Traymin=8., Traymax=50.):
-        """
-        Merge eikonal tomography results with ray tomography results
-        Uncertainties will be extrapolated based on the resolution values yieled by the ray tomography method
-        """
-        # ray tomography group
-        indset      = h5py.File(inrayfname)
-        raydataid   = 'reshaped_qc_run_'+str(inrunid)
-        raypers     = indset.attrs['period_array']
-        raypers     = raypers[(raypers<=Traymax)*(raypers>=Traymin)]
-        print 'RayTomo Tmin/Tmax = '+str(raypers[0])+'/'+str(raypers[-1])
-        raygrp      = indset[raydataid]
-        isotropic   = raygrp.attrs['isotropic']
-        org_raygrp  = indset['qc_run_'+str(inrunid)]
-        if isotropic:
-            print 'isotropic inversion results do not output gaussian std!'
-            return
-        # eikonal tomography group
-        pers        = self.attrs['period_array']
-        dataid      = 'Eikonal_stack_'+str(runid)
-        grp         = self[dataid]
-        for per in raypers:
-            if not per in pers:
-                raise KeyError('Period array of hybrid database should contain raytomo period array!')
-        self.attrs.create(name = 'period_array_ray', data=raypers)
-        # check attributes
-        if self.attrs['minlon'] != indset.attrs['minlon'] or \
-            self.attrs['maxlon'] != indset.attrs['maxlon'] or \
-                self.attrs['minlat'] != indset.attrs['minlat'] or \
-                    self.attrs['maxlat'] != indset.attrs['maxlat'] or \
-                        self.attrs['dlon'] != org_raygrp.attrs['dlon'] or \
-                            self.attrs['dlat'] != org_raygrp.attrs['dlat']:
-            raise ValueError('Incompatible input ray tomo datasets!')
-        outgrp      = self.create_group(name='merged_tomo_'+str(runid))
-        #------------------------------------------------------
-        # determine mask for period in ray tomography database
-        #------------------------------------------------------
-        mask_ray        = raygrp['mask2']
-        if gstd_thresh is not None:
-            for per in raypers:
-                pergrp  = raygrp['%g_sec'%( per )]
-                mgauss  = pergrp['gauss_std'].value
-                mask_ray+= mgauss > gstd_thresh
-        outgrp.create_dataset(name='mask_ray', data=mask_ray)
-        #------------------------------------------------------
-        # determine mask for period in eikonal database
-        #------------------------------------------------------
-        # mask_eik        = grp['%g_sec'%( pers[0] )]['mask'].value
-        # for per in pers:
-        #     pergrp          = grp['%g_sec'%( per )]
-        #     mask_temp       = pergrp['mask'].value
-        #     Nmeasure        = np.zeros(mask_eik.shape)
-        #     Nmeasure[1:-1, 1:-1]\
-        #                     = pergrp['NmeasureQC'].value
-        #     mask_temp[Nmeasure<Nmeasure_thresh]\
-        #                     = True
-        #     mask_eik        += mask_temp
-        # outgrp.create_dataset(name='mask_eik', data=mask_eik)
-        for per in pers:
-            pergrp          = grp['%g_sec'%( per )]
-            velocity        = pergrp['vel_iso'].value
-            uncertainty     = pergrp['vel_sem'].value
-            mask_eik        = pergrp['mask'].value
-            Nmeasure        = np.zeros(mask_eik.shape)
-            Nmeasure[1:-1, 1:-1]\
-                            = pergrp['NmeasureQC'].value
-            mask_eik[Nmeasure<Nmeasure_thresh]\
-                            = True
-            #-------------------------------
-            # get data
-            #-------------------------------
-            if per in raypers:
-                per_raygrp  = raygrp['%g_sec'%( per )]
-                # replace velocity value outside eikonal region
-                vel_ray     = per_raygrp['vel_iso'].value
-                velocity[mask_eik]\
-                            = vel_ray[mask_eik]
-                #--------------------------------------------------
-                # replace uncertainty value outside eikonal region
-                #--------------------------------------------------
-                # Gaussian std from ray tomo data
-                mgauss      = per_raygrp['gauss_std'].value
-                index_ray   = np.logical_not(mask_ray)
-                mgauss2     = mgauss[index_ray]
-                gstdmin     = mgauss2.min()
-                ind_gstdmin = (mgauss==gstdmin*gausspercent)*index_ray
-                # eikonal 
-                index       = np.logical_not(mask_eik)
-                Nmeasure2   = Nmeasure[index]
-                if Nmeasure2.size == 0:
-                    print '--- T = '+str(per)+' sec ---'
-                    print 'No uncertainty, step 1'
-                    print '----------------------------'
-                    continue
-                NMmax       = Nmeasure2.max()
-                if percentage is not None and num_thresh is None:
-                    NMthresh    = NMmax*percentage
-                elif percentage is None and num_thresh is not None:
-                    NMthresh    = num_thresh
-                elif percentage is not None and num_thresh is not None:
-                    NMthresh    = min(NMmax*percentage, num_thresh)
-                else:
-                    raise ValueError('at least one of percentage/num_thresh should be specified')
-                indstd      = (Nmeasure>=NMthresh)*index
-                #------------------------
-                # extrapolate uncertainties
-                #------------------------
-                # locate the grid points where Gaussian std is small enough and Nmeasure is large enough
-                index_all   = ind_gstdmin*indstd
-                temp_sem    = uncertainty[index_all]
-                if temp_sem.size == 0:
-                    print '--- T = '+str(per)+' sec ---'
-                    print 'No uncertainty, step 2'
-                    print '----------------------------'
-                    continue
-                sem_min     = temp_sem.mean()
-                print '--- T = '+str(per)+' sec ---'
-                print 'min uncertainty: '+str(sem_min*1000.)+' m/s, number of grids: '+str(temp_sem.size)
-                print '----------------------------'
-                est_sem     = (mgauss/gstdmin)*sem_min
-                # replace uncertainties
-                uncertainty[mask_eik]\
-                            = est_sem[mask_eik]
-            # save data to database
-            out_pergrp      = outgrp.create_group(name='%g_sec'%( per ))
-            vdset           = out_pergrp.create_dataset(name='vel_iso', data=velocity)
-            undset          = out_pergrp.create_dataset(name='vel_sem', data=uncertainty)
-            maskeikdset     = out_pergrp.create_dataset(name='mask_eik', data=mask_eik)
-            if per in raypers:
-                maskdset    = out_pergrp.create_dataset(name='mask', data=mask_ray)
-            else:
-                maskdset    = out_pergrp.create_dataset(name='mask', data=mask_eik)
-            Nmdset          = out_pergrp.create_dataset(name='Nmeasure', data=Nmeasure)
-        return
-
-    def interp_surface(self, Traymax=50., workingdir='./hybridtomo_interp_surface', dlon=None, dlat=None, runid=0, deletetxt=True):
+    def interp_surface_azi_eik(self, workingdir='./azi_eik_interp_surface', dlon=None, dlat=None, runid=0, deletetxt=True):
         """interpolate inverted velocity maps and uncertainties to a grid for inversion of Vs
         =================================================================================================================
         ::: input parameters :::
@@ -5352,7 +5721,7 @@ class hybridTomoDataSet(EikonalTomoDataSet):
         =================================================================================================================
         """
         self._get_lon_lat_arr()
-        dataid          = 'merged_tomo_'+str(runid)
+        dataid          = 'Eikonal_stack_'+str(runid)
         pers            = self.attrs['period_array']
         grp             = self[dataid]
         minlon          = self.attrs['minlon']
@@ -5371,17 +5740,28 @@ class hybridTomoDataSet(EikonalTomoDataSet):
         self.attrs.create(name = 'dlat_interp', data=dlat)
         #--------------------------------------------------
         # get the mask array for the interpolated data
-        #---------------------------------------------------
-        mask_ray        = grp['mask_ray']
-        index_ray       = np.logical_not(mask_ray)
+        #--------------------------------------------------
+        mask        = np.zeros((self.Nlat, self.Nlon), dtype=bool)
+        for per in pers:
+            pergrp  = grp['%g_sec'%( per )]
+            mask    += pergrp['mask'].value
+            mask    += pergrp['mask_aniso'].value
+        # --- 
         lons            = np.arange(int((maxlon-minlon)/dlon)+1)*dlon+minlon
         lats            = np.arange(int((maxlat-minlat)/dlat)+1)*dlat+minlat
         Nlon            = lons.size
         Nlat            = lats.size
         lonArr, latArr  = np.meshgrid(lons, lats)
-        mask_ray_interp = _get_mask_interp(mask_ray, self.lons, self.lats, lons, lats)
-        grp.create_dataset(name = 'mask_ray_interp', data=mask_ray_interp)
-        grp.attrs.create(name = 'T_ray_max', data=Traymax)
+        # fill the center hole --- 
+        ind             = (self.lonArr >= -150.+360.)*(self.lonArr <= -145.+360.)*\
+                            (self.latArr >= 64.)*(self.latArr <= 66.)
+        # # # ind             = (dset.lonArr >= -150.+360.)*(dset.lonArr <= -145.+360.)*\
+        # # #                     (dset.latArr >= 64.)*(dset.latArr <= 66.)
+        mask[ind]       = False
+        # ---- 
+        mask_interp     = _get_mask_interp(mask, self.lons, self.lats, lons, lats)
+        grp.create_dataset(name = 'mask_interp', data=mask_interp)
+        grp.create_dataset(name = 'mask_allT', data=mask)
         for per in pers:
             working_per = workingdir+'/'+str(per)+'sec'
             if not os.path.isdir(working_per):
@@ -5393,16 +5773,17 @@ class hybridTomoDataSet(EikonalTomoDataSet):
                 pergrp      = grp['%g_sec'%( per )]
                 vel_iso     = pergrp['vel_iso'].value
                 vel_sem     = pergrp['vel_sem'].value
-                mask_eik    = pergrp['mask_eik'].value
+                psiarr      = pergrp['psiarr'].value
+                unpsi       = pergrp['unpsi'].value
+                amparr      = pergrp['amparr'].value
+                unamp       = pergrp['unamp'].value
+                mask_per    = pergrp['mask'].value + pergrp['mask_aniso'].value
             except KeyError:
                 print 'No data for T = '+str(per)+' sec'
                 continue
-            if per <= Traymax:
-                index           = index_ray.copy()
-            else:
-                index           = np.logical_not(mask_eik)
-                mask_eik_out    = _get_mask_interp(mask_eik, self.lons, self.lats, lons, lats)
-                maskinterp_dset = pergrp.create_dataset(name='mask_interp', data=mask_eik_out)
+            index           = np.logical_not(mask_per)
+            mask_per_out    = _get_mask_interp(mask_per, self.lons, self.lats, lons, lats)
+            maskinterp_dset = pergrp.create_dataset(name='mask_interp', data=mask_per_out)
             #-------------------------------
             # interpolation for velocity
             #-------------------------------
@@ -5412,6 +5793,7 @@ class hybridTomoDataSet(EikonalTomoDataSet):
             outfname        = 'interp_vel.lst'
             field2d_v.interp_surface(workingdir=working_per, outfname=outfname)
             vinterp_dset    = pergrp.create_dataset(name='vel_iso_interp', data=field2d_v.Zarr)
+            del field2d_v
             #---------------------------------
             # interpolation for uncertainties
             #---------------------------------
@@ -5421,17 +5803,81 @@ class hybridTomoDataSet(EikonalTomoDataSet):
             outfname        = 'interp_un.lst'
             field2d_un.interp_surface(workingdir=working_per, outfname=outfname)
             uninterp_dset   = pergrp.create_dataset(name='vel_sem_interp', data=field2d_un.Zarr)
+            del field2d_un
+            #-------------------------------
+            # interpolation for amp
+            #-------------------------------
+            field2d_amp     = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
+            field2d_amp.read_array(lonArr = self.lonArr[index], latArr = self.latArr[index], ZarrIn = amparr[index])
+            outfname        = 'interp_amp.lst'
+            field2d_amp.interp_surface(workingdir=working_per, outfname=outfname)
+            ampinterp_dset  = pergrp.create_dataset(name='amp_interp', data=field2d_amp.Zarr)
+            del field2d_amp
+            #-------------------------------
+            # interpolation for amp uncertainties
+            #-------------------------------
+            field2d_unamp   = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
+            field2d_unamp.read_array(lonArr = self.lonArr[index], latArr = self.latArr[index], ZarrIn = unamp[index])
+            outfname        = 'interp_unamp.lst'
+            field2d_unamp.interp_surface(workingdir=working_per, outfname=outfname)
+            unampinterp_dset= pergrp.create_dataset(name='unamp_interp', data=field2d_unamp.Zarr)
+            del field2d_unamp
+            #-------------------------------
+            # interpolation for psi uncertainties
+            #-------------------------------
+            field2d_unpsi   = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
+            field2d_unpsi.read_array(lonArr = self.lonArr[index], latArr = self.latArr[index], ZarrIn = unpsi[index])
+            outfname        = 'interp_unpsi.lst'
+            field2d_unpsi.interp_surface(workingdir=working_per, outfname=outfname)
+            unpsiinterp_dset= pergrp.create_dataset(name='unpsi_interp', data=field2d_unpsi.Zarr)
+            del field2d_unpsi
+            #-------------------------------
+            # interpolation for psi
+            #-------------------------------
+            low         = 0.
+            high        = 180.
+            temp_psi    = psiarr[index]
+            temp_psi[temp_psi<0.] \
+                        += 180.
+            ang         = (temp_psi - low)*2.*np.pi / (high - low)
+            # interpolating sine
+            Sarr        = np.sin(ang)
+            field2d_S   = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
+            field2d_S.read_array(lonArr = self.lonArr[index], latArr = self.latArr[index], ZarrIn = Sarr)
+            outfname        = 'interp_S.lst'
+            field2d_S.interp_surface(workingdir=working_per, outfname=outfname)
+            Sarr_interp = field2d_S.Zarr
+            # interpolating cosine
+            Carr        = np.cos(ang)
+            field2d_C   = field2d_earth.Field2d(minlon=minlon, maxlon=maxlon, dlon=dlon,
+                            minlat=minlat, maxlat=maxlat, dlat=dlat, period=per, evlo=(minlon+maxlon)/2., evla=(minlat+maxlat)/2.)
+            field2d_C.read_array(lonArr = self.lonArr[index], latArr = self.latArr[index], ZarrIn = Carr)
+            outfname        = 'interp_C.lst'
+            field2d_C.interp_surface(workingdir=working_per, outfname=outfname)
+            Carr_interp = field2d_C.Zarr
+            # convert to interpolated psi
+            res             = np.arctan2(Sarr_interp, Carr_interp)
+            res[res<0.]     += 2*np.pi
+            psi_interp      = res*(high - low)/2.0/np.pi + low
+            psiinterp_dset  = pergrp.create_dataset(name='psi_interp', data=psi_interp)
         if deletetxt:
             shutil.rmtree(workingdir)
         return
     
-    def plot_interp(self, period, datatype, runid=0, shpfx=None, clabel='', cmap='cv', projection='lambert', hillshade=False,\
-             geopolygons=None, vmin=None, vmax=None, showfig=True):
-        """plot HD maps from the tomographic inversion
+    def plot_interp(self, runid, datatype, period, semfactor=2., Nthresh=None, helm=False, merged=False, clabel='', cmap='cv', projection='lambert',\
+                hillshade=False, geopolygons=None, vmin=None, vmax=None, showfig=True, mfault=True, v_rel=None):
+        """plot maps from the tomographic inversion
         =================================================================================================================
         ::: input parameters :::
-        period          - period of data
+        runtype         - type of run (0 - smooth run, 1 - quality controlled run)
         runid           - id of run
+        datatype        - datatype for plotting
+        period          - period of data
+        sem_factor      - factor multiplied to get the finalized uncertainties
         clabel          - label of colorbar
         cmap            - colormap
         projection      - projection type
@@ -5440,20 +5886,23 @@ class hybridTomoDataSet(EikonalTomoDataSet):
         showfig         - show figure or not
         =================================================================================================================
         """
-        dataid          = 'merged_tomo_'+str(runid)
-        self._get_lon_lat_arr_interp()
+        if helm:
+            dataid      = 'Helmholtz_stack_'+str(runid)
+        else:
+            dataid      = 'Eikonal_stack_'+str(runid)
+        if merged:
+            dataid      = 'merged_tomo_'+str(runid)
+        ingroup         = self[dataid]
         pers            = self.attrs['period_array']
-        grp             = self[dataid]
-        Traymax         = grp.attrs['T_ray_max']
+        self._get_lon_lat_arr_interp()
         if not period in pers:
             raise KeyError('period = '+str(period)+' not included in the database')
-        pergrp          = grp['%g_sec'%( period )]
-        if datatype == 'vel' or datatype=='velocity' or datatype == 'v':
-            datatype    = 'vel_iso_interp'
-        if datatype == 'un' or datatype=='sem' or datatype == 'vel_sem':
-            datatype    = 'vel_sem_interp'
+        pergrp          = ingroup['%g_sec'%( period )]
         try:
-            data    = pergrp[datatype].value
+            data        = pergrp[datatype].value
+            if data.shape != self.lonArr.shape:
+                print 'Incompatible data shape: '+str(data.shape)+' lonArr/latArr:'+str(self.lonArr.shape)
+                return
         except:
             outstr      = ''
             for key in pergrp.keys():
@@ -5462,106 +5911,46 @@ class hybridTomoDataSet(EikonalTomoDataSet):
             outstr      = outstr[:-1]
             raise KeyError('Unexpected datatype: '+datatype+\
                            ', available datatypes are: '+outstr)
-        if period <= Traymax:   
-            mask    = grp['mask_ray_interp']
-        else:
-            mask    = pergrp['mask_interp']
         if datatype == 'vel_sem_interp':
-            data    = data*2000.
+            data    *= 1000.*semfactor
+        mask        = ingroup['mask_interp'].value
         mdata       = ma.masked_array(data, mask=mask )
         #-----------
         # plot data
         #-----------
         m           = self._get_basemap(projection=projection, geopolygons=geopolygons)
         x, y        = m(self.lonArr, self.latArr)
-        # shapefname  = '/projects/life9360/geological_maps/qfaults'
-        # m.readshapefile(shapefname, 'faultline', linewidth=2, color='grey')
-        # shapefname  = '/projects/life9360/AKgeol_web_shp/AKStategeolarc_generalized_WGS84'
-        # m.readshapefile(shapefname, 'faultline', linewidth=1, color='grey')
         
+        plot_fault_lines(m, 'AK_Faults.txt', color='grey')
         if cmap == 'ses3d':
             cmap        = colormaps.make_colormap({0.0:[0.1,0.0,0.0], 0.2:[0.8,0.0,0.0], 0.3:[1.0,0.7,0.0],0.48:[0.92,0.92,0.92],
                             0.5:[0.92,0.92,0.92], 0.52:[0.92,0.92,0.92], 0.7:[0.0,0.6,0.7], 0.8:[0.0,0.0,0.8], 1.0:[0.0,0.0,0.1]})
         elif cmap == 'cv':
             import pycpt
-            cmap    = pycpt.load.gmtColormap('./cv.cpt')
+            cmap    = pycpt.load.gmtColormap('./cpt_files/cv.cpt')
         else:
             try:
                 if os.path.isfile(cmap):
                     import pycpt
                     cmap    = pycpt.load.gmtColormap(cmap)
+                    cmap    = cmap.reversed()
             except:
                 pass
-        ################################
-        if hillshade:
-            from netCDF4 import Dataset
-            from matplotlib.colors import LightSource
-        
-            etopodata   = Dataset('/projects/life9360/station_map/grd_dir/ETOPO2v2g_f4.nc')
-            etopo       = etopodata.variables['z'][:]
-            lons        = etopodata.variables['x'][:]
-            lats        = etopodata.variables['y'][:]
-            ls          = LightSource(azdeg=315, altdeg=45)
-            # nx          = int((m.xmax-m.xmin)/40000.)+1; ny = int((m.ymax-m.ymin)/40000.)+1
-            etopo,lons  = shiftgrid(180.,etopo,lons,start=False)
-            # topodat,x,y = m.transform_scalar(etopo,lons,lats,nx,ny,returnxy=True)
-            ny, nx      = etopo.shape
-            topodat,xtopo,ytopo = m.transform_scalar(etopo,lons,lats,nx, ny, returnxy=True)
-            m.imshow(ls.hillshade(topodat, vert_exag=1., dx=1., dy=1.), cmap='gray')
-            mycm1=pycpt.load.gmtColormap('/projects/life9360/station_map/etopo1.cpt')
-            mycm2=pycpt.load.gmtColormap('/projects/life9360/station_map/bathy1.cpt')
-            mycm2.set_over('w',0)
-            # m.imshow(ls.shade(topodat, cmap=mycm1, vert_exag=1., dx=1., dy=1., vmin=0, vmax=8000))
-            # m.imshow(ls.shade(topodat, cmap=mycm2, vert_exag=1., dx=1., dy=1., vmin=-11000, vmax=-0.5))
-        ###################################################################
-
-        if hillshade:
-            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax, alpha=.5)
-        else:
-            im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        cb          = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.set_label(clabel, fontsize=12, rotation=0)
+        im          = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
+        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[10., 15., 20., 25., 30., 35., 40., 45., 50., 55., 60.])
+        # cb          = m.colorbar(im, "bottom", size="3%", pad='2%', ticks=[20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70.])
+        # cb          = m.colorbar(im, "bottom", size="5%", pad='2%', ticks=[4.0, 4.1, 4.2, 4.3, 4.4])
+        cb          = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.set_label(clabel, fontsize=40, rotation=0)
+        # cb.outline.set_linewidth(2)
         plt.suptitle(str(period)+' sec', fontsize=20)
-        cb.ax.tick_params(labelsize=15)
-        cb.set_alpha(1)
-        cb.draw_all()
+        cb.ax.tick_params(labelsize=40)
         print 'plotting data from '+dataid
-        # # cb.solids.set_rasterized(True)
-        cb.solids.set_edgecolor("face")
-        # lons            = np.array([-160., -160., -150., -140., -130.,\
-        #                             -160., -150., -140., -130.,\
-        #                             -160., -150., -140., -130.])
-        # lats            = np.array([55., 60., 60., 60., 60.,\
-        #                             65., 65., 65., 55.,\
-        #                             70., 70., 70., 70.])
-        # xc, yc          = m(lons, lats)
-        # m.plot(xc, yc,'ko', ms=15)
-        # m.shadedrelief(scale=1., origin='lower')
         if showfig:
             plt.show()
         return
     
-    def write_un(self, outfname, runid=0):
-        pers        = self.attrs['period_array']
-        unarr       = np.zeros(pers.size)
-        i           = 0
-        dataid      = 'merged_tomo_'+str(runid)
-        grp         = self[dataid]
-        for per in pers:
-            pergrp          = grp['%g_sec'%( per )]
-            velocity        = pergrp['vel_iso'].value
-            uncertainty     = pergrp['vel_sem'].value
-            mask_eik        = pergrp['mask_eik'].value
-            unarr[i]        = uncertainty[np.logical_not(mask_eik)].mean() * 2000.
-            i               += 1
-        outArr  = np.append(pers, unarr)
-        outArr  = outArr.reshape((2, pers.size))
-        outArr  = outArr.T
-        np.savetxt(outfname, outArr, fmt='%g')
-        
-
-
-        
+    
     
 def eikonal4mp(infield, workingdir, channel, cdist):
     working_per     = workingdir+'/'+str(infield.period)+'sec'
@@ -5592,4 +5981,300 @@ def helmhotz4mp(infieldpair, workingdir, channel, amplplc, cdist):
         field2dAmp.helmholtz_operator(workingdir = working_per, inpfx = field2dAmp.evid+'_Amp_'+channel+'_', lplcthresh = 0.5)
         tfield.get_lplc_amp(fieldamp = field2dAmp)
     tfield.write_binary(outfname = outfname_npz, amplplc = amplplc)
-    return 
+    return
+
+def stack4mp(sdata, workingdir, minazi, maxazi, N_bin, threshmeasure, anisotropic, spacing_ani, coverage,\
+        use_numba, azi_amp_tresh, gridx, gridy,  Nlat, Nlon, nlat_grad, nlon_grad, enhanced=True):
+    # reading data
+    #----------------------------
+    # isotropic stacking
+    #----------------------------
+    print '*** Stacking data: '+str(sdata.period)
+    slownessALL = sdata.slownessALL
+    reason_nALL = sdata.reason_nALL
+    aziALL      = sdata.aziALL 
+    Nmeasure    = sdata.Nmeasure
+    Nevent      = sdata.Nevent 
+    period      = sdata.period
+    ###
+    weightALL   = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+    validALL    = np.zeros((Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad), dtype='float32')
+    if Nmeasure.max()< threshmeasure:
+        print ('--- No enough measurements for: '+str(sdata.period)+' sec')
+        return
+    # discard grid points where number of raw measurements is low, added Sep 26th, 2018
+    index_discard                   = Nmeasure < 50
+    reason_nALL[:, index_discard]   = 10
+    #-----------------------------------------------
+    # Get weight for each grid point per event
+    #-----------------------------------------------
+    if use_numba:
+        validALL[reason_nALL==0]    = 1
+        weightALL                   = _get_azi_weight(aziALL, validALL)
+        weightALL[reason_nALL!=0]   = 0
+        weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
+        weightsum                   = np.sum(weightALL, axis=0)
+    else:
+        azi_event1                  = np.broadcast_to(aziALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+        azi_event2                  = np.swapaxes(azi_event1, 0, 1)
+        validALL[reason_nALL==0]    = 1
+        validALL4                   = np.broadcast_to(validALL, (Nevent, Nevent, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+        # use numexpr for very large array manipulations
+        del_aziALL                  = numexpr.evaluate('abs(azi_event1-azi_event2)')
+        index_azi                   = numexpr.evaluate('(1*(del_aziALL<20)+1*(del_aziALL>340))*validALL4')
+        weightALL                   = numexpr.evaluate('sum(index_azi, 0)')
+        weightALL[reason_nALL!=0]   = 0
+        weightALL[weightALL!=0]     = 1./weightALL[weightALL!=0]
+        weightsum                   = np.sum(weightALL, axis=0)
+    #-----------------------------------------------
+    # reduce large weight to some value.
+    #-----------------------------------------------
+    avgArr                          = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+    avgArr[Nmeasure!=0]             = weightsum[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
+    # bug fixed, 02/07/2018
+    signALL                         = weightALL.copy()
+    signALL[signALL!=0]             = 1.
+    stdArr                          = np.sum( signALL*(weightALL-avgArr)**2, axis=0)
+    stdArr[Nmeasure!=0]             = stdArr[Nmeasure!=0]/Nmeasure[Nmeasure!=0]
+    stdArr                          = np.sqrt(stdArr)
+    threshhold                      = np.broadcast_to(avgArr+3.*stdArr, weightALL.shape)
+    weightALL[weightALL>threshhold] = threshhold[weightALL>threshhold] # threshhold truncated weightALL
+    # recompute weight arrays after large weight value reduction
+    weightsum                       = np.sum(weightALL, axis=0)
+    weightsumALL                    = np.broadcast_to(weightsum, weightALL.shape)
+    # weight over all events, note that before this, weightALL is weight over events in azimuth bin
+    weightALL[weightsumALL!=0]      = weightALL[weightsumALL!=0]/weightsumALL[weightsumALL!=0] 
+    ###
+    weightALL[weightALL==1.]        = 0. # data will be discarded if no other data within 20 degree
+    #-----------------------------------------------
+    # Compute mean/std of slowness
+    #-----------------------------------------------
+    slownessALL2                    = slownessALL*weightALL
+    slowness_sum                    = np.sum(slownessALL2, axis=0)
+    slowness_sumALL                 = np.broadcast_to(slowness_sum, weightALL.shape)
+    # weighted standard deviation
+    # formula: https://www.itl.nist.gov/div898/software/dataplot/refman2/ch2/weightsd.pdf
+    signALL                         = weightALL.copy()
+    signALL[signALL!=0]             = 1.
+    MArr                            = np.sum(signALL, axis=0)
+    temp                            = weightALL*(slownessALL-slowness_sumALL)**2
+    temp                            = np.sum(temp, axis=0)
+    slowness_std                    = np.zeros(temp.shape)
+    tind                            = (weightsum!=0)*(MArr!=1)*(MArr!=0)
+    slowness_std[tind]              = np.sqrt(temp[tind]/ ( weightsum[tind]*(MArr[tind]-1)/MArr[tind] ) )
+    slowness_stdALL                 = np.broadcast_to(slowness_std, weightALL.shape)
+    #-----------------------------------------------
+    # discard outliers of slowness
+    #-----------------------------------------------
+    weightALLQC                     = weightALL.copy()
+    index_outlier                   = (np.abs(slownessALL-slowness_sumALL))>2.*slowness_stdALL
+    index_outlier                   += reason_nALL != 0
+    weightALLQC[index_outlier]      = 0
+    weightsumQC                     = np.sum(weightALLQC, axis=0)
+    NmALL                           = np.sign(weightALLQC)
+    NmeasureQC                      = np.sum(NmALL, axis=0)
+    weightsumQCALL                  = np.broadcast_to(weightsumQC, weightALL.shape)
+    weightALLQC[weightsumQCALL!=0]  = weightALLQC[weightsumQCALL!=0]/weightsumQCALL[weightsumQCALL!=0]
+    temp                            = weightALLQC*slownessALL
+    slowness_sumQC                  = np.sum(temp, axis=0)
+    # new
+    signALLQC                       = weightALLQC.copy()
+    signALLQC[signALLQC!=0]         = 1.
+    MArrQC                          = np.sum(signALLQC, axis=0)
+    temp                            = weightALLQC*(slownessALL-slowness_sumQC)**2
+    temp                            = np.sum(temp, axis=0)
+    slowness_stdQC                  = np.zeros(temp.shape)
+    tind                            = (weightsumQC!=0)*(MArrQC!=1)
+    slowness_stdQC[tind]            = np.sqrt(temp[tind]/ ( weightsumQC[tind]*(MArrQC[tind]-1)/MArrQC[tind] ))
+    #---------------------------------------------------------------
+    # mask, velocity, and sem arrays of shape Nlat, Nlon
+    #---------------------------------------------------------------
+    mask                            = np.ones((Nlat, Nlon), dtype=np.bool)
+    tempmask                        = (weightsumQC == 0)
+    mask[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad] \
+                                    = tempmask
+    vel_iso                         = np.zeros((Nlat, Nlon), dtype=np.float32)
+    tempvel                         = slowness_sumQC.copy()
+    tempvel[tempvel!=0]             = 1./ tempvel[tempvel!=0]
+    vel_iso[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
+                                    = tempvel
+    #----------------------------------------------------------------------------------------
+    # standard error of the mean, updated on 09/20/2018
+    # formula: https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Statistical_properties
+    #----------------------------------------------------------------------------------------
+    slownessALL_temp                = slownessALL.copy()
+    slownessALL_temp[slownessALL_temp==0.]\
+                                    = 0.3
+    if np.any(weightALLQC[slownessALL==0.]> 0.):
+        raise ValueError('Check weight array!')
+    temp                            = (weightALLQC*(1./slownessALL_temp-tempvel))**2
+    temp                            = np.sum(temp, axis=0)
+    tempsem                         = np.zeros(temp.shape)
+    tind                            = (weightsumQC!=0)*(MArrQC!=1)
+    tempsem[tind]                   = np.sqrt( temp[tind] * ( MArrQC[tind]/(weightsumQC[tind])**2/(MArrQC[tind]-1) ) ) 
+    vel_sem                         = np.zeros((Nlat, Nlon), dtype=np.float32)
+    vel_sem[nlat_grad:-nlat_grad, nlon_grad:-nlon_grad]\
+                                    = tempsem
+    #---------------------------------------
+    # save isotropic velocity to npy files
+    #---------------------------------------
+    pfx         = '%g_sec'%( sdata.period )
+    outfname    = workingdir+'/iso_'+pfx+'.npz'
+    np.savez(outfname, slowness_sumQC, slowness_stdQC, Nmeasure, NmeasureQC, mask, vel_iso, vel_sem)
+    #----------------------------------------------------------------------------
+    # determine anisotropic parameters, need benchmark and further verification
+    #----------------------------------------------------------------------------
+    if anisotropic:
+        print '*** Anisotropic stacking data: '+str(sdata.period)
+        # quality control
+        slowness_sumQC_ALL          = np.broadcast_to(slowness_sumQC, slownessALL.shape)
+        diff_slowness               = np.abs(slownessALL-slowness_sumQC_ALL)
+        ind_nonzero                 = slowness_sumQC_ALL!= 0.
+        diff_slowness[ind_nonzero]  = diff_slowness[ind_nonzero]/slowness_sumQC_ALL[ind_nonzero]
+        index_outlier               += diff_slowness > azi_amp_tresh
+        # stacking to get anisotropic parameters
+        dslow_sum_ani, dslow_un, vel_un, histArr, NmeasureAni    \
+                                    = _anisotropic_stacking(np.int64(gridx), np.int64(gridy), np.float32(maxazi), np.float32(minazi),\
+                                                np.int64(N_bin), np.float64(Nmeasure), np.float64(aziALL),\
+                                                np.float64(slowness_sumQC), np.float64(slownessALL), index_outlier.astype(bool))
+        if enhanced:
+            print '*** Enhanced anisotropic stacking data: '+str(sdata.period) 
+            Nbinarr     = np.zeros((sdata.Nlat, sdata.Nlon))
+            Nmarr       = np.zeros((sdata.Nlat, sdata.Nlon))
+            Nlat        = sdata.Nlat
+            Nlon        = sdata.Nlon
+            nlat_grad   = sdata.nlat_grad
+            nlon_grad   = sdata.nlon_grad
+            # arrays
+            # --- 
+            out_dslow_sum_ani   = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            out_dslow_sum_ani[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = dslow_sum_ani
+            slowAni             = out_dslow_sum_ani + slowness_sumQC
+            # ---            
+            velAnisem           = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            velAnisem[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = vel_un
+            # ---
+            slowness            = slowness_sumQC
+            # --- 
+            out_histArr         = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+            out_histArr[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                                = histArr
+            histArr             = out_histArr
+            # 
+            Ntotal_thresh       = 50.*gridx*gridy/2.
+            N_thresh            = 10.
+            azArr               = np.mgrid[minazi:maxazi:N_bin*1j]
+            for ilat in range(Nlat):
+                if (ilat-nlat_grad) < 0 or (ilat+nlat_grad) > (Nlat - 1) :
+                    continue
+                for ilon in range(Nlon):
+                    if (ilon-nlon_grad) < 0 or (ilon+nlon_grad) > (Nlon - 1) :
+                        continue
+                    outslowness = slowAni[:, ilat - nlat_grad, ilon - nlon_grad]
+                    outvel_sem  = velAnisem[:, ilat - nlat_grad, ilon - nlon_grad]
+                    avg_slowness= slowness[ilat - nlat_grad, ilon - nlon_grad]
+                    out_hist    = histArr[:, ilat - nlat_grad, ilon - nlon_grad]
+                    if out_hist.sum() < Ntotal_thresh:
+                        continue
+                    # get the valid binned data
+                    # quality control
+                    index       = np.where((outvel_sem != 0)*(out_hist > N_thresh ))[0]
+                    outslowness = outslowness[index]
+                    az_grd      = azArr[index]
+                    outvel_sem  = outvel_sem[index]
+                    Nbin        = index.size
+                    if Nbin < 5:
+                        continue
+                    Nmarr[ilat, ilon]   = int(out_hist.sum()/(gridx*gridy))
+                    Nbinarr[ilat, ilon] = Nbin
+                    #--------------------
+                    # sinusoidal fitting
+                    #--------------------
+                    indat           = (1./outslowness).reshape(1, Nbin)
+                    U               = np.zeros((Nbin, Nbin), dtype=np.float64)
+                    np.fill_diagonal(U, 1./outvel_sem)
+                    # construct forward operator matrix
+                    tG              = np.ones((Nbin, 1), dtype=np.float64)
+                    G               = tG.copy()
+                    # convert azimuth to the 'real' azimuth coordinate
+                    az_grd          += 180.
+                    az_grd          = 360. - az_grd
+                    az_grd          -= 90.
+                    az_grd[az_grd<0.]\
+                                    += 360.  
+                    tbaz            = np.pi*(az_grd)/180.
+                    tGsin2          = np.sin(tbaz*2)
+                    tGcos2          = np.cos(tbaz*2)
+                    G               = np.append(G, tGsin2)
+                    G               = np.append(G, tGcos2)
+                    G               = G.reshape((3, Nbin))
+                    G               = G.T
+                    G               = np.dot(U, G)
+                    # data
+                    d               = indat.T
+                    d               = np.dot(U, d)
+                    # least square inversion
+                    model           = np.linalg.lstsq(G, d)[0]
+                    A0              = model[0]
+                    A2              = np.sqrt(model[1]**2 + model[2]**2)
+                    phi2            = np.arctan2(model[1], model[2])/2.
+                    ### ---
+                    temp_azi                = aziALL[:, ilat - nlat_grad, ilon - nlon_grad]
+                    temp_ind_out            = index_outlier[:, ilat - nlat_grad, ilon - nlon_grad].copy()
+                    temp_snowness           = slownessALL[:, ilat - nlat_grad, ilon - nlon_grad]
+                    temp_vel                = temp_snowness.copy()
+                    temp_vel[temp_vel!=0.]  = 1./temp_snowness[temp_snowness!=0.]
+                    predat                  = A0 + A2*np.cos(2.*(np.pi/180.*(temp_azi+180.)-phi2) )
+                    diff_vel                = abs(predat-temp_vel)
+                    #---
+                    temp_thresh             = A2
+                    N0                      = temp_ind_out.size - temp_ind_out.sum()
+                    temp_ind_out[diff_vel>2.*temp_thresh]    \
+                                            = True
+                    N1                      = temp_ind_out.size - temp_ind_out.sum()
+                    # ---
+                    if N0 == 0:
+                        continue
+                    while( (float(N1)/float(N0))<0.5 ):
+                        temp_thresh         += 0.005
+                        temp_ind_out        = index_outlier[:, ilat - nlat_grad, ilon - nlon_grad].copy()
+                        temp_ind_out[diff_vel>2.*temp_thresh]    \
+                                            = True
+                        N1                  = temp_ind_out.size - temp_ind_out.sum()
+                    # ---
+                    index_outlier[:, ilat - nlat_grad, ilon - nlon_grad]\
+                                            = temp_ind_out.copy()
+                    ### ---
+            # stacking to get anisotropic parameters
+            dslow_sum_ani, dslow_un, vel_un, histArr, NmeasureAni    \
+                                        = _anisotropic_stacking(np.int64(gridx), np.int64(gridy), np.float32(maxazi), np.float32(minazi),\
+                                                np.int64(N_bin), np.float64(Nmeasure), np.float64(aziALL),\
+                                                np.float64(slowness_sumQC), np.float64(slownessALL), index_outlier.astype(bool))
+        #----------------------------
+        # save data to database
+        #----------------------------
+        outfname            = workingdir+'/azi_'+pfx+'.npz'
+        out_dslow_sum_ani   = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+        out_dslow_sum_ani[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                            = dslow_sum_ani
+        
+        out_dslow_un        = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+        out_dslow_un[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                            = dslow_un
+        
+        out_vel_un          = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+        out_vel_un[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                            = vel_un
+        
+        out_histArr         = np.zeros((N_bin, Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+        out_histArr[:, (gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                            = histArr
+        
+        out_NmeasureAni     = np.zeros((Nlat-2*nlat_grad, Nlon-2*nlon_grad))
+        out_NmeasureAni[(gridx - 1)/2:-(gridx - 1)/2, (gridy - 1)/2:-(gridy - 1)/2]\
+                            = NmeasureAni
+        
+        np.savez(outfname, out_dslow_sum_ani, out_dslow_un, out_vel_un, out_histArr, out_NmeasureAni)
+    return

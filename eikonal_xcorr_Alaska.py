@@ -39,4 +39,4 @@ dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eik
 #------------------------------
 # dset.compare_raytomo('/work1/leon/ALASKA_work/hdf5_files/ray_tomo_Alaska_20190318.h5', 1, 1, 0, 10.)
 
-# f2d = dset.plot_travel_time(inasdffname='/work1/leon/ALASKA_work/ASDF_data/xcorr_Alaska_20190218.h5', netcode='TA', stacode='H22K', period=40.)
+# dset.plot_travel_time(inasdffname='/work1/leon/ALASKA_work/ASDF_data/xcorr_Alaska_RTZ_ray_20190314_all.h5', netcode='TA', stacode='HDA', period=12.)

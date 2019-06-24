@@ -958,6 +958,12 @@ class Field2d(object):
         self.diffaArr                           = diffaArr
         self.grad                               = tfield.grad
         self.get_appV()
+        ###
+        # cgg on site
+        # # # reason_n[reason_n==2.] = 0.
+        # # # reason_n[reason_n==1.] = 0.
+        # # # reason_n[reason_n==3.] = 0.
+        ###
         self.reason_n                           = reason_n
         self.mask                               = np.ones((self.Nlat, self.Nlon), dtype=np.bool)
         tempmask                                = reason_n != 0
@@ -1129,7 +1135,7 @@ class Field2d(object):
     # functions for plotting
     #--------------------------------------------------
     
-    def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
+    def _get_basemap_default(self, projection='lambert', geopolygons=None, resolution='i'):
         """
         """
         # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
@@ -1171,6 +1177,95 @@ class Field2d(object):
             pass
         return m
     
+    def _get_basemap(self, projection='lambert', geopolygons=None, resolution='i'):
+        """Get basemap for plotting results
+        """
+        # fig=plt.figure(num=None, figsize=(12, 12), dpi=80, facecolor='w', edgecolor='k')
+        plt.figure()      
+        
+        minlon      = 188 - 360.
+        maxlon      = 238. - 360.
+        minlat      = 52.
+        maxlat      = 72.
+        
+        lat_centre  = (maxlat+minlat)/2.0
+        lon_centre  = (maxlon+minlon)/2.0
+        if projection=='merc':
+            minlon      = -165.
+            maxlon      = -135.
+            minlat      = 56.
+            maxlat      = 70.
+            m       = Basemap(projection='merc', llcrnrlat=minlat, urcrnrlat=maxlat, llcrnrlon=minlon,
+                      urcrnrlon=maxlon, lat_ts=0, resolution=resolution)
+            # m.drawparallels(np.arange(minlat,maxlat,dlat), labels=[1,0,0,1])
+            # m.drawmeridians(np.arange(minlon,maxlon,dlon), labels=[1,0,0,1])
+            m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,1,1,1])
+            m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,1,1,0])
+            # m.drawparallels(np.arange(-80.0,80.0,5.0), labels=[1,0,0,1])
+            # m.drawmeridians(np.arange(-170.0,170.0,5.0), labels=[1,0,0,1])
+            # m.drawstates(color='g', linewidth=2.)
+        elif projection=='global':
+            m       = Basemap(projection='ortho',lon_0=lon_centre, lat_0=lat_centre, resolution=resolution)
+            # m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,1])
+            # m.drawmeridians(np.arange(-170.0,170.0,10.0), labels=[1,0,0,1])
+        elif projection=='regional_ortho':
+            m      = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution='l')
+            # m       = Basemap(projection='ortho', lon_0=minlon, lat_0=minlat, resolution=resolution,\
+            #             llcrnrx=0., llcrnry=0., urcrnrx=m1.urcrnrx/2., urcrnry=m1.urcrnry/3.5)
+            m.drawparallels(np.arange(-80.0,80.0,10.0), labels=[1,0,0,0],  linewidth=2,  fontsize=20)
+            # m.drawparallels(np.arange(-90.0,90.0,30.0),labels=[1,0,0,0], dashes=[10, 5], linewidth=2,  fontsize=20)
+            # m.drawmeridians(np.arange(10,180.0,30.0), dashes=[10, 5], linewidth=2)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0),  linewidth=2)
+        elif projection=='lambert':
+            
+            distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon-15) # distance is in m
+            distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-6, minlon) # distance is in m
+            m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+                        lat_1=minlat, lat_2=maxlat, lon_0=lon_centre-2., lat_0=lat_centre+2.4)
+            # m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1., dashes=[2,2], labels=[1,1,0,1], fontsize=15)
+            # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1., dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+            # # # 
+            # # # distEW, az, baz = obspy.geodetics.gps2dist_azimuth((lat_centre+minlat)/2., minlon, (lat_centre+minlat)/2., maxlon) # distance is in m
+            # # # distNS, az, baz = obspy.geodetics.gps2dist_azimuth(minlat, minlon, maxlat-2, minlon) # distance is in m
+            # # # m       = Basemap(width=distEW, height=distNS, rsphere=(6378137.00,6356752.3142), resolution='l', projection='lcc',\
+            # # #             lat_1=minlat, lat_2=maxlat, lon_0=lon_centre, lat_0=lat_centre+1.5)
+            # # # m.drawparallels(np.arange(-80.0,80.0,10.0), linewidth=1, dashes=[2,2], labels=[1,1,0,0], fontsize=15)
+            # # # m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,1,0], fontsize=15)
+            m.drawparallels(np.arange(-80.0,80.0,5.0), linewidth=1, dashes=[2,2], labels=[0,0,0,0], fontsize=15)
+            m.drawmeridians(np.arange(-170.0,170.0,10.0), linewidth=1, dashes=[2,2], labels=[0,0,0,0], fontsize=15)
+        # m.drawcoastlines(linewidth=0.5)
+        m.drawcountries(linewidth=1.)
+        #################
+        coasts = m.drawcoastlines(zorder=100,color= '0.9',linewidth=0.001)
+        
+        # Exact the paths from coasts
+        coasts_paths = coasts.get_paths()
+        
+        # In order to see which paths you want to retain or discard you'll need to plot them one
+        # at a time noting those that you want etc.
+        poly_stop = 10
+        for ipoly in xrange(len(coasts_paths)):
+            print ipoly
+            if ipoly > poly_stop:
+                break
+            r = coasts_paths[ipoly]
+            # Convert into lon/lat vertices
+            polygon_vertices = [(vertex[0],vertex[1]) for (vertex,code) in
+                                r.iter_segments(simplify=False)]
+            px = [polygon_vertices[i][0] for i in xrange(len(polygon_vertices))]
+            py = [polygon_vertices[i][1] for i in xrange(len(polygon_vertices))]
+            m.plot(px,py,'k-',linewidth=2.)
+        ######################
+        # m.drawstates(linewidth=1.)
+        m.fillcontinents(lake_color='#99ffff',zorder=0.2)
+        try:
+            geopolygons.PlotPolygon(inbasemap=m)
+        except:
+            pass
+        return m
+    
+    
+    
     def plot(self, datatype, title='', projection='lambert', cmap='cv', contour=False, geopolygons=None, showfig=True, vmin=None, vmax=None, stations=False, event=False):
         """Plot data with contour
         """
@@ -1180,7 +1275,7 @@ class Field2d(object):
         if event:
             try:
                 evx, evy    = m(self.evlo, self.evla)
-                m.plot(evx, evy, 'yo', markersize=10)
+                m.plot(evx, evy, '^', markerfacecolor='yellow', markersize=15, markeredgecolor='k')
             except:
                 pass
         if stations:
@@ -1221,21 +1316,23 @@ class Field2d(object):
             import pycpt
             cmap    = pycpt.load.gmtColormap(cmap)
         im      = m.pcolormesh(x, y, mdata, cmap=cmap, shading='gouraud', vmin=vmin, vmax=vmax)
-        cb      = m.colorbar(im, "bottom", size="3%", pad='2%')
-        cb.ax.tick_params(labelsize=10)
+        cb      = m.colorbar(im, "bottom", size="5%", pad='2%')
+        cb.ax.tick_params(labelsize=40)
         if self.fieldtype=='Tph' or self.fieldtype=='Tgr':
             if datatype == 'z':
-                cb.set_label('Travel time (sec)', fontsize=12, rotation=0)
+                cb.set_label('Travel time (sec)', fontsize=30, rotation=0)
             else:    
-                cb.set_label('C (km/s)', fontsize=12, rotation=0)
+                cb.set_label('C (km/s)', fontsize=30, rotation=0)
         if self.fieldtype=='amp':
-            cb.set_label('nm', fontsize=12, rotation=0)
+            cb.set_label('nm', fontsize=30, rotation=0)
         
         if contour:
             # levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 20)
             levels=np.linspace(ma.getdata(self.Zarr).min(), ma.getdata(self.Zarr).max(), 60)
-            m.contour(x, y, self.Zarr, colors='k', levels=levels, linewidths=0.5)
-        plt.suptitle(title, fontsize=30)
+            m.contour(x, y, mdata, colors='k', levels=levels, linewidths=0.5)
+        plt.suptitle(title, fontsize=50)
+        
+
         if showfig:
             plt.show()
         return m

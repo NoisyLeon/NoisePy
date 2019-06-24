@@ -12,7 +12,8 @@ import raytomo
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_40sec_2deg.h5')
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_2deg.h5')
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_all_20190317_250km_azi_40sec_2deg.h5')
-dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi.h5_20_stacked')
+dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_10_50_2deg_mp.h5')
+# dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_10_50.h5')
 # cmap = raytomo.discrete_cmap(6, 'jet')
 # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72)
 # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=np.array([20.]))
@@ -33,11 +34,11 @@ dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eik
 # # # # # # # perform eikonal stacking
 # # # # # # #------------------------------
 # # 
-# dset.eikonal_stack(anisotropic=True, spacing_ani=0.6, N_bin=20)
-# # t2=timeit.default_timer()
-# # # print t2-t1
-# dset.eikonal_stack(runid=0)
-# 
+# dset.eikonal_stack_mp(anisotropic=True, spacing_ani=2., N_bin=20)
+# # # # t2=timeit.default_timer()
+# # # # # print t2-t1
+# # # dset.eikonal_stack(runid=0)
+# # # 
 # dset.compute_azi_aniso()
 #------------------------------
 # compare with ray tomo

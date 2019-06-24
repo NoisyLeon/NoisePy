@@ -3,17 +3,17 @@ import numpy as np
 import timeit
 import matplotlib.pyplot as plt
 ################################################################################
-# dset=noisedbase.noiseASDF('/work3/leon//COR_WUS.h5')
-# # dset.read_stationtxt_ind('/Users/leon/Downloads/ancc-1.0-0/Station.lst', chans=['LHZ'])
-# # dset.read_xcorr('/Users/leon/Downloads/ancc-1.0-0', pfx='COR')
-# # dset.xcorr_prephp(outdir='/Users/leon/PRE_PHP', mapfile='./MAPS/smpkolya_phv')
-# # # # aftan
-# # dset.xcorr_aftan_mp(outdir='/Users/leon/WUS_workingdir', prephdir='/Users/leon/PRE_PHP_R', f77=True, nprocess=10)
-# # # # interpolate dispersion curve
-# # dset.interp_disp()
-# # # # get data for ray tomography
-# # dset.xcorr_raytomoinput(outdir='../ray_tomo_data')
-# # # get field data for Eikonal tomography
+# dset=noisedbase.noiseASDF('/work2/leon/COR_WUS_for_shane.h5')
+# # # dset.read_stationtxt_ind('/Users/leon/Downloads/ancc-1.0-0/Station.lst', chans=['LHZ'])
+# # # dset.read_xcorr('/Users/leon/Downloads/ancc-1.0-0', pfx='COR')
+# # # dset.xcorr_prephp(outdir='/Users/leon/PRE_PHP', mapfile='./MAPS/smpkolya_phv')
+# # # # # aftan
+# # # dset.xcorr_aftan_mp(outdir='/Users/leon/WUS_workingdir', prephdir='/Users/leon/PRE_PHP_R', f77=True, nprocess=10)
+# # # # # interpolate dispersion curve
+# # # dset.interp_disp()
+# # # # # get data for ray tomography
+# # # dset.xcorr_raytomoinput(outdir='../ray_tomo_data')
+# # # # get field data for Eikonal tomography
 # dset.xcorr_get_field()
 #################################################################################
 # 
@@ -32,16 +32,17 @@ import matplotlib.pyplot as plt
 # dset.plot_global_map(period=50., inglbpfx='./MAPS/smpkolya_phv_R')
 # 
 # #################################################################################
-# import eikonaltomo
-# dset=eikonaltomo.EikonalTomoDataSet('/scratch/summit/life9360/eikonal_tomo_WUS.h5')
+import eikonaltomo
+dset=eikonaltomo.EikonalTomoDataSet('/work2/leon/eikonal_tomo_WUS.h5')
 # dset.compare_raytomo('/scratch/summit/life9360/ray_tomo_WUS.h5', 1, 2, 0, 12.)
-# dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([24.]))
-# dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)
-# dset.xcorr_eikonal_mp(inasdffname='../COR_WUS.h5', workingdir='/work3/leon/eikonal_working_WUS', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
+# dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50., pers=np.array([10.]))
+# # # dset.set_input_parameters(minlon=235., maxlon=255., minlat=31., maxlat=50.)
+# dset.xcorr_eikonal_mp(inasdffname='/work2/leon/COR_WUS_for_shane.h5',\
+#                       workingdir='/work2/leon/eikonal_working_WUS', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp', nprocess=10)
 # dset.xcorr_eikonal(inasdffname='../COR_WUS.h5', workingdir='./eikonal_working', fieldtype='Tph', channel='ZZ', data_type='FieldDISPpmf2interp')
 # #
 # # t1=timeit.default_timer()
-# dset.eikonal_stack(anisotropic=True)
+# dset.eikonal_stack(anisotropic=False)
 # # t2=timeit.default_timer()
 # # print t2-t1
 # # dset.eikonal_stack()

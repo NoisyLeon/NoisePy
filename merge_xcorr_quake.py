@@ -1,19 +1,22 @@
 import eikonaltomo
+import hybridtomo
 import numpy as np
 #-----------------------
 #initialization
 #-----------------------
-dset    = eikonaltomo.hybridTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20190318.h5')
+# dset    = hybridtomo.hybridTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20190318.h5')
 
-# pers    = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
-# pers    = np.append( pers, np.arange(6.)*5.+65.)
-# dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=pers)
+dset    = hybridtomo.hybridTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_hybrid_20190613.h5')
+
+pers    = np.append( np.arange(18.)*2.+6., np.arange(4.)*5.+45.)
+pers    = np.append( pers, np.arange(6.)*5.+65.)
+dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=pers)
 # # 
 # # #-----------------------------------------------
 # # # read xcorr and earthquake eikonal resultls
 # # #-----------------------------------------------
-# dset.read_xcorr(inh5fname = '/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_all_20190318_250km_snr_10.h5')
-# dset.read_quake(inh5fname = '/work1/leon/ALASKA_work/hdf5_files/eikonal_quake_20190220.h5')
+dset.read_xcorr(inh5fname = '/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_all_20190318_250km_snr_10.h5')
+dset.read_quake(inh5fname = '/work1/leon/ALASKA_work/hdf5_files/eikonal_quake_20190220.h5')
 # dset.hybrid_eikonal_stack()
 #-----------------------------------------------
 # read ray tomography results, uncertainties will also be estimated from eikonal maps

@@ -2960,7 +2960,7 @@ class noiseASDF(pyasdf.ASDFDataSet):
         print ('=== end generating arrays for eikonal tomography')
         return
     
-    def plot_waveforms(self, staxml=None, channel='ZZ', ndata=1000, dmin=1., dmax=1000.):
+    def plot_waveforms(self, staxml=None, channel='ZZ', ndata=100, dmin=1., dmax=1000.):
         if staxml != None:
             inv             = obspy.read_inventory(staxml)
             waveformLst     = []
@@ -3020,18 +3020,18 @@ class noiseASDF(pyasdf.ASDFDataSet):
                     print netcode1+'.'+stacode1+'_'+chan1+'_'+netcode2+'.'+stacode2+'_'+chan2+' not exists!'
                     continue
                 # is_data[index]      = True
-                # idata               += 1
-                # print idata
+                idata               += 1
+                print idata
                 time    = tr.stats.sac.b + np.arange(tr.stats.npts)*tr.stats.delta
                 plt.plot(time, tr.data/abs(tr.data.max())*10. + tr.stats.distance/1000., 'k-', lw= 0.1)
                 if idata >= ndata:
                     break
         plt.xlim([-1000., 1000.])
-        plt.ylim([-1., 1000.])
-        ax.tick_params(axis='x', labelsize=20)
-        ax.tick_params(axis='y', labelsize=20)
-        plt.ylabel('Distance (km)', fontsize=30)
-        plt.xlabel('Time (s)', fontsize=30)
+        plt.ylim([-1., 1500.])
+        ax.tick_params(axis='x', labelsize=30)
+        ax.tick_params(axis='y', labelsize=30)
+        plt.ylabel('Distance (km)', fontsize=40)
+        plt.xlabel('Time (sec)', fontsize=40)
         plt.show()
         
     def plot_waveforms_monthly(self, datadir, monthdir, staxml=None, chan1='LHZ', chan2='LHZ'):
