@@ -33,3 +33,12 @@ dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/azi
 # dset.eikonal_stack_mp(anisotropic=True, spacing_ani=2., N_bin=20, azi_amp_tresh=0.05, workingdir='./azi_xcorr_all_2deg_0.05')
 # dset.compute_azi_aniso()
 
+# dset.plot_fast_axis(runid=0, period=30., factor=5, ampref = 1.)
+# dset.diff_fast_axis(inh5fname='/work1/leon/ALASKA_work/hdf5_files/azi_quake_2deg_0.05.h5', vmin=0., vmax=90., period=30., runid=0)
+# dset.combine_amp(inh5fname='/work1/leon/ALASKA_work/hdf5_files/azi_quake_2deg_0.05.h5', period=30., runid=0)
+
+# dset.combine_fast_axis(inh5fname='/work1/leon/ALASKA_work/hdf5_files/azi_quake_2deg_0.05.h5', period=30., runid=0)
+# dset.plot_fast_axis(0, 30., datatype='vel_iso', vmin=3.6, vmax=3.9, ampref=1., normv=1.5, scaled=True, factor=5)
+
+
+# dset.diff_amp(inh5fname='/work1/leon/ALASKA_work/hdf5_files/azi_quake_2deg_0.05.h5', period=30., runid=0)

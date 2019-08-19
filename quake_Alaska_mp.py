@@ -36,7 +36,7 @@ import pyaftan
 # 
 import eikonaltomo
 #
-dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_quake_20181030.h5')
+dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/helm_20190809.h5')
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_quake_20181022_helm_40sec.h5')
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_quake_20181022_helm_40sec_noqc.h5')
 
@@ -46,8 +46,8 @@ dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eik
 # # # # 
 # # # # # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_quake_20181015.h5')
 # # # # # # # 
-# # # # # pers    = np.array([80.])
-# # # # # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=pers)
+pers    = np.array([60.])
+dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72, pers=pers)
 # # # # # # 
 # # # # # # 
 # dset.quake_eikonal_mp_lowmem(inasdffname='/work1/leon/ALASKA_work/ASDF_data/surf_Alaska.h5', \
@@ -55,9 +55,9 @@ dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eik
 #         data_type='FieldDISPpmf2interp', amplplc=True, cdist=250., nprocess=30, btime_qc='2006-01-01', deletetxt=True)
 
 # dset.eikonal_stack(runid=0, anisotropic=False)
-# dset.helm_stack(runid=0, anisotropic=False, dv_thresh=0.2)
+dset.helm_stack(runid=0, anisotropic=False, dv_thresh=0.2)
 
-dset.compare_eiktomo(ineiktomofname='/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20180814_250km.h5', \
-                     inrunid=0, runid=0, period=40., Nmeasure=50, helm=False)
+# dset.compare_eiktomo(ineiktomofname='/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20180814_250km.h5', \
+#                      inrunid=0, runid=0, period=40., Nmeasure=50, helm=False)
 
 

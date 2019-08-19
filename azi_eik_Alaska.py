@@ -12,7 +12,7 @@ import raytomo
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_40sec_2deg.h5')
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_2deg.h5')
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_all_20190317_250km_azi_40sec_2deg.h5')
-dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_10_50_2deg_mp.h5')
+dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/xcorr_bks/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km.h5')
 # dset    = eikonaltomo.EikonalTomoDataSet('/work1/leon/ALASKA_work/hdf5_files/eikonal_xcorr_tomo_Alaska_TA_AK_20190317_250km_azi_10_50.h5')
 # cmap = raytomo.discrete_cmap(6, 'jet')
 # dset.set_input_parameters(minlon=188, maxlon=238, minlat=52, maxlat=72)

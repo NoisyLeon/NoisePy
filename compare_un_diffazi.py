@@ -19,6 +19,8 @@ un  = un[ind]
 un[un>90.] = 90.
 r   = un - abs(diff[ind])
 
+print r[r>=0.].size/float(r.size)
+
 ax      = plt.subplot()
         
 dbin    = 0.1

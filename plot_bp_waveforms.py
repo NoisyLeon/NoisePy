@@ -8,9 +8,9 @@ tr  = obspy.read(infname)[0]
 atr = pyaftan.aftantrace(tr.data, tr.stats)
 atr.makesym()
 atr.aftanf77(tmin=2., tmax=60., phvelname='TA.A21K.TA.N25K.pre')
-# atr.plotftan(plotflag=1)
-# # plt.suptitle('fortran77 aftan results')
-# plt.show()
+atr.plotftan(plotflag=1)
+# plt.suptitle('fortran77 aftan results')
+plt.show()
 # 
 # ax  = plt.subplot()
 # time = np.arange(atr.data.size)*atr.stats.delta

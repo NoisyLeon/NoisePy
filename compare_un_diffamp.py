@@ -6,7 +6,7 @@ import matplotlib
 inarr1 = np.load('unamp.npz')
 inarr2 = np.load('diffamp.npz')
 
-un      = inarr1['arr_0']
+un      = inarr1['arr_0']*4. ### 
 mask1   = inarr1['arr_1']
 
 diff    = inarr2['arr_0']
@@ -18,6 +18,8 @@ ind     = np.logical_not(mask)
 # un  = un[ind]
 # un[un>90.] = 90.
 r   = un[ind] - abs(diff[ind])
+
+print r[r>=0.].size/float(r.size)
 
 ax      = plt.subplot()
         
